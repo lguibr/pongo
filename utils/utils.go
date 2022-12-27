@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"math/rand"
 	"time"
 )
 
@@ -13,4 +14,8 @@ func DirectionFromString(direction string) string {
 		return "right"
 	}
 	return ""
+}
+
+func CreateRandomColor() [3]int {
+	return [3]int{rand.Intn(255), rand.Intn(255), rand.Intn(255)}
 }
