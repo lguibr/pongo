@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,46 +9,22 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-var index = -1
-
-type Direction struct {
-	Direction string `json:"direction"`
-}
-
-func updatePaddleDirection(paddle *game.Paddle) func(buffer []byte) {
-	return func(buffer []byte) {
-		direction := Direction{}
-		err := json.Unmarshal(buffer, &direction)
-		if err != nil {
-			fmt.Println("Error unmarshalling message:", err)
-		}
-		paddle.Direction = utils.DirectionFromString(direction.Direction)
-		fmt.Println(paddle)
-	}
-}
-
 func (s *Server) CreateSubscriptionGame(g *game.Game) func(ws *websocket.Conn) {
 
 	return func(ws *websocket.Conn) {
 
-		fmt.Println("New Connection from client:", ws.RemoteAddr())
+		fmt.Println("New Connection from client:", ws.RemoteAddr(), '\n')
 		s.conns[ws] = true
+		currentIndex := g.GetNextIndex()
+		unsubscribePlayer := g.SubscribePlayer()
 
-		index++
-		currentIndex := index % 4
+		//INFO Reading the direction from the client
+		fmt.Println(string(g.ToJson()), '\n')
 
-		ownerId := "lg" + fmt.Sprint(currentIndex)
+		//INFO Reading the direction from the client
+		go func() { s.readLoop(ws, g.Paddles[currentIndex].SetDirection, unsubscribePlayer) }()
 
-		g.Balls[currentIndex] = game.CreateBall(ownerId, g.Canvas, 0, 0, 0)
-		g.Paddles[currentIndex] = game.CreatePaddle(ownerId, g.Canvas)
-
-		g.Grid.SubscribeBall(g.Balls[currentIndex])
-		g.Grid.SubscribePaddle(g.Paddles[currentIndex])
-
-		fmt.Println("%V", g)
-
-		go func() { s.readLoop(ws, updatePaddleDirection(g.Paddles[currentIndex])) }()
-
+		//INFO Writing the game state to the client
 		for {
 			payload := g.ToJson()
 			ws.Write(payload)

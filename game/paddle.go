@@ -1,5 +1,12 @@
 package game
 
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/lguibr/pongo/utils"
+)
+
 type Paddle struct {
 	Starts    int     `json:"starts"`
 	Ends      int     `json:"ends"`
@@ -28,8 +35,22 @@ func CreatePaddle(ownerId string, canvas *Canvas) *Paddle {
 		Starts:    starts,
 		Ends:      ends,
 		Direction: "",
-		Velocity:  10,
+		Velocity:  utils.MinVelocity * 2,
 		OwnerId:   ownerId,
 		Canvas:    canvas,
 	}
+}
+
+type Direction struct {
+	Direction string `json:"direction"`
+}
+
+func (p *Paddle) SetDirection(buffer []byte) {
+	direction := Direction{}
+	err := json.Unmarshal(buffer, &direction)
+	if err != nil {
+		fmt.Println("Error unmarshalling message:", err)
+	}
+	p.Direction = utils.DirectionFromString(direction.Direction)
+	fmt.Println(p)
 }
