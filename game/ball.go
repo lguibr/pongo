@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/lguibr/pongo/utils"
 )
 
 type Ball struct {
@@ -28,10 +30,10 @@ func (b *Ball) Move() {
 }
 
 func (b *Ball) Bounce() {
-	if b.X-b.Radius <= 0 || b.X+b.Radius >= b.Canvas.Width {
+	if b.X-b.Radius < 0 || b.X+b.Radius > b.Canvas.Width {
 		b.Vx = -b.Vx
 	}
-	if b.Y-b.Radius <= 0 || b.Y+b.Radius >= b.Canvas.Height {
+	if b.Y-b.Radius < 0 || b.Y+b.Radius > b.Canvas.Height {
 		b.Vy = -b.Vy
 	}
 }
@@ -39,16 +41,16 @@ func (b *Ball) Bounce() {
 func CreateBall(ownerId string, canvas *Canvas, x, y, radius int) *Ball {
 
 	if x == 0 && y == 0 {
-		x = rand.Intn(canvas.Width)
-		y = rand.Intn(canvas.Height)
+		x = canvas.Width / 2
+		y = canvas.Height / 2
 	}
 
 	if radius == 0 {
 		radius = 10
 	}
 
-	maxVelocity := 15
-	minVelocity := 10
+	maxVelocity := utils.MaxVelocity
+	minVelocity := utils.MinVelocity
 
 	rand.Seed(time.Now().UnixNano())
 

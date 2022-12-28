@@ -5,7 +5,13 @@ import (
 	"time"
 )
 
-const Period = 50 * time.Millisecond
+const (
+	Period      = 20 * time.Millisecond
+	CanvasSize  = 512
+	GridSize    = 16
+	MinVelocity = 2
+	MaxVelocity = 8
+)
 
 func DirectionFromString(direction string) string {
 	if direction == "ArrowLeft" {
