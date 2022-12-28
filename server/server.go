@@ -12,18 +12,18 @@ type Server struct {
 }
 
 func NewServer() *Server {
-	return &Server{
-		conns: make(map[*websocket.Conn]bool),
-	}
+	return &Server{conns: make(map[*websocket.Conn]bool)}
 }
 
-func (s *Server) readLoop(ws *websocket.Conn, callback func(buffer []byte)) {
+func (s *Server) readLoop(ws *websocket.Conn, callback func(buffer []byte), closeHandler func()) {
+	defer func() {
+		closeHandler()
+		ws.Close()
+	}()
 
 	buffer := make([]byte, 1024)
 	for {
-
 		size, err := ws.Read(buffer)
-
 		if err != nil {
 			fmt.Println("Error reading from client:", err)
 			if err == io.EOF {
@@ -32,8 +32,6 @@ func (s *Server) readLoop(ws *websocket.Conn, callback func(buffer []byte)) {
 			}
 			continue
 		}
-
-		message := buffer[:size]
-		callback(message)
+		callback(buffer[:size])
 	}
 }
