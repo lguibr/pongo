@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/lguibr/pongo/game"
@@ -12,7 +13,12 @@ func main() {
 	wsServer := server.NewServer()
 	game := game.StartGame()
 
-	http.Handle("/pongo", websocket.Handler(wsServer.CreateSubscriptionGame(game)))
+	fmt.Println("Game started:")
+	fmt.Println(game)
+
+	http.HandleFunc("/", wsServer.HandleGetSit(game))
+
+	http.Handle("/subscribe", websocket.Handler(wsServer.HandleSubscribe(game)))
 
 	http.ListenAndServe(":3001", nil)
 
