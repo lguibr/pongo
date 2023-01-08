@@ -10,61 +10,224 @@ import (
 )
 
 type Ball struct {
-	X       int     `json:"x"`
-	Y       int     `json:"y"`
-	Vx      int     `json:"vx"`
-	Vy      int     `json:"vy"`
-	Ax      int     `json:"ax"`
-	Ay      int     `json:"ay"`
-	Radius  int     `json:"radius"`
-	OwnerId string  `json:"ownerId"`
-	Canvas  *Canvas `json:"canvas"`
+	X                int     `json:"x"`
+	Y                int     `json:"y"`
+	Vx               int     `json:"vx"`
+	Vy               int     `json:"vy"`
+	Ax               int     `json:"ax"`
+	Ay               int     `json:"ay"`
+	Radius           int     `json:"radius"`
+	Canvas           *Canvas `json:"canvas"`
+	interceptingCell [2]int
+	Index            int `json:"index"`
 }
 
 func (b *Ball) Move() {
+
 	b.X += b.Vx + b.Ax/2
 	b.Y += b.Vy + b.Ay/2
 
 	b.Vx += b.Ax
 	b.Vy += b.Ay
+
 }
 
-func (b *Ball) Bounce() {
-	if b.X-b.Radius < 0 || b.X+b.Radius > b.Canvas.Width {
+func (b *Ball) CollideCells() {
+
+	row, col := b.GetIntersectedIndices(b.Canvas.Grid)
+
+	if row < 0 || row > b.Canvas.GridSize-1 || col < 0 || col > b.Canvas.GridSize-1 {
+		return
+	}
+	newIntersectedCell := [2]int{row, col}
+	if newIntersectedCell != b.interceptingCell {
+		t := b.Canvas.Grid[row][col].Data.Type
+		if t == utils.CellTypes["Brick"] {
+			b.handleCollideBrick(b.interceptingCell, newIntersectedCell)
+		}
+		if t == utils.CellTypes["Block"] {
+			b.handleCollideBlock(b.interceptingCell, newIntersectedCell)
+		}
+		b.interceptingCell = newIntersectedCell
+	}
+}
+
+func (b *Ball) handleCollideBrick(oldIndices, newIndices [2]int) {
+	b.handleCollideBlock(oldIndices, newIndices)
+	b.Canvas.Grid[newIndices[0]][newIndices[1]].Data.Life -= 1
+	if b.Canvas.Grid[newIndices[0]][newIndices[1]].Data.Life == 0 {
+		b.Canvas.Grid[newIndices[0]][newIndices[1]].Data.Type = utils.CellTypes["Empty"]
+	}
+}
+
+func (b *Ball) handleCollideBlock(oldIndices, newIndices [2]int) {
+	velocityReflector := utils.SubtractVectors(oldIndices, newIndices)
+
+	if velocityReflector[0] != 0 {
 		b.Vx = -b.Vx
 	}
-	if b.Y-b.Radius < 0 || b.Y+b.Radius > b.Canvas.Height {
+	if velocityReflector[1] != 0 {
 		b.Vy = -b.Vy
+	}
+
+}
+
+func (b *Ball) CollideWalls() {
+	if b.CollideBottomWall() {
+		b.HandleCollideBottom()
+	}
+	if b.CollideTopWall() {
+		b.HandleCollideTop()
+	}
+	if b.CollideLeftWall() {
+		b.HandleCollideLeft()
+	}
+	if b.CollideRightWall() {
+		b.HandleCollideRight()
 	}
 }
 
-func CreateBall(ownerId string, canvas *Canvas, x, y, radius int) *Ball {
+func (ball *Ball) CollidePaddles(players [4]*Player) {
+	for _, player := range players {
+		if player == nil {
+			continue
+		}
+		ball.CollidePaddle(player.Paddle)
+	}
+}
+
+func (ball *Ball) GetIntersectedIndices(grid Grid) (x, y int) {
+	cellSize := utils.CellSize
+	row := ball.X / cellSize
+	col := ball.Y / cellSize
+	return row, col
+}
+
+func (ball *Ball) CollidePaddle(paddle *Paddle) {
+	collisionDetectors := [4]func(*Paddle) bool{
+		ball.CollidePaddleRight,
+		ball.CollidePaddleBottom,
+		ball.CollidePaddleLeft,
+		ball.CollidePaddleTop,
+	}
+	collisionDetector := collisionDetectors[paddle.Index]
+	collisionDetected := collisionDetector(paddle)
+
+	if collisionDetected {
+		handlers := [4]func(){
+			ball.HandleCollideRight,
+			ball.HandleCollideBottom,
+			ball.HandleCollideLeft,
+			ball.HandleCollideTop,
+		}
+		handlerCollision := handlers[paddle.Index]
+		handlerCollision()
+	}
+}
+
+func (ball *Ball) CollidePaddleTop(paddle *Paddle) bool {
+	return ball.Y-ball.Radius <= paddle.Y+paddle.Height/2 &&
+		ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
+		ball.X-ball.Radius <= paddle.X+paddle.Width/2
+
+}
+
+func (ball *Ball) CollidePaddleBottom(paddle *Paddle) bool {
+	return ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
+		ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
+		ball.X-ball.Radius <= paddle.X+paddle.Width/2
+}
+
+func (ball *Ball) CollidePaddleLeft(paddle *Paddle) bool {
+	return ball.X-ball.Radius <= paddle.X+paddle.Width/2 &&
+		ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
+		ball.Y-ball.Radius <= paddle.Y+paddle.Height/2
+}
+
+func (ball *Ball) CollidePaddleRight(paddle *Paddle) bool {
+	return ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
+		ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
+		ball.Y-ball.Radius <= paddle.Y+paddle.Height/2
+}
+
+func (ball *Ball) HandleCollideRight() {
+	ball.Vx = -utils.Abs(ball.Vx)
+}
+
+func (ball *Ball) HandleCollideLeft() {
+	ball.Vx = utils.Abs(ball.Vx)
+}
+
+func (ball *Ball) HandleCollideTop() {
+	ball.Vy = utils.Abs(ball.Vy)
+}
+
+func (ball *Ball) HandleCollideBottom() {
+	ball.Vy = -utils.Abs(ball.Vy)
+}
+
+func (ball *Ball) CollideTopWall() bool {
+	return ball.Y-ball.Radius <= 0
+}
+
+func (ball *Ball) CollideBottomWall() bool {
+	return ball.Y+ball.Radius >= ball.Canvas.Height
+}
+
+func (ball *Ball) CollideRightWall() bool {
+	return ball.X+ball.Radius >= ball.Canvas.Width
+}
+
+func (ball *Ball) CollideLeftWall() bool {
+	return ball.X-ball.Radius <= 0
+}
+
+func NewBall(canvas *Canvas, x, y, radius, index int) *Ball {
 
 	if x == 0 && y == 0 {
-		x = canvas.Width / 2
-		y = canvas.Height / 2
+		cardinalPosition := [2]int{utils.CanvasSize/2 - utils.CellSize*1.5, 0}
+
+		rotateX, rotateY := utils.RotateVector(
+			index,
+			cardinalPosition[0],
+			cardinalPosition[1],
+			utils.CanvasSize,
+			utils.CanvasSize,
+		)
+
+		translatedVector := utils.SumVectors(
+			[2]int{rotateX, rotateY},
+			[2]int{utils.CanvasSize / 2, utils.CanvasSize / 2},
+		)
+
+		x, y = translatedVector[0], translatedVector[1]
 	}
 
 	if radius == 0 {
-		radius = 10
+		radius = utils.BallSize
 	}
 
 	maxVelocity := utils.MaxVelocity
 	minVelocity := utils.MinVelocity
 
+	cardinalVX := minVelocity + rand.Intn(maxVelocity-minVelocity)
 	rand.Seed(time.Now().UnixNano())
 
-	vx := rand.Intn(maxVelocity-minVelocity+1) + minVelocity
-	vy := rand.Intn(maxVelocity-minVelocity+1) + minVelocity
+	cardinalVY := minVelocity + rand.Intn(maxVelocity-minVelocity)
+	vx, vy := utils.RotateVector(index, -cardinalVX, cardinalVY, 1, 1)
 
 	return &Ball{
-		X:       x,
-		Y:       y,
-		Vx:      vx,
-		Vy:      vy,
-		Radius:  radius,
-		OwnerId: ownerId,
-		Canvas:  canvas,
+		X:      x,
+		Y:      y,
+		Vx:     vx,
+		Vy:     vy,
+		Radius: radius,
+		Canvas: canvas,
+		Index:  index,
+		interceptingCell: [2]int{
+			x / utils.CellSize,
+			y / utils.CellSize,
+		},
 	}
 }
 

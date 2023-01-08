@@ -8,35 +8,71 @@ import (
 )
 
 type Paddle struct {
-	Starts    int     `json:"starts"`
-	Ends      int     `json:"ends"`
+	X         int     `json:"x"`
+	Y         int     `json:"y"`
+	Width     int     `json:"width"`
+	Height    int     `json:"height"`
+	Index     int     `json:"index"`
 	Direction string  `json:"direction"`
 	Velocity  int     `json:"velocity"`
-	OwnerId   string  `json:"ownerId"`
 	Canvas    *Canvas `json:"canvas"`
 }
 
-func (p *Paddle) Move() {
-	if p.Direction == "left" && p.Starts-p.Velocity >= 0 {
-		p.Starts -= p.Velocity
-		p.Ends -= p.Velocity
-	} else if p.Direction == "right" && p.Ends+p.Velocity <= p.Canvas.Width {
-		p.Starts += p.Velocity
-		p.Ends += p.Velocity
+func (paddle *Paddle) Move() {
+	if paddle.Direction == "" {
+		return
 	}
+
+	unformattedX, unformattedY := 0, paddle.Velocity
+	x, y := utils.RotateVector(paddle.Index, unformattedX, unformattedY, utils.CanvasSize, utils.CanvasSize)
+
+	if paddle.Direction == "left" {
+		if paddle.X-x < 0 || paddle.Y+y < 0 {
+			return
+		}
+		paddle.X -= x
+		paddle.Y -= y
+	} else {
+		if paddle.X+paddle.Width+x > utils.CanvasSize || paddle.Y+paddle.Height-y > utils.CanvasSize {
+			return
+		}
+		paddle.X += x
+		paddle.Y += y
+	}
+
 }
 
-func CreatePaddle(ownerId string, canvas *Canvas) *Paddle {
+func NewPaddle(canvas *Canvas, index int) *Paddle {
 
-	starts := canvas.Width/2 - 50
-	ends := canvas.Width/2 + 50
+	offSet := -utils.PaddleLength/2 + utils.PaddleWeight/2
+	if index > 1 {
+		offSet = -offSet
+	}
+
+	cardinalPosition := [2]int{utils.CanvasSize/2 - utils.PaddleWeight/2, offSet}
+	rotateX, rotateY := utils.RotateVector(index, cardinalPosition[0], cardinalPosition[1], utils.CanvasSize, utils.CanvasSize)
+	translatedVector := utils.SumVectors([2]int{rotateX, rotateY}, [2]int{utils.CanvasSize/2 - utils.PaddleWeight/2, utils.CanvasSize/2 - utils.PaddleWeight/2})
+	x, y := translatedVector[0], translatedVector[1]
+
+	indexOdd := index % 2
+	var width, height int
+
+	if indexOdd == 0 {
+		height = utils.PaddleLength
+		width = utils.PaddleWeight
+	} else {
+		width = utils.PaddleLength
+		height = utils.PaddleWeight
+	}
 
 	return &Paddle{
-		Starts:    starts,
-		Ends:      ends,
+		X:         x,
+		Y:         y,
+		Index:     index,
+		Width:     width,
+		Height:    height,
 		Direction: "",
 		Velocity:  utils.MinVelocity * 2,
-		OwnerId:   ownerId,
 		Canvas:    canvas,
 	}
 }
@@ -45,12 +81,12 @@ type Direction struct {
 	Direction string `json:"direction"`
 }
 
-func (p *Paddle) SetDirection(buffer []byte) {
+func (paddle *Paddle) SetDirection(buffer []byte) {
 	direction := Direction{}
 	err := json.Unmarshal(buffer, &direction)
 	if err != nil {
 		fmt.Println("Error unmarshalling message:", err)
 	}
-	p.Direction = utils.DirectionFromString(direction.Direction)
-	fmt.Println(p)
+	newDirection := utils.DirectionFromString(direction.Direction)
+	paddle.Direction = newDirection
 }
