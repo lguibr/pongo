@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	Period = 250 * time.Millisecond
+	Period = 20 * time.Millisecond
 
 	CanvasSize = 576 //INFO Must be divisible by GridSize
 	GridSize   = 12  //INFO Must be divisible by 2
@@ -53,12 +53,25 @@ func NewMatrixesOfRotation() [4][2][2]int {
 	}
 }
 
+func NewMatrixesOfSymmetricOperation() [4][2][2]int {
+	return [4][2][2]int{
+		{{1, 0}, {0, 1}},
+		{{0, 1}, {1, 0}},
+		{{1, 0}, {0, 1}},
+		{{0, 1}, {1, 0}},
+	}
+}
+
 func TransformVector(tMatrix [2][2]int, x int, y int) (int, int) {
 	return tMatrix[0][0]*x + tMatrix[0][1]*y, tMatrix[1][0]*x + tMatrix[1][1]*y
 }
 
 func RotateVector(index int, x int, y int, canvasWidth int, canvasHeight int) (int, int) {
 	return TransformVector(MatrixesOfRotation[index], x, y)
+}
+
+func SymmetricOperateVector(index int, x int, y int, canvasWidth int, canvasHeight int) (int, int) {
+	return TransformVector(MatrixesOfSymmetricOperation[index], x, y)
 }
 
 func TransformMatrix(matrix [2][2]int, tMatrix [2][2]int) [2][2]int {
@@ -73,6 +86,7 @@ func TransformMatrix(matrix [2][2]int, tMatrix [2][2]int) [2][2]int {
 }
 
 var MatrixesOfRotation = NewMatrixesOfRotation()
+var MatrixesOfSymmetricOperation = NewMatrixesOfSymmetricOperation()
 
 func NewPositiveRandomVector(size int) [2]int {
 	x := rand.Intn(size)
