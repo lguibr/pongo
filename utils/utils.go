@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"math"
 	"math/rand"
 	"time"
 )
@@ -20,7 +21,7 @@ const (
 	NumberOfRandomWalkers = 2 * GridSize
 	NumberOfRandomSteps   = 2 * GridSize
 
-	BallSize     = CellSize / 4
+	BallSize     = CellSize / 3
 	PaddleLength = CellSize * 3
 	PaddleWeight = CellSize / 2
 )
@@ -164,4 +165,11 @@ func NewRandomPositiveVectors(numberOfVectors, maxVectorSize int) [][2]int {
 		seedVectors[index] = NewPositiveRandomVector(currentLength)
 	}
 	return seedVectors
+}
+
+func Distance(x1, y1, x2, y2 int) float64 {
+	deltaX := x2 - x1
+	deltaY := y2 - y1
+
+	return math.Sqrt(math.Pow(float64(deltaX), 2) + math.Pow(float64(deltaY), 2))
 }
