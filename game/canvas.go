@@ -1,9 +1,6 @@
 package game
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/lguibr/pongo/utils"
 )
 
@@ -13,6 +10,7 @@ type Canvas struct {
 	Height     int  `json:"height"`
 	GridSize   int  `json:"gridSize"`
 	CanvasSize int  `json:"canvasSize"`
+	CellSize   int
 }
 
 func NewCanvas(size, gridSize int) *Canvas {
@@ -37,14 +35,6 @@ func NewCanvas(size, gridSize int) *Canvas {
 		Height:     size,
 		GridSize:   gridSize,
 		CanvasSize: size,
+		CellSize:   size / gridSize,
 	}
-}
-
-func (c *Canvas) ToJson() []byte {
-	canvas, err := json.Marshal(c)
-	if err != nil {
-		fmt.Println(err)
-		return []byte{}
-	}
-	return canvas
 }
