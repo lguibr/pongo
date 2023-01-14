@@ -20,9 +20,9 @@ const (
 	NumberOfRandomWalkers = 2 * GridSize
 	NumberOfRandomSteps   = 2 * GridSize
 
-	BallSize     = CellSize / 3
+	BallSize     = CellSize / 4
 	PaddleLength = CellSize * 3
-	PaddleWeight = CellSize / 3
+	PaddleWeight = CellSize / 2
 )
 
 var CellTypes = map[string]string{

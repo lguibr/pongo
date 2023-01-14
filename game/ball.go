@@ -73,15 +73,19 @@ func (b *Ball) handleCollideBlock(oldIndices, newIndices [2]int) {
 
 func (b *Ball) CollideWalls() {
 	if b.CollideBottomWall() {
+		fmt.Println("Collide bottom wall")
 		b.HandleCollideBottom()
 	}
 	if b.CollideTopWall() {
+		fmt.Println("Collide top wall")
 		b.HandleCollideTop()
 	}
 	if b.CollideLeftWall() {
+		fmt.Println("Collide left wall")
 		b.HandleCollideLeft()
 	}
 	if b.CollideRightWall() {
+		fmt.Println("Collide right wall")
 		b.HandleCollideRight()
 	}
 }
@@ -104,10 +108,10 @@ func (ball *Ball) GetIntersectedIndices(grid Grid) (x, y int) {
 
 func (ball *Ball) CollidePaddle(paddle *Paddle) {
 	collisionDetectors := [4]func(*Paddle) bool{
-		ball.CollideRightPaddle,
-		ball.CollideBottomPaddle,
-		ball.CollideLeftPaddle,
-		ball.CollidePaddleTop,
+		ball.CollideOnRightPaddle,
+		ball.CollideOnBottomPaddle,
+		ball.CollideOnLeftPaddle,
+		ball.CollideOnTopPaddle,
 	}
 	collisionDetector := collisionDetectors[paddle.Index]
 	collisionDetected := collisionDetector(paddle)
@@ -124,29 +128,54 @@ func (ball *Ball) CollidePaddle(paddle *Paddle) {
 	}
 }
 
-func (ball *Ball) CollidePaddleTop(paddle *Paddle) bool {
-	return ball.Y-ball.Radius <= paddle.Y+paddle.Height/2 &&
-		ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
-		ball.X-ball.Radius <= paddle.X+paddle.Width/2
+func (ball *Ball) CollideOnTopPaddle(paddle *Paddle) bool {
+	collides := ball.Y-ball.Radius <= paddle.Y+paddle.Height &&
+		ball.Y-ball.Radius >= paddle.Y && ball.X >= paddle.X &&
+		ball.X <= paddle.X+paddle.Width
+
+	if collides {
+		fmt.Println("Collide on top paddle")
+	}
+
+	return collides
 
 }
 
-func (ball *Ball) CollideBottomPaddle(paddle *Paddle) bool {
-	return ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
-		ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
-		ball.X-ball.Radius <= paddle.X+paddle.Width/2
+func (ball *Ball) CollideOnBottomPaddle(paddle *Paddle) bool {
+	collides := ball.X-ball.Radius <= paddle.X+paddle.Width &&
+		ball.X-ball.Radius >= paddle.X &&
+		ball.Y >= paddle.Y && ball.Y <= paddle.Y+paddle.Height
+
+	if collides {
+		fmt.Println("Collide on bottom paddle")
+	}
+
+	return collides
 }
 
-func (ball *Ball) CollideLeftPaddle(paddle *Paddle) bool {
-	return ball.X-ball.Radius <= paddle.X+paddle.Width/2 &&
+func (ball *Ball) CollideOnLeftPaddle(paddle *Paddle) bool {
+	collides := ball.X-ball.Radius <= paddle.X+paddle.Width/2 &&
 		ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
 		ball.Y-ball.Radius <= paddle.Y+paddle.Height/2
+
+	if collides {
+		fmt.Println("Collide on left paddle")
+	}
+
+	return collides
 }
 
-func (ball *Ball) CollideRightPaddle(paddle *Paddle) bool {
-	return ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
-		ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
-		ball.Y-ball.Radius <= paddle.Y+paddle.Height/2
+func (ball *Ball) CollideOnRightPaddle(paddle *Paddle) bool {
+	collides := ball.X+ball.Radius >= paddle.X &&
+		ball.X+ball.Radius <= paddle.X+paddle.Width &&
+		ball.Y >= paddle.Y &&
+		ball.Y <= paddle.Y+paddle.Height
+
+	if collides {
+
+		fmt.Println("Collide on right paddle")
+	}
+	return collides
 }
 
 func (ball *Ball) HandleCollideRight() {
