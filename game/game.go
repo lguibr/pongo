@@ -15,6 +15,8 @@ type Game struct {
 }
 
 func StartGame() *Game {
+	rand.Seed(time.Now().UnixNano())
+
 	canvas := NewCanvas(0, 0)
 	canvas.Grid.Fill(0, 0, 0, 0)
 
@@ -73,7 +75,6 @@ func (game *Game) SubscribePaddle(paddle *Paddle) {
 }
 
 func (game *Game) SubscribePlayer() (func(), *Player) {
-	rand.Seed(time.Now().UnixNano())
 	if !game.HasPlayer() {
 		game.Canvas.Grid.Fill(0, 0, 0, 0)
 	}

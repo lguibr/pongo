@@ -1,9 +1,7 @@
 package game
 
 import (
-	"math/rand"
 	"testing"
-	"time"
 )
 
 func TestGrid_LineIntersectedCellIndices(t *testing.T) {
@@ -73,8 +71,6 @@ func TestGrid_Rotate(t *testing.T) {
 }
 
 func TestGrid_FillGridWithQuarterGrids(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
-
 	grids := [4]Grid{}
 	canvasSize := 8
 	halfCanvasSize := canvasSize / 2
@@ -83,11 +79,11 @@ func TestGrid_FillGridWithQuarterGrids(t *testing.T) {
 	maxVectorSize := (canvasSize / 3)
 
 	for i := 0; i < 4; i++ {
-		rand.Seed(time.Now().UnixNano())
+
 		gridSeed := NewGrid(halfCanvasSize)
 		gridSeed.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)
-		gridSeed.Rotate().Rotate()
-		grids[i] = gridSeed
+
+		grids[i] = gridSeed.Rotate().Rotate()
 
 	}
 
@@ -108,7 +104,6 @@ func TestGrid_FillGrid(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		canvasSize := 2
 		grid := NewGrid(canvasSize)
-		rand.Seed(time.Now().UnixNano())
 		numberOfVectors := 500
 		maxVectorSize := 10
 		grid.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)

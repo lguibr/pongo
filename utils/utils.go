@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	Period = 10 * time.Millisecond
+	Period = 250 * time.Millisecond
 
 	CanvasSize = 576 //INFO Must be divisible by GridSize
 	GridSize   = 12  //INFO Must be divisible by 2

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"time"
 
 	"github.com/lguibr/pongo/utils"
 )
@@ -18,8 +17,8 @@ type Ball struct {
 	Ay               int     `json:"ay"`
 	Radius           int     `json:"radius"`
 	Canvas           *Canvas `json:"canvas"`
+	Index            int     `json:"index"`
 	interceptingCell [2]int
-	Index            int `json:"index"`
 }
 
 func (b *Ball) Move() {
@@ -105,9 +104,9 @@ func (ball *Ball) GetIntersectedIndices(grid Grid) (x, y int) {
 
 func (ball *Ball) CollidePaddle(paddle *Paddle) {
 	collisionDetectors := [4]func(*Paddle) bool{
-		ball.CollidePaddleRight,
-		ball.CollidePaddleBottom,
-		ball.CollidePaddleLeft,
+		ball.CollideRightPaddle,
+		ball.CollideBottomPaddle,
+		ball.CollideLeftPaddle,
 		ball.CollidePaddleTop,
 	}
 	collisionDetector := collisionDetectors[paddle.Index]
@@ -132,19 +131,19 @@ func (ball *Ball) CollidePaddleTop(paddle *Paddle) bool {
 
 }
 
-func (ball *Ball) CollidePaddleBottom(paddle *Paddle) bool {
+func (ball *Ball) CollideBottomPaddle(paddle *Paddle) bool {
 	return ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
 		ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
 		ball.X-ball.Radius <= paddle.X+paddle.Width/2
 }
 
-func (ball *Ball) CollidePaddleLeft(paddle *Paddle) bool {
+func (ball *Ball) CollideLeftPaddle(paddle *Paddle) bool {
 	return ball.X-ball.Radius <= paddle.X+paddle.Width/2 &&
 		ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
 		ball.Y-ball.Radius <= paddle.Y+paddle.Height/2
 }
 
-func (ball *Ball) CollidePaddleRight(paddle *Paddle) bool {
+func (ball *Ball) CollideRightPaddle(paddle *Paddle) bool {
 	return ball.X+ball.Radius >= paddle.X-paddle.Width/2 &&
 		ball.Y+ball.Radius >= paddle.Y-paddle.Height/2 &&
 		ball.Y-ball.Radius <= paddle.Y+paddle.Height/2
@@ -211,7 +210,6 @@ func NewBall(canvas *Canvas, x, y, radius, index int) *Ball {
 	minVelocity := utils.MinVelocity
 
 	cardinalVX := minVelocity + rand.Intn(maxVelocity-minVelocity)
-	rand.Seed(time.Now().UnixNano())
 
 	cardinalVY := minVelocity + rand.Intn(maxVelocity-minVelocity)
 	vx, vy := utils.RotateVector(index, -cardinalVX, cardinalVY, 1, 1)

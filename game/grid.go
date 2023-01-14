@@ -2,7 +2,6 @@ package game
 
 import (
 	"math/rand"
-	"time"
 
 	"github.com/lguibr/pongo/utils"
 )
@@ -37,7 +36,6 @@ func NewGrid(gridSize int) Grid {
 }
 
 func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) {
-	rand.Seed(time.Now().UnixNano())
 	vectorZero := [2]int{0, 0}
 	randomVectors := utils.NewRandomPositiveVectors(numberOfVectors, maxVectorSize)
 
@@ -141,11 +139,12 @@ func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps
 	quarters := [4]Grid{}
 
 	for i := 0; i < 4; i++ {
-		rand.Seed(time.Now().UnixNano())
+
 		gridSeed := NewGrid(halfGridSize)
 		gridSeed.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)
-		gridSeed.RandomWalker(2)
-		quarters[i] = gridSeed
+		gridSeed.RandomWalker(5)
+		quarters[i] = gridSeed.Rotate().Rotate()
+
 	}
 
 	grid.FillGridWithQuarterGrids(
@@ -159,7 +158,7 @@ func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps
 
 func (grid Grid) RandomWalker(numberOfSteps int) {
 	gridSize := len(grid)
-	rand.Seed(time.Now().UnixNano())
+
 	startPoint := [2]int{rand.Intn(gridSize), rand.Intn(gridSize)}
 
 	grid[startPoint[0]][startPoint[1]].Data.Type = "Brick"
@@ -168,7 +167,6 @@ func (grid Grid) RandomWalker(numberOfSteps int) {
 	var getNextPoint func(currentPoint [2]int) [2]int
 
 	getNextPoint = func(currentPoint [2]int) [2]int {
-		rand.Seed(time.Now().UnixNano())
 		randomVector := utils.NewRandomVector(rand.Intn(2) + 1)
 		nextPoint := [2]int{currentPoint[0] + randomVector[0], currentPoint[1] + randomVector[1]}
 
