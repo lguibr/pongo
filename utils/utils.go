@@ -6,32 +6,6 @@ import (
 	"time"
 )
 
-const (
-	Period = 20 * time.Millisecond
-
-	CanvasSize = 576 //INFO Must be divisible by GridSize
-	GridSize   = 12  //INFO Must be divisible by 2
-
-	CellSize    = CanvasSize / GridSize
-	MinVelocity = CanvasSize / 200
-	MaxVelocity = CanvasSize / 150
-
-	NumberOfVectors       = 2 * GridSize / 3
-	MaxVectorSize         = 2 * GridSize / 6
-	NumberOfRandomWalkers = 2 * GridSize
-	NumberOfRandomSteps   = 2 * GridSize
-
-	BallSize     = CellSize / 3
-	PaddleLength = CellSize * 3
-	PaddleWeight = CellSize / 2
-)
-
-var CellTypes = map[string]string{
-	"Empty": "Empty",
-	"Brick": "Brick",
-	"Block": "Block",
-}
-
 func DirectionFromString(direction string) string {
 	if direction == "ArrowLeft" {
 		return "left"
@@ -54,25 +28,12 @@ func NewMatrixesOfRotation() [4][2][2]int {
 	}
 }
 
-func NewMatrixesOfSymmetricOperation() [4][2][2]int {
-	return [4][2][2]int{
-		{{1, 0}, {0, 1}},
-		{{0, 1}, {1, 0}},
-		{{1, 0}, {0, 1}},
-		{{0, 1}, {1, 0}},
-	}
-}
-
 func TransformVector(tMatrix [2][2]int, x int, y int) (int, int) {
 	return tMatrix[0][0]*x + tMatrix[0][1]*y, tMatrix[1][0]*x + tMatrix[1][1]*y
 }
 
 func RotateVector(index int, x int, y int, canvasWidth int, canvasHeight int) (int, int) {
 	return TransformVector(MatrixesOfRotation[index], x, y)
-}
-
-func SymmetricOperateVector(index int, x int, y int, canvasWidth int, canvasHeight int) (int, int) {
-	return TransformVector(MatrixesOfSymmetricOperation[index], x, y)
 }
 
 func TransformMatrix(matrix [2][2]int, tMatrix [2][2]int) [2][2]int {
@@ -87,7 +48,6 @@ func TransformMatrix(matrix [2][2]int, tMatrix [2][2]int) [2][2]int {
 }
 
 var MatrixesOfRotation = NewMatrixesOfRotation()
-var MatrixesOfSymmetricOperation = NewMatrixesOfSymmetricOperation()
 
 func NewPositiveRandomVector(size int) [2]int {
 	x := rand.Intn(size)
@@ -126,7 +86,7 @@ func MultiplyVectorByScalar(vectorA [2]int, scalar int) [2]int {
 }
 
 func DotProduct(vectorA, vectorB []int) int {
-	if len(vectorA) != len(vectorB) {
+	if len(vectorA) != len(vectorB) || len(vectorA) == 0 {
 		panic("vectors must have the same length")
 	}
 	var result int
@@ -134,6 +94,18 @@ func DotProduct(vectorA, vectorB []int) int {
 		result += vectorA[i] * vectorB[i]
 	}
 	return result
+}
+
+func Equal(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, v := range a {
+		if v != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func CrossProduct(vectorA, vectorB []int) []int {
@@ -149,10 +121,6 @@ func CrossProduct(vectorA, vectorB []int) []int {
 
 func SwapVectorCoordinates(vector [2]int) [2]int {
 	return [2]int{vector[1], vector[0]}
-}
-
-func MultiplyVectors(vectorA [2]int, vectorB [2]int) [2]int {
-	return [2]int{vectorA[0] * vectorB[0], vectorA[1] * vectorB[1]}
 }
 
 func NewRandomPositiveVectors(numberOfVectors, maxVectorSize int) [][2]int {
