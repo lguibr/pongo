@@ -23,9 +23,11 @@ func (paddle *Paddle) Move() {
 		return
 	}
 
-	unRotatedX, unRotatedY := 0, paddle.Velocity
+	x, y := 0, paddle.Velocity
 
-	x, y := utils.SymmetricOperateVector(paddle.Index, unRotatedX, unRotatedY, utils.CanvasSize, utils.CanvasSize)
+	if paddle.Index%2 != 0 {
+		x, y = y, x
+	}
 
 	if paddle.Direction == "left" {
 		if paddle.X-x < 0 || paddle.Y+y < 0 {
