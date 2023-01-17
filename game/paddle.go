@@ -23,12 +23,13 @@ func (paddle *Paddle) Move() {
 		return
 	}
 
-	x, y := 0, paddle.Velocity
+	position := [2]int{0, paddle.Velocity}
 
 	if paddle.Index%2 != 0 {
-		x, y = y, x
+		position = utils.SwapVectorCoordinates(position)
 	}
 
+	x, y := position[0], position[1]
 	if paddle.Direction == "left" {
 		if paddle.X-x < 0 || paddle.Y+y < 0 {
 			return
