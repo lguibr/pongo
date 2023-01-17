@@ -12,12 +12,12 @@ const (
 	MinVelocity = CanvasSize / 200
 	MaxVelocity = CanvasSize / 150
 
-	NumberOfVectors       = 2 * GridSize / 3
-	MaxVectorSize         = 2 * GridSize / 6
-	NumberOfRandomWalkers = 2 * GridSize
-	NumberOfRandomSteps   = 2 * GridSize
+	NumberOfVectors       = GridSize * 2
+	MaxVectorSize         = GridSize
+	NumberOfRandomWalkers = GridSize / 4
+	NumberOfRandomSteps   = GridSize / 2
 
-	BallSize     = CellSize / 3
+	BallSize     = CellSize / 4
 	PaddleLength = CellSize * 3
 	PaddleWeight = CellSize / 2
 )
