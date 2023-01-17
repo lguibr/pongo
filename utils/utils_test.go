@@ -23,10 +23,12 @@ func TestDirectionFromString(t *testing.T) {
 
 func TestNewRandomColor(t *testing.T) {
 	// Test that all elements of the returned array are between 0 and 255 inclusive
-	color := NewRandomColor()
-	for i := range color {
-		if color[i] < 0 || color[i] > 255 {
-			t.Errorf("NewRandomColor() returned an invalid color value: %d", color[i])
+	for i := 0; i < 100; i++ {
+		color := NewRandomColor()
+		for i := range color {
+			if color[i] < 0 || color[i] > 255 {
+				t.Errorf("NewRandomColor() returned an invalid color value: %d", color[i])
+			}
 		}
 	}
 }
