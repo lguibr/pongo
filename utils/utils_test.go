@@ -435,6 +435,32 @@ func TestRandomNumber(t *testing.T) {
 	}
 }
 
+func TestRandomNumberN(t *testing.T) {
+	// Set up test cases
+	testCases := []struct {
+		amplitude int
+		min       int
+		max       int
+	}{
+		{1, -1, 1},
+		{2, -2, 2},
+		{3, -3, 3},
+	}
+
+	// Iterate over test cases
+	for _, test := range testCases {
+		for i := 0; i < 100; i++ {
+			// Call the function and save the result
+			result := RandomNumberN(test.amplitude)
+
+			// Check that the result is within the expected range
+			if result < test.min || result > test.max {
+				t.Errorf("Expected a number between %d and %d, got %d", test.min, test.max, result)
+			}
+		}
+	}
+}
+
 func assertPanics(t *testing.T, f func()) {
 	defer func() {
 		if r := recover(); r == nil {
