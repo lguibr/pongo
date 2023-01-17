@@ -69,6 +69,14 @@ func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) {
 }
 
 func (grid Grid) FillGridWithQuarterGrids(q1, q2, q3, q4 Grid) {
+
+	if len(q1) != len(q2) || len(q1) != len(q3) || len(q1) != len(q4) || len(q1) == 0 {
+		panic("Grids must be of the same size")
+	}
+	if len(grid) != 2*len(q1) || len(grid) == 0 {
+		panic("Grid must be twice the size of the quarter grids")
+	}
+
 	n := len(grid)
 	m := len(grid[0])
 
@@ -114,26 +122,69 @@ func (grid Grid) Rotate() Grid {
 	return result
 }
 
+func (grid Grid) RandomWalker(numberOfSteps int) {
+	gridSize := len(grid)
+	startPoint := [2]int{rand.Intn(gridSize), rand.Intn(gridSize)}
+	grid[startPoint[0]][startPoint[1]].Data.Type = "Brick"
+	grid[startPoint[0]][startPoint[1]].Data.Life = 1
+	var getNextPoint func(currentPoint [2]int) [2]int
+	getNextPoint = func(currentPoint [2]int) [2]int {
+
+		nextPoint := [2]int{currentPoint[0] + utils.RandomNumber(1), currentPoint[1] + utils.RandomNumber(1)}
+		if nextPoint[0] < 0 || nextPoint[0] >= gridSize || nextPoint[1] < 0 || nextPoint[1] >= gridSize {
+			return getNextPoint(currentPoint)
+		}
+		return nextPoint
+	}
+
+	stepsResting := numberOfSteps - 1
+
+	for i := 0; i < stepsResting; i++ {
+		nextPoint := getNextPoint(startPoint)
+		nextCell := grid[nextPoint[0]][nextPoint[1]]
+		if nextCell.Data.Type == "Brick" {
+			nextCell.Data.Life++
+		} else {
+			nextCell.Data.Type = "Brick"
+			nextCell.Data.Life = 1
+		}
+	}
+}
+
+func (grid Grid) Compare(comparedGrid Grid) bool {
+	if len(grid) != len(comparedGrid) {
+		return false
+	}
+	for i := range grid {
+		if len(grid[i]) != len(comparedGrid[i]) {
+			return false
+		}
+		for j := range grid[i] {
+			match := grid[i][j].Compare(comparedGrid[i][j])
+			if !match {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps int) {
 
-	if numberOfVectors <= 0 {
+	if numberOfVectors == 0 {
 		numberOfVectors = utils.NumberOfVectors
 	}
-	if maxVectorSize <= 0 {
+	if maxVectorSize == 0 {
 		maxVectorSize = utils.MaxVectorSize
 	}
-	if randomWalkers <= 0 {
+	if randomWalkers == 0 {
 		randomWalkers = utils.NumberOfRandomWalkers
 	}
-	if randomSteps <= 0 {
+	if randomSteps == 0 {
 		randomSteps = utils.NumberOfRandomSteps
 	}
 
-	for i := 0; i < randomWalkers; i++ {
-		grid.RandomWalker(randomSteps)
-	}
-
-	gridSize := utils.GridSize
+	gridSize := len(grid)
 	halfGridSize := gridSize / 2
 
 	quarters := [4]Grid{}
@@ -142,7 +193,7 @@ func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps
 
 		gridSeed := NewGrid(halfGridSize)
 		gridSeed.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)
-		gridSeed.RandomWalker(5)
+		gridSeed.RandomWalker(randomSteps)
 		quarters[i] = gridSeed.Rotate().Rotate()
 
 	}
@@ -154,37 +205,4 @@ func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps
 		quarters[3],
 	)
 
-}
-
-func (grid Grid) RandomWalker(numberOfSteps int) {
-	gridSize := len(grid)
-
-	startPoint := [2]int{rand.Intn(gridSize), rand.Intn(gridSize)}
-
-	grid[startPoint[0]][startPoint[1]].Data.Type = "Brick"
-	grid[startPoint[0]][startPoint[1]].Data.Life = 1
-
-	var getNextPoint func(currentPoint [2]int) [2]int
-
-	getNextPoint = func(currentPoint [2]int) [2]int {
-		randomVector := utils.NewRandomVector(rand.Intn(2) + 1)
-		nextPoint := [2]int{currentPoint[0] + randomVector[0], currentPoint[1] + randomVector[1]}
-
-		if nextPoint[0] < 0 || nextPoint[0] > gridSize || nextPoint[1] < 0 || nextPoint[1] > gridSize {
-			return getNextPoint(currentPoint)
-		}
-		return nextPoint
-	}
-
-	for i := 0; i < numberOfSteps; i++ {
-
-		nextPoint := getNextPoint(startPoint)
-		nextCell := grid[nextPoint[0]][nextPoint[1]]
-		if nextCell.Data.Type == "Brick" {
-			nextCell.Data.Life = nextCell.Data.Life + 1
-		} else {
-			nextCell.Data.Type = "Brick"
-			nextCell.Data.Life = 1
-		}
-	}
 }
