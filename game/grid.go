@@ -1,8 +1,6 @@
 package game
 
 import (
-	"math/rand"
-
 	"github.com/lguibr/pongo/utils"
 )
 
@@ -124,14 +122,15 @@ func (grid Grid) Rotate() Grid {
 
 func (grid Grid) RandomWalker(numberOfSteps int) {
 	gridSize := len(grid)
-	startPoint := [2]int{rand.Intn(gridSize), rand.Intn(gridSize)}
+	startPoint := [2]int{gridSize / 2, gridSize / 2}
 	grid[startPoint[0]][startPoint[1]].Data.Type = "Brick"
 	grid[startPoint[0]][startPoint[1]].Data.Life = 1
 	var getNextPoint func(currentPoint [2]int) [2]int
 	getNextPoint = func(currentPoint [2]int) [2]int {
 
-		nextPoint := [2]int{currentPoint[0] + utils.RandomNumber(1), currentPoint[1] + utils.RandomNumber(1)}
-		if nextPoint[0] < 0 || nextPoint[0] >= gridSize || nextPoint[1] < 0 || nextPoint[1] >= gridSize {
+		nextPoint := [2]int{currentPoint[0] + utils.RandomNumber(2), currentPoint[1] + utils.RandomNumber(2)}
+
+		if nextPoint[0] < 0 || nextPoint[0] > gridSize || nextPoint[1] < 0 || nextPoint[1] > gridSize {
 			return getNextPoint(currentPoint)
 		}
 		return nextPoint
