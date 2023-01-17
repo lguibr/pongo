@@ -49,7 +49,7 @@ func NewBall(canvas *Canvas, x, y, radius, index int) *Ball {
 	minVelocity := utils.MinVelocity
 
 	cardinalVX := minVelocity + rand.Intn(maxVelocity-minVelocity)
-	cardinalVY := minVelocity + rand.Intn(maxVelocity-minVelocity)
+	cardinalVY := utils.RandomNumberN(maxVelocity)
 
 	vx, vy := utils.RotateVector(index, -cardinalVX, cardinalVY, 1, 1)
 
