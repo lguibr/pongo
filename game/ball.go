@@ -80,10 +80,10 @@ func (ball *Ball) CollidePaddle(paddle *Paddle) {
 
 	if collisionDetected {
 		handlers := [4]func(){
-			ball.HandleCollideBottom,
-			ball.HandleCollideLeft,
-			ball.HandleCollideTop,
 			ball.HandleCollideRight,
+			ball.HandleCollideTop,
+			ball.HandleCollideLeft,
+			ball.HandleCollideBottom,
 		}
 
 		handlerCollision := handlers[paddle.Index]
