@@ -49,17 +49,19 @@ func TransformMatrix(matrix [2][2]int, tMatrix [2][2]int) [2][2]int {
 
 var MatrixesOfRotation = NewMatrixesOfRotation()
 
-func NewPositiveRandomVector(size int) [2]int {
-	x := rand.Intn(size)
+func NewPositiveRandomVector(vectorMaxLen int) [2]int {
+	maxCoordinateSize := int(math.Max(float64(vectorMaxLen)/(2*math.Sqrt(2)), 1.0))
+	x := rand.Intn(maxCoordinateSize)
 	rand.Seed(time.Now().UnixNano())
-	y := rand.Intn(size)
+	y := rand.Intn(maxCoordinateSize)
 
 	return [2]int{x, y}
 }
-func NewRandomVector(size int) [2]int {
-	x := rand.Intn(size)*2 - size
+func NewRandomVector(vectorMaxLen int) [2]int {
+	maxCoordinateSize := int((math.Max(float64(vectorMaxLen)/2*math.Sqrt(2), 1.0)))
+	x := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
 	rand.Seed(time.Now().UnixNano())
-	y := rand.Intn(size)*2 - size
+	y := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
 	return [2]int{x, y}
 }
 
@@ -140,4 +142,8 @@ func Distance(x1, y1, x2, y2 int) float64 {
 	deltaY := y2 - y1
 
 	return math.Sqrt(math.Pow(float64(deltaX), 2) + math.Pow(float64(deltaY), 2))
+}
+
+func RandomNumber(amplitude int) int {
+	return rand.Intn(amplitude*2) - amplitude
 }

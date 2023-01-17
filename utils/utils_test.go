@@ -412,6 +412,27 @@ func TestDistance(t *testing.T) {
 	}
 }
 
+func TestRandomNumber(t *testing.T) {
+	type RandomNumberTestCase struct {
+		amplitude   int
+		expectedMin int
+		expectedMax int
+	}
+
+	testCases := []RandomNumberTestCase{
+		{10, -10, 10},
+		{5, -5, 5},
+		{7, -7, 7},
+	}
+
+	for _, test := range testCases {
+		result := RandomNumber(test.amplitude)
+		if result < test.expectedMin || result > test.expectedMax {
+			t.Errorf("Expected random number between %d and %d for amplitude %d, got %d", test.expectedMin, test.expectedMax, test.amplitude, result)
+		}
+	}
+}
+
 func assertPanics(t *testing.T, f func()) {
 	defer func() {
 		if r := recover(); r == nil {
