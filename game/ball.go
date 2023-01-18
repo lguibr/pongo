@@ -93,7 +93,7 @@ func (ball *Ball) CollidePaddle(paddle *Paddle) {
 
 func (ball *Ball) CollideCells() {
 
-	row, col := ball.GetIntersectedIndices(ball.Canvas.Grid)
+	row, col := ball.getCenterIndex(ball.Canvas.Grid)
 
 	if row < 0 || row > ball.Canvas.GridSize-1 || col < 0 || col > ball.Canvas.GridSize-1 {
 		return
@@ -107,7 +107,7 @@ func (ball *Ball) CollideCells() {
 				continue
 			}
 
-			ballInterceptsCell := ball.BallInterceptCellIndex(surroundingRow, surroundingCol)
+			ballInterceptsCell := ball.InterceptsIndex(surroundingRow, surroundingCol)
 
 			if ballInterceptsCell {
 				t := ball.Canvas.Grid[surroundingRow][surroundingCol].Data.Type
@@ -123,19 +123,20 @@ func (ball *Ball) CollideCells() {
 }
 
 func (ball *Ball) CollideWalls() {
-	if ball.CollideBottomWall() {
+	if ball.CollidesBottomWall() {
 		fmt.Println("Collide bottom wall")
 		ball.HandleCollideBottom()
 	}
-	if ball.CollideTopWall() {
-		fmt.Println("Collide top wall")
-		ball.HandleCollideTop()
-	}
-	if ball.CollideLeftWall() {
+	if ball.CollidesLeftWall() {
 		fmt.Println("Collide left wall")
 		ball.HandleCollideLeft()
 	}
-	if ball.CollideRightWall() {
+	if ball.CollidesTopWall() {
+		fmt.Println("Collide top wall")
+		ball.HandleCollideTop()
+	}
+
+	if ball.CollidesRightWall() {
 		fmt.Println("Collide right wall")
 		ball.HandleCollideRight()
 	}
@@ -170,7 +171,7 @@ func (ball *Ball) handleCollideBlock(oldIndices, newIndices [2]int) {
 
 }
 
-func (ball *Ball) GetIntersectedIndices(grid Grid) (x, y int) {
+func (ball *Ball) getCenterIndex(grid Grid) (x, y int) {
 	cellSize := utils.CellSize
 	row := ball.X / cellSize
 	col := ball.Y / cellSize
@@ -193,23 +194,23 @@ func (ball *Ball) HandleCollideBottom() {
 	ball.Vy = -utils.Abs(ball.Vy)
 }
 
-func (ball *Ball) CollideTopWall() bool {
+func (ball *Ball) CollidesTopWall() bool {
 	return ball.Y-ball.Radius <= 0
 }
 
-func (ball *Ball) CollideBottomWall() bool {
+func (ball *Ball) CollidesBottomWall() bool {
 	return ball.Y+ball.Radius >= ball.Canvas.Height
 }
 
-func (ball *Ball) CollideRightWall() bool {
+func (ball *Ball) CollidesRightWall() bool {
 	return ball.X+ball.Radius >= ball.Canvas.Width
 }
 
-func (ball *Ball) CollideLeftWall() bool {
+func (ball *Ball) CollidesLeftWall() bool {
 	return ball.X-ball.Radius <= 0
 }
 
-func (ball *Ball) BallInterceptCellIndex(x, y int) bool {
+func (ball *Ball) InterceptsIndex(x, y int) bool {
 	cellSize := ball.Canvas.CellSize
 
 	leftTopX := x * cellSize
