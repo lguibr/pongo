@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
+	"testing"
 	"time"
 )
 
@@ -182,4 +184,13 @@ func DirectionFromString(direction string) string {
 // DEV color
 func NewRandomColor() [3]int {
 	return [3]int{rand.Intn(255), rand.Intn(255), rand.Intn(255)}
+}
+
+func AssertPanics(t *testing.T, f func(), message string) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf(fmt.Sprint("The code did not panic", message))
+		}
+	}()
+	f()
 }
