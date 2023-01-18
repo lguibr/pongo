@@ -285,7 +285,7 @@ func TestDotProduct(t *testing.T) {
 
 	for _, test := range testCases {
 		if test.panics {
-			assertPanics(t, func() { DotProduct(test.vectorA, test.vectorB) })
+			AssertPanics(t, func() { DotProduct(test.vectorA, test.vectorB) }, "")
 		} else {
 			result := DotProduct(test.vectorA, test.vectorB)
 			if result != test.expected {
@@ -334,7 +334,7 @@ func TestCrossProduct(t *testing.T) {
 
 	for _, test := range testCases {
 		if test.panics {
-			assertPanics(t, func() { CrossProduct(test.vectorA, test.vectorB) })
+			AssertPanics(t, func() { CrossProduct(test.vectorA, test.vectorB) }, "")
 		} else {
 			result := CrossProduct(test.vectorA, test.vectorB)
 			if !Equal(result, test.expected) {
@@ -368,24 +368,33 @@ func TestSwapVectorCoordinates(t *testing.T) {
 
 func TestNewRandomPositiveVectors(t *testing.T) {
 	testCases := []struct {
-		n    int
-		size int
-		name string
+		n      int
+		size   int
+		panics bool
+		name   string
 	}{
-		{3, 10, "3 positive random vectors of size 10"},
-		{5, 20, "5 positive random vectors of size 20"},
-		{2, 5, "2 positive random vectors of size 5"},
+		{3, 10, false, "3 positive random vectors of size 10"},
+		{5, 20, false, "5 positive random vectors of size 20"},
+		{2, 5, false, "2 positive random vectors of size 5"},
+		{100, 500, false, "100 positive random vectors of size 500"},
+		{1, 0, true, "100 positive random vectors of size 0 should panics"},
+		{0, 0, false, "0 positive random vectors of size 0 should panics"},
 	}
 	for _, tc := range testCases {
-		result := NewRandomPositiveVectors(tc.n, tc.size)
-		if len(result) != tc.n {
-			t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want %d vectors", tc.n, tc.size, result, tc.n)
-		}
+		if tc.panics {
+			AssertPanics(t, func() { NewRandomPositiveVectors(tc.n, tc.size) }, "")
+		} else {
 
-		for _, vector := range result {
-			if vector[0] < 0 || vector[1] < 0 {
-				t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want positive values", tc.n, tc.size, result)
-				break
+			result := NewRandomPositiveVectors(tc.n, tc.size)
+			if len(result) != tc.n {
+				t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want %d vectors", tc.n, tc.size, result, tc.n)
+			}
+
+			for _, vector := range result {
+				if vector[0] < 0 || vector[1] < 0 {
+					t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want positive values", tc.n, tc.size, result)
+					break
+				}
 			}
 		}
 	}
@@ -459,13 +468,4 @@ func TestRandomNumberN(t *testing.T) {
 			}
 		}
 	}
-}
-
-func assertPanics(t *testing.T, f func()) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("The code did not panic")
-		}
-	}()
-	f()
 }
