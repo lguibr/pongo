@@ -20,4 +20,4 @@ jobs:
       
       - name: build-project
         run: |
-        go build
+          go build
