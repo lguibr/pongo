@@ -3,6 +3,7 @@ package utils
 import (
 	"math"
 	"math/rand"
+	"testing"
 	"time"
 )
 
@@ -148,6 +149,19 @@ func RandomNumber(amplitude int) int {
 	return rand.Intn(amplitude*2) - amplitude
 }
 
+var randomNumberN func(amplitude int) int
+
+func RandomNumberN(amplitude int) int {
+	randomNumberN = func(amplitude int) int {
+		value := rand.Intn(amplitude*2) - amplitude
+		if value == 0 {
+			value = RandomNumberN(amplitude)
+		}
+		return value
+	}
+	return randomNumberN(amplitude)
+}
+
 // DEV Number
 func Abs(x int) int {
 	if x < 0 {
@@ -169,4 +183,24 @@ func DirectionFromString(direction string) string {
 // DEV color
 func NewRandomColor() [3]int {
 	return [3]int{rand.Intn(255), rand.Intn(255), rand.Intn(255)}
+}
+
+func AssertPanics(t *testing.T, testingFunction func(), message string) (panics bool, errorMessage string) {
+
+	panics = false
+	errorMessage = ""
+
+	deferFunc := func() {
+		if r := recover(); r != nil {
+			panics = true
+			errorMessage = r.(string)
+		}
+	}
+
+	func() {
+		defer deferFunc()
+		testingFunction()
+	}()
+
+	return panics, errorMessage
 }
