@@ -42,8 +42,6 @@ jobs:
       run: |     
         go test -v ./... -covermode=count -coverprofile=coverage.out
         go tool cover -func=coverage.out -o=coverage.out
-        ls
-        cat coverage.out
 
     - name: Go Coverage Badge
       uses: tj-actions/coverage-badge-go@v2.1
@@ -59,8 +57,6 @@ jobs:
     - name: Commit changes
       if: steps.verify-changed-files.outputs.files_changed == 'true'
       run: |
-        ls
-        cat coverage.out
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add README.md
