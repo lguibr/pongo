@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"testing"
@@ -186,11 +185,22 @@ func NewRandomColor() [3]int {
 	return [3]int{rand.Intn(255), rand.Intn(255), rand.Intn(255)}
 }
 
-func AssertPanics(t *testing.T, f func(), message string) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf(fmt.Sprint("The code did not panic", message))
+func AssertPanics(t *testing.T, testingFunction func(), message string) (panics bool, errorMessage string) {
+
+	panics = false
+	errorMessage = ""
+
+	deferFunc := func() {
+		if r := recover(); r != nil {
+			panics = true
+			errorMessage = r.(string)
 		}
+	}
+
+	func() {
+		defer deferFunc()
+		testingFunction()
 	}()
-	f()
+
+	return panics, errorMessage
 }
