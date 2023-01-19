@@ -20,6 +20,6 @@ func main() {
 
 	http.Handle("/subscribe", websocket.Handler(wsServer.HandleSubscribe(game)))
 
-	http.ListenAndServe(":3001", nil)
+	panic(http.ListenAndServe(":3001", nil))
 
 }

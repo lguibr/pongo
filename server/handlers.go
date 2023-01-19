@@ -27,7 +27,13 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 		//INFO Writing the game state to the client
 		for {
 			payload := g.ToJson()
-			ws.Write(payload)
+			_, err := ws.Write(payload)
+			if err != nil {
+				fmt.Println("Error writing to client: ", err)
+				unsubscribePlayer()
+				delete(s.conns, ws)
+				break
+			}
 			time.Sleep(utils.Period)
 		}
 
@@ -38,6 +44,9 @@ func (s *Server) HandleGetSit(g *game.Game) func(w http.ResponseWriter, r *http.
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, string(g.ToJson()))
+		_, err := io.WriteString(w, string(g.ToJson()))
+		if err != nil {
+			fmt.Println("Error writing to client: ", err)
+		}
 	}
 }

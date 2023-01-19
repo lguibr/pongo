@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -285,7 +286,10 @@ func TestDotProduct(t *testing.T) {
 
 	for _, test := range testCases {
 		if test.panics {
-			assertPanics(t, func() { DotProduct(test.vectorA, test.vectorB) })
+			panics, _ := AssertPanics(t, func() { DotProduct(test.vectorA, test.vectorB) }, "")
+			if !panics {
+				t.Errorf("Expected panic for vectors %v and %v", test.vectorA, test.vectorB)
+			}
 		} else {
 			result := DotProduct(test.vectorA, test.vectorB)
 			if result != test.expected {
@@ -334,7 +338,10 @@ func TestCrossProduct(t *testing.T) {
 
 	for _, test := range testCases {
 		if test.panics {
-			assertPanics(t, func() { CrossProduct(test.vectorA, test.vectorB) })
+			panics, _ := AssertPanics(t, func() { CrossProduct(test.vectorA, test.vectorB) }, "")
+			if !panics {
+				t.Errorf("Expected panic for vectors %v and %v", test.vectorA, test.vectorB)
+			}
 		} else {
 			result := CrossProduct(test.vectorA, test.vectorB)
 			if !Equal(result, test.expected) {
@@ -368,24 +375,36 @@ func TestSwapVectorCoordinates(t *testing.T) {
 
 func TestNewRandomPositiveVectors(t *testing.T) {
 	testCases := []struct {
-		n    int
-		size int
-		name string
+		n      int
+		size   int
+		panics bool
+		name   string
 	}{
-		{3, 10, "3 positive random vectors of size 10"},
-		{5, 20, "5 positive random vectors of size 20"},
-		{2, 5, "2 positive random vectors of size 5"},
+		{3, 10, false, "3 positive random vectors of size 10"},
+		{5, 20, false, "5 positive random vectors of size 20"},
+		{2, 5, false, "2 positive random vectors of size 5"},
+		{100, 500, false, "100 positive random vectors of size 500"},
+		{1, 0, true, "100 positive random vectors of size 0 should panics"},
+		{0, 0, false, "0 positive random vectors of size 0 should panics"},
 	}
 	for _, tc := range testCases {
-		result := NewRandomPositiveVectors(tc.n, tc.size)
-		if len(result) != tc.n {
-			t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want %d vectors", tc.n, tc.size, result, tc.n)
-		}
+		if tc.panics {
+			panics, err := AssertPanics(t, func() { NewRandomPositiveVectors(tc.n, tc.size) }, "")
+			if !panics {
+				t.Errorf("Expected panic for %s, got %v", tc.name, err)
+			}
+		} else {
 
-		for _, vector := range result {
-			if vector[0] < 0 || vector[1] < 0 {
-				t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want positive values", tc.n, tc.size, result)
-				break
+			result := NewRandomPositiveVectors(tc.n, tc.size)
+			if len(result) != tc.n {
+				t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want %d vectors", tc.n, tc.size, result, tc.n)
+			}
+
+			for _, vector := range result {
+				if vector[0] < 0 || vector[1] < 0 {
+					t.Errorf("NewRandomPositiveVectors(%d, %d) = %v, want positive values", tc.n, tc.size, result)
+					break
+				}
 			}
 		}
 	}
@@ -435,11 +454,55 @@ func TestRandomNumber(t *testing.T) {
 	}
 }
 
-func assertPanics(t *testing.T, f func()) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("The code did not panic")
+func TestRandomNumberN(t *testing.T) {
+	// Set up test cases
+	testCases := []struct {
+		amplitude int
+		min       int
+		max       int
+	}{
+		{1, -1, 1},
+		{2, -2, 2},
+		{3, -3, 3},
+	}
+
+	// Iterate over test cases
+	for _, test := range testCases {
+		for i := 0; i < 100; i++ {
+			// Call the function and save the result
+			result := RandomNumberN(test.amplitude)
+
+			// Check that the result is within the expected range
+			if result < test.min || result > test.max {
+				t.Errorf("Expected a number between %d and %d, got %d", test.min, test.max, result)
+			}
 		}
-	}()
-	f()
+	}
+}
+func TestAssertPanics(t *testing.T) {
+	t.Run("Panicking function", func(t *testing.T) {
+		// Function that is expected to panic
+		shouldPanic := func() { panic("Panic occurred") }
+		// Call our AssertPanics function with the above function
+		panics, err := AssertPanics(t, shouldPanic, " - PosMessage")
+		if !panics {
+			t.Errorf("Expected panic, got %v", err)
+		}
+	})
+	t.Run("Non-panicking function", func(t *testing.T) {
+		// Function that is NOT expected to panic
+		shouldNotPanic := func() { fmt.Println("Hello, world") }
+		// Call our AssertPanics function with the above function
+		// and wrap it with a defer function to catch a panic if it happens
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Recovered:", r)
+				// t.Errorf("The code panicked, but it should not have")
+			}
+		}()
+		panics, err := AssertPanics(t, shouldNotPanic, "Hello, world")
+		if panics {
+			t.Errorf("Expected no panic, got %v", err)
+		}
+	})
 }
