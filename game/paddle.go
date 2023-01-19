@@ -19,29 +19,33 @@ type Paddle struct {
 }
 
 func (paddle *Paddle) Move() {
-	if paddle.Direction == "" {
+	if paddle.Direction != "left" && paddle.Direction != "right" {
 		return
 	}
 
-	position := [2]int{0, paddle.Velocity}
+	velocity := [2]int{0, paddle.Velocity}
 
 	if paddle.Index%2 != 0 {
-		position = utils.SwapVectorCoordinates(position)
+		velocity = utils.SwapVectorCoordinates(velocity)
 	}
 
-	x, y := position[0], position[1]
+	velocityX, velocityY := velocity[0], velocity[1]
 	if paddle.Direction == "left" {
-		if paddle.X-x < 0 || paddle.Y+y < 0 {
+
+		if paddle.X-velocityX < 0 || paddle.Y+velocityY < 0 {
 			return
 		}
-		paddle.X -= x
-		paddle.Y -= y
+
+		paddle.X -= velocityX
+		paddle.Y -= velocityY
 	} else {
-		if paddle.X+paddle.Width+x > utils.CanvasSize || paddle.Y+paddle.Height-y > utils.CanvasSize {
+
+		if paddle.X+paddle.Width+velocityX > utils.CanvasSize || paddle.Y+paddle.Height-velocityY > utils.CanvasSize {
 			return
 		}
-		paddle.X += x
-		paddle.Y += y
+
+		paddle.X += velocityX
+		paddle.Y += velocityY
 	}
 
 }
