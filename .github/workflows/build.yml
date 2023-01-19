@@ -19,5 +19,5 @@ jobs:
         uses: golangci/golangci-lint-action@v3
       
       - name: build-project
-      - run: |
+        run: |
         go build
