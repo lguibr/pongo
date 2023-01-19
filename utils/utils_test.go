@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -285,7 +286,10 @@ func TestDotProduct(t *testing.T) {
 
 	for _, test := range testCases {
 		if test.panics {
-			AssertPanics(t, func() { DotProduct(test.vectorA, test.vectorB) }, "")
+			panics, _ := AssertPanics(t, func() { DotProduct(test.vectorA, test.vectorB) }, "")
+			if !panics {
+				t.Errorf("Expected panic for vectors %v and %v", test.vectorA, test.vectorB)
+			}
 		} else {
 			result := DotProduct(test.vectorA, test.vectorB)
 			if result != test.expected {
@@ -334,7 +338,10 @@ func TestCrossProduct(t *testing.T) {
 
 	for _, test := range testCases {
 		if test.panics {
-			AssertPanics(t, func() { CrossProduct(test.vectorA, test.vectorB) }, "")
+			panics, _ := AssertPanics(t, func() { CrossProduct(test.vectorA, test.vectorB) }, "")
+			if !panics {
+				t.Errorf("Expected panic for vectors %v and %v", test.vectorA, test.vectorB)
+			}
 		} else {
 			result := CrossProduct(test.vectorA, test.vectorB)
 			if !Equal(result, test.expected) {
@@ -382,7 +389,10 @@ func TestNewRandomPositiveVectors(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		if tc.panics {
-			AssertPanics(t, func() { NewRandomPositiveVectors(tc.n, tc.size) }, "")
+			panics, err := AssertPanics(t, func() { NewRandomPositiveVectors(tc.n, tc.size) }, "")
+			if !panics {
+				t.Errorf("Expected panic for %s, got %v", tc.name, err)
+			}
 		} else {
 
 			result := NewRandomPositiveVectors(tc.n, tc.size)
@@ -468,4 +478,31 @@ func TestRandomNumberN(t *testing.T) {
 			}
 		}
 	}
+}
+func TestAssertPanics(t *testing.T) {
+	t.Run("Panicking function", func(t *testing.T) {
+		// Function that is expected to panic
+		shouldPanic := func() { panic("Panic occurred") }
+		// Call our AssertPanics function with the above function
+		panics, err := AssertPanics(t, shouldPanic, " - PosMessage")
+		if !panics {
+			t.Errorf("Expected panic, got %v", err)
+		}
+	})
+	t.Run("Non-panicking function", func(t *testing.T) {
+		// Function that is NOT expected to panic
+		shouldNotPanic := func() { fmt.Println("Hello, world") }
+		// Call our AssertPanics function with the above function
+		// and wrap it with a defer function to catch a panic if it happens
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Recovered:", r)
+				// t.Errorf("The code panicked, but it should not have")
+			}
+		}()
+		panics, err := AssertPanics(t, shouldNotPanic, "Hello, world")
+		if panics {
+			t.Errorf("Expected no panic, got %v", err)
+		}
+	})
 }
