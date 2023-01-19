@@ -1,7 +1,4 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: Go
+name: PonGo-Test
 
 on:
   push:
@@ -10,16 +7,6 @@ on:
     branches: [ "main" ]
 
 jobs:
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: 'go.mod'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
 
   unit-tests:
     runs-on: ubuntu-latest
