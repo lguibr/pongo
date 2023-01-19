@@ -192,7 +192,9 @@ func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps
 
 		gridSeed := NewGrid(halfGridSize)
 		gridSeed.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)
-		gridSeed.RandomWalker(randomSteps)
+		for j := 0; j < randomWalkers; j++ {
+			gridSeed.RandomWalker(randomSteps)
+		}
 		quarters[i] = gridSeed.Rotate().Rotate()
 
 	}
