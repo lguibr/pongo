@@ -2,6 +2,8 @@ package game
 
 import (
 	"testing"
+
+	"github.com/lguibr/pongo/utils"
 )
 
 func TestBall_BallInterceptPaddles(t *testing.T) {
@@ -573,6 +575,186 @@ func TestBall_CollideWalls(t *testing.T) {
 				t.Errorf("Test case %s: expected Vx = %d, Vy = %d but got Vx = %d, Vy = %d", test.name, test.expectedVx, test.expectedVy, ball.Vx, ball.Vy)
 			}
 
+		})
+	}
+}
+func TestBall_Move(t *testing.T) {
+	canvas := NewCanvas(utils.CanvasSize, utils.GridSize)
+	ball := NewBall(canvas, 10, 20, 30, 1)
+	ball.Ax = 1
+	ball.Ay = 2
+	testCases := []struct {
+		name                                         string
+		vx, vy, ax, ay                               int
+		expectedX, expectedY, expectedVx, expectedVy int
+	}{
+		{"TestCase1",
+			10, 20, 1, 2,
+			20, 41, 11, 22,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			ball.Vx = tc.vx
+			ball.Vy = tc.vy
+			ball.Ax = tc.ax
+			ball.Ay = tc.ay
+			ball.Move()
+
+			if ball.X != tc.expectedX {
+				t.Errorf("Expected X to be %d, but got %d", tc.expectedX, ball.X)
+			}
+			if ball.Y != tc.expectedY {
+				t.Errorf("Expected Y to be %d, but got %d", tc.expectedY, ball.Y)
+			}
+			if ball.Vx != tc.expectedVx {
+				t.Errorf("Expected Vx to be %d, but got %d", tc.expectedVx, ball.Vx)
+			}
+			if ball.Vy != tc.expectedVy {
+				t.Errorf("Expected Vy to be %d, but got %d", tc.expectedVy, ball.Vy)
+			}
+		})
+	}
+}
+
+func TestBall_CollidePaddle(t *testing.T) {
+	canvas := NewCanvas(utils.CanvasSize, utils.GridSize)
+	ball := NewBall(canvas, 10, 20, 30, 1)
+	paddle := NewPaddle(canvas, 0)
+	testCases := []struct {
+		name                                        string
+		ballX, ballY, ballVx, ballVy                int
+		paddleX, paddleY, paddleWidth, paddleHeight int
+		expectedVx, expectedVy                      int
+	}{
+		{
+			"TestCase1",
+			10, 20, 1, 1,
+			10, 20, 30, 30,
+			-1, 1,
+		},
+		{
+			"TestCase2",
+			10, 20, 1, 1,
+			30, 30, 30, 30,
+			-1, 1,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ball.X, ball.Y = tc.ballX, tc.ballY
+			ball.Vx, ball.Vy = tc.ballVx, tc.ballVy
+			paddle.X, paddle.Y, paddle.Width, paddle.Height = tc.paddleX, tc.paddleY, tc.paddleWidth, tc.paddleHeight
+			ball.CollidePaddle(paddle)
+			if ball.Vx != tc.expectedVx {
+				t.Errorf("Expected Vx to be %d, but got %d", tc.expectedVx, ball.Vx)
+			}
+			if ball.Vy != tc.expectedVy {
+				t.Errorf("Expected Vy to be %d, but got %d", tc.expectedVy, ball.Vy)
+			}
+		})
+	}
+}
+
+func TestCollideCells(t *testing.T) {
+	canvas := NewCanvas(12, 6)
+	ball := NewBall(canvas, 10, 10, 30, 1)
+
+	// Set up test cases
+	testCases := []struct {
+		name                  string
+		ballX, ballY          int
+		theType               string
+		life                  int
+		expectedCollisionType string
+		expectedLife          int
+	}{
+		{
+			"TestCase1",
+			10, 20,
+			"Brick",
+			2,
+			"Brick",
+			1,
+		},
+		{
+			"TestCase2",
+			15, 25,
+			"Block",
+			0,
+			"Block",
+			0,
+		},
+		{
+			"TestCase3",
+			15, 25,
+			"Empty",
+			0,
+			"Empty",
+			0,
+		},
+	}
+
+	// Override the grid of the canvas
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ball.X, ball.Y = tc.ballX, tc.ballY
+			grid := make(Grid, 10)
+			for i := range grid {
+				grid[i] = make([]Cell, 10)
+				for j := range grid[i] {
+					grid[i][j] = NewCell(i, j, tc.life, tc.theType)
+				}
+			}
+			ball.Canvas.Grid = grid
+			ball.CollideCells()
+			if ball.Canvas.Grid[0][0].Data.Type != tc.expectedCollisionType {
+				t.Errorf("Expected collision type to be %s, but got %s", tc.expectedCollisionType, ball.Canvas.Grid[0][0].Data.Type)
+			}
+			if ball.Canvas.Grid[0][0].Data.Life != tc.expectedLife {
+				t.Errorf("Expected life to be %d, but got %d", tc.expectedLife, ball.Canvas.Grid[0][0].Data.Life)
+			}
+		})
+	}
+}
+func TestNewBall(t *testing.T) {
+	canvas := NewCanvas(utils.CanvasSize, utils.GridSize)
+	testCases := []struct {
+		name                                 string
+		x, y, radius, index                  int
+		expectedX, expectedY, expectedRadius int
+	}{
+		{
+			"TestCase1",
+			10, 10, 0, 1,
+			10, 10, utils.BallSize,
+		},
+		{
+			"TestCase2",
+			10, 20, 30, 1,
+			10, 20, 30,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ball := NewBall(canvas, tc.x, tc.y, tc.radius, tc.index)
+			if ball.X != tc.expectedX {
+				t.Errorf("Expected X to be %d, but got %d", tc.expectedX, ball.X)
+			}
+			if ball.Y != tc.expectedY {
+				t.Errorf("Expected Y to be %d, but got %d", tc.expectedY, ball.Y)
+			}
+			if ball.Radius != tc.expectedRadius {
+				t.Errorf("Expected Radius to be %d, but got %d", tc.expectedRadius, ball.Radius)
+			}
+
+			if ball.Canvas != canvas {
+				t.Errorf("Expected Canvas to be %v, but got %v", canvas, ball.Canvas)
+			}
+			if ball.Index != tc.index {
+				t.Errorf("Expected Index to be %d, but got %d", tc.index, ball.Index)
+			}
 		})
 	}
 }
