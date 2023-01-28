@@ -25,29 +25,28 @@ type Player struct {
 	channel chan PlayerMessage
 }
 
-func NewPlayer(canvas *Canvas, index int, channel chan PlayerMessage) *Player {
+func NewPlayer(canvas *Canvas, index int, channel chan PlayerMessage, initialBall *Ball) *Player {
 
 	return &Player{
-		Index:  index,
-		Id:     "player" + fmt.Sprint(index),
-		Canvas: canvas,
-		Color:  utils.NewRandomColor(),
-		Paddle: NewPaddle(canvas.CanvasSize, index),
-		Balls: []*Ball{
-			NewBall(canvas, 0, 0, 0, index),
-		},
+		Index:   index,
+		Id:      "player" + fmt.Sprint(index),
+		Canvas:  canvas,
+		Color:   utils.NewRandomColor(),
+		Paddle:  NewPaddle(canvas.CanvasSize, index),
+		Balls:   []*Ball{initialBall},
 		channel: channel,
 	}
 }
 
 func (player *Player) Subscribe() {
+	defer func() { fmt.Println("Player subscribed: ", player) }()
 
-	player.channel <- PlayerConnectMessage{
-		PlayerPayload: player,
-	}
-
-	fmt.Println("SubscribePlayer of index: ", player.Index)
 	go player.Paddle.Engine()
+	go player.Balls[0].Engine()
+	fmt.Println("Player dependencies engined: ", player)
+	player.channel <- PlayerConnectMessage{PlayerPayload: player}
+	fmt.Println("Player Subscribed: ", player)
+
 }
 
 func (player *Player) Unsubscribe() {
@@ -67,7 +66,7 @@ func (player *Player) ReadInput(ws *websocket.Conn) {
 			fmt.Println("Error reading from client:", err)
 			if err == io.EOF {
 				fmt.Println("Connection closed by the client:", err)
-				break
+				return
 			}
 			continue
 		}

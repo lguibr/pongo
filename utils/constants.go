@@ -3,7 +3,7 @@ package utils
 import "time"
 
 const (
-	Period = 20 * time.Millisecond
+	Period = 40 * time.Millisecond
 
 	CanvasSize = 576 //INFO Must be divisible by GridSize
 	GridSize   = 12  //INFO Must be divisible by 2

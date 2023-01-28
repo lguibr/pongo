@@ -22,15 +22,22 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 		}
 
 		index := g.GetNextIndex()
-		ioChannel := make(chan game.PlayerMessage)
-		player := game.NewPlayer(g.Canvas, index, ioChannel)
+		//INFO Initiate the player channel
+		playerChannel := make(chan game.PlayerMessage)
+		//INFO Initiate the ball channel
+		ballChannel := make(chan game.BallMessage)
 
+		initialBall := game.NewBall(ballChannel, 0, 0, 0, g.Canvas.CanvasSize, index)
+
+		player := game.NewPlayer(g.Canvas, index, playerChannel, initialBall)
+
+		fmt.Println("Start reading from player channel")
+		//INFO Reading Player messages
 		go func() {
-			for message := range ioChannel {
+			for message := range playerChannel {
 				switch payload := message.(type) {
 				case game.PlayerConnectMessage:
-					g.Players[index] = payload.PlayerPayload
-					player.Subscribe()
+					g.Players[index] = player
 					fmt.Println("Player connected: ", payload)
 				case game.PlayerDisconnectMessage:
 					g.Players[index] = nil
@@ -41,19 +48,28 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 				}
 			}
 		}()
+		//INFO Subscribe the player
+		player.Subscribe()
 
-		//TODO Should be removed and pass to inside playerSubscribe
-		for _, ball := range player.Balls {
-			if ball == nil {
-				continue
+		fmt.Println("Start reading from ball channel")
+		//INFO Reading Ball messages
+		go func() {
+			for message := range ballChannel {
+				switch payload := message.(type) {
+				case game.BallPositionMessage:
+					ball := payload.Ball
+					ball.CollidePaddles(g.Players)
+					ball.CollideCells(g.Canvas.Grid, g.Canvas.CellSize)
+					ball.CollideWalls()
+				default:
+					continue
+				}
 			}
-			go ball.Engine(g)
-		}
+		}()
 
-		// //INFO Reading the input from the client
-		// go player.ReadInput(ws)
-		//INFO Writing the game state to the client
 		g.WriteGameState(ws)
+		player.ReadInput(ws)
+
 	}
 }
 
