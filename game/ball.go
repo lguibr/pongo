@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"time"
 
 	"github.com/lguibr/pongo/utils"
 )
@@ -64,6 +65,25 @@ func NewBall(canvas *Canvas, x, y, radius, index int) *Ball {
 	}
 }
 
+func (ball *Ball) Engine(game *Game) {
+	for {
+
+		//  Can remove the game dependency by adding a channel to the player DC
+		if game.Players[ball.Index] == nil {
+			fmt.Println("player ball", ball.Index, "disconnected")
+			return
+		}
+
+		ball.Move()
+
+		ball.CollidePaddles(game.Players)
+
+		ball.CollideCells()
+		ball.CollideWalls()
+		time.Sleep(utils.Period)
+	}
+}
+
 func (ball *Ball) Move() {
 
 	ball.X += ball.Vx + ball.Ax/2
@@ -75,6 +95,9 @@ func (ball *Ball) Move() {
 }
 
 func (ball *Ball) CollidePaddle(paddle *Paddle) {
+	if paddle == nil {
+		return
+	}
 
 	collisionDetected := ball.BallInterceptPaddles(paddle)
 
@@ -111,10 +134,10 @@ func (ball *Ball) CollideCells() {
 
 			if ballInterceptsCell {
 				t := ball.Canvas.Grid[surroundingRow][surroundingCol].Data.Type
-				if t == utils.CellTypes["Brick"] {
+				if t == utils.Cells.Brick {
 					ball.handleCollideBrick([2]int{row, col}, [2]int{surroundingRow, surroundingCol})
 				}
-				if t == utils.CellTypes["Block"] {
+				if t == utils.Cells.Block {
 					ball.handleCollideBlock([2]int{row, col}, [2]int{surroundingRow, surroundingCol})
 				}
 			}
@@ -155,7 +178,7 @@ func (ball *Ball) handleCollideBrick(oldIndices, newIndices [2]int) {
 	ball.handleCollideBlock(oldIndices, newIndices)
 	ball.Canvas.Grid[newIndices[0]][newIndices[1]].Data.Life -= 1
 	if ball.Canvas.Grid[newIndices[0]][newIndices[1]].Data.Life == 0 {
-		ball.Canvas.Grid[newIndices[0]][newIndices[1]].Data.Type = utils.CellTypes["Empty"]
+		ball.Canvas.Grid[newIndices[0]][newIndices[1]].Data.Type = utils.Cells.Empty
 	}
 }
 

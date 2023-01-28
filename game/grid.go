@@ -26,7 +26,7 @@ func NewGrid(gridSize int) Grid {
 
 	for i, row := range grid {
 		for j := range row {
-			data := &BrickData{Type: "Empty", Life: 0}
+			data := &BrickData{Type: utils.Cells.Empty, Life: 0}
 			grid[i][j] = Cell{X: i, Y: j, Data: data}
 		}
 	}
@@ -48,7 +48,7 @@ func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) {
 	}
 
 	for _, index := range indexes {
-		if grid[index[0]][index[1]].Data.Type == "Brick" {
+		if grid[index[0]][index[1]].Data.Type == utils.Cells.Brick {
 			grid[index[0]][index[1]].Data.Life = grid[index[0]][index[1]].Data.Life + 1
 			continue
 		}
@@ -57,7 +57,7 @@ func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) {
 			X: index[0],
 			Y: index[1],
 			Data: &BrickData{
-				Type: "Brick",
+				Type: utils.Cells.Brick,
 				Life: 1,
 			},
 		}
@@ -123,7 +123,7 @@ func (grid Grid) Rotate() Grid {
 func (grid Grid) RandomWalker(numberOfSteps int) {
 	gridSize := len(grid)
 	startPoint := [2]int{gridSize / 2, gridSize / 2}
-	grid[startPoint[0]][startPoint[1]].Data.Type = "Brick"
+	grid[startPoint[0]][startPoint[1]].Data.Type = utils.Cells.Brick
 	grid[startPoint[0]][startPoint[1]].Data.Life = 1
 	var getNextPoint func(currentPoint [2]int) [2]int
 	getNextPoint = func(currentPoint [2]int) [2]int {
@@ -141,10 +141,10 @@ func (grid Grid) RandomWalker(numberOfSteps int) {
 	for i := 0; i < stepsResting; i++ {
 		nextPoint := getNextPoint(startPoint)
 		nextCell := grid[nextPoint[0]][nextPoint[1]]
-		if nextCell.Data.Type == "Brick" {
+		if nextCell.Data.Type == utils.Cells.Brick {
 			nextCell.Data.Life++
 		} else {
-			nextCell.Data.Type = "Brick"
+			nextCell.Data.Type = utils.Cells.Brick
 			nextCell.Data.Life = 1
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lguibr/pongo/utils"
+	"golang.org/x/net/websocket"
 )
 
 type Game struct {
@@ -39,70 +40,6 @@ func (game *Game) ToJson() []byte {
 	return gameBytes
 }
 
-func (game *Game) SubscribeBall(ball *Ball) {
-	go func() {
-
-		for {
-
-			if game.Players[ball.Index] == nil {
-				fmt.Println("player ball", ball.Index, "disconnected")
-				return
-			}
-
-			ball.Move()
-			ball.CollidePaddles(game.Players)
-			ball.CollideCells()
-			ball.CollideWalls()
-
-			time.Sleep(utils.Period)
-		}
-	}()
-}
-
-func (game *Game) SubscribePaddle(paddle *Paddle) {
-	go func() {
-		for {
-
-			if game.Players[paddle.Index] == nil {
-				fmt.Println("player paddle", paddle.Index, "disconnected")
-				return
-			}
-
-			paddle.Move()
-			time.Sleep(utils.Period)
-		}
-	}()
-}
-
-func (game *Game) SubscribePlayer() (func(), *Player) {
-	if !game.HasPlayer() {
-		game.Canvas.Grid.Fill(0, 0, 0, 0)
-	}
-	index := game.GetNextIndex()
-	playerId := "player" + fmt.Sprint(index)
-
-	player := NewPlayer(game.Canvas, index, playerId)
-
-	game.Players[index] = player
-
-	for _, ball := range player.Balls {
-		if ball == nil {
-			continue
-		}
-		game.SubscribeBall(ball)
-	}
-	game.SubscribePaddle(player.Paddle)
-
-	return func() { game.UnSubscribePlayer(index) }, player
-}
-
-func (game *Game) UnSubscribePlayer(index int) {
-	fmt.Println("UnSubscribePlayer of index: ", index)
-	game.Players[index].Balls = nil
-	game.Players[index].Paddle = nil
-	game.Players[index] = nil
-}
-
 func (game *Game) GetNextIndex() int {
 	for i, player := range game.Players {
 		if player == nil {
@@ -119,4 +56,15 @@ func (game *Game) HasPlayer() bool {
 		}
 	}
 	return false
+}
+
+func (game *Game) WriteGameState(ws *websocket.Conn) {
+	for {
+		_, err := ws.Write(game.ToJson())
+		if err != nil {
+			fmt.Println("Error writing to client: ", err)
+			return
+		}
+		time.Sleep(utils.Period)
+	}
 }

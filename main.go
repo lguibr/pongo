@@ -10,15 +10,16 @@ import (
 )
 
 func main() {
-	wsServer := server.NewServer()
+	websocketServer := server.New()
+
 	game := game.StartGame()
 
 	fmt.Println("Game started:")
 	fmt.Println(game)
 
-	http.HandleFunc("/", wsServer.HandleGetSit(game))
+	http.HandleFunc("/", websocketServer.HandleGetSit(game))
 
-	http.Handle("/subscribe", websocket.Handler(wsServer.HandleSubscribe(game)))
+	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe(game)))
 
 	panic(http.ListenAndServe(":3001", nil))
 

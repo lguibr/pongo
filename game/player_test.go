@@ -15,7 +15,8 @@ func TestNewPlayer(t *testing.T) {
 		id             string
 		expectedPlayer *Player
 	}
-	canvas := &Canvas{Width: 800, Height: 600}
+	canvasSize := 800
+	canvas := &Canvas{Width: canvasSize, Height: canvasSize}
 	balls := []*Ball{
 		NewBall(canvas, 0, 0, 0, 1),
 	}
@@ -30,7 +31,7 @@ func TestNewPlayer(t *testing.T) {
 				Id:     "player1",
 				Canvas: canvas,
 				Color:  color,
-				Paddle: NewPaddle(canvas, 1),
+				Paddle: NewPaddle(canvasSize, 1),
 				Balls:  balls,
 			}},
 		{
@@ -42,13 +43,13 @@ func TestNewPlayer(t *testing.T) {
 				Id:     "player2",
 				Canvas: canvas,
 				Color:  color,
-				Paddle: NewPaddle(canvas, 2),
+				Paddle: NewPaddle(canvasSize, 2),
 				Balls:  balls,
 			}},
 	}
 
 	for _, test := range testCases {
-		result := NewPlayer(test.canvas, test.index, test.id)
+		result := NewPlayer(test.canvas, test.index, make(chan PlayerMessage))
 		fmt.Println("result", result)
 		fmt.Println("test.expectedPlayer", test.expectedPlayer)
 
@@ -56,6 +57,7 @@ func TestNewPlayer(t *testing.T) {
 		result.Color = test.expectedPlayer.Color
 		result.Paddle = test.expectedPlayer.Paddle
 		result.Balls = test.expectedPlayer.Balls
+		result.channel = test.expectedPlayer.channel
 
 		if !reflect.DeepEqual(result, test.expectedPlayer) {
 			t.Errorf("Expected player %v, got \n%v", test.expectedPlayer, result)

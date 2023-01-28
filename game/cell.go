@@ -1,8 +1,10 @@
 package game
 
+import "github.com/lguibr/pongo/utils"
+
 type BrickData struct {
-	Type string `json:"type"`
-	Life int    `json:"life"`
+	Type utils.CellType `json:"type"`
+	Life int            `json:"life"`
 }
 type Cell struct {
 	X    int        `json:"x"`
@@ -10,15 +12,15 @@ type Cell struct {
 	Data *BrickData `json:"data"`
 }
 
-func NewCell(x, y, life int, typeOfCell string) Cell {
+func NewCell(x, y, life int, typeOfCell utils.CellType) Cell {
 	return Cell{X: x, Y: y, Data: NewBrickData(typeOfCell, life)}
 }
 
-func NewBrickData(typeOfCell string, life int) *BrickData {
-	if typeOfCell == "Brick" && life == 0 {
+func NewBrickData(typeOfCell utils.CellType, life int) *BrickData {
+	if typeOfCell == utils.Cells.Brick && life == 0 {
 		life = 1
 	}
-	if typeOfCell == "Empty" {
+	if typeOfCell == utils.Cells.Empty {
 		life = 0
 	}
 	return &BrickData{Type: typeOfCell, Life: life}

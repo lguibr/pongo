@@ -378,7 +378,7 @@ func TestBall_HandleCollideBrick(t *testing.T) {
 		expectedVx   int
 		expectedVy   int
 		expectedLife int
-		expectedType string
+		expectedType utils.CellType
 	}{
 		{
 			name:         "collides with brick",
@@ -388,7 +388,7 @@ func TestBall_HandleCollideBrick(t *testing.T) {
 			expectedVx:   1,
 			expectedVy:   -1,
 			expectedLife: 4,
-			expectedType: "Brick",
+			expectedType: utils.Cells.Brick,
 		},
 		{
 			name:         "collides with brick with life of 1",
@@ -398,14 +398,14 @@ func TestBall_HandleCollideBrick(t *testing.T) {
 			expectedVx:   -1,
 			expectedVy:   1,
 			expectedLife: 0,
-			expectedType: "Empty",
+			expectedType: utils.Cells.Empty,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 
-			data := &Cell{Data: NewBrickData("Brick", tc.life)}
+			data := &Cell{Data: NewBrickData(utils.Cells.Brick, tc.life)}
 			grid := NewGrid(10)
 			grid[tc.newIndices[0]][tc.newIndices[1]] = *data
 			ball := &Ball{Vx: 1, Vy: 1, Canvas: &Canvas{Grid: grid}}
@@ -621,7 +621,7 @@ func TestBall_Move(t *testing.T) {
 func TestBall_CollidePaddle(t *testing.T) {
 	canvas := NewCanvas(utils.CanvasSize, utils.GridSize)
 	ball := NewBall(canvas, 10, 20, 30, 1)
-	paddle := NewPaddle(canvas, 0)
+	paddle := NewPaddle(utils.CanvasSize, 0)
 	testCases := []struct {
 		name                                        string
 		ballX, ballY, ballVx, ballVy                int
@@ -665,33 +665,33 @@ func TestCollideCells(t *testing.T) {
 	testCases := []struct {
 		name                  string
 		ballX, ballY          int
-		theType               string
+		theType               utils.CellType
 		life                  int
-		expectedCollisionType string
+		expectedCollisionType utils.CellType
 		expectedLife          int
 	}{
 		{
 			"TestCase1",
 			10, 20,
-			"Brick",
+			utils.Cells.Brick,
 			2,
-			"Brick",
+			utils.Cells.Brick,
 			1,
 		},
 		{
 			"TestCase2",
 			15, 25,
-			"Block",
+			utils.Cells.Block,
 			0,
-			"Block",
+			utils.Cells.Block,
 			0,
 		},
 		{
 			"TestCase3",
 			15, 25,
-			"Empty",
+			utils.Cells.Empty,
 			0,
-			"Empty",
+			utils.Cells.Empty,
 			0,
 		},
 	}

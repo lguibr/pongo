@@ -4,39 +4,56 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/lguibr/pongo/game"
-	"github.com/lguibr/pongo/utils"
+
 	"golang.org/x/net/websocket"
 )
 
 func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 	return func(ws *websocket.Conn) {
-
 		fmt.Println("New Connection from client: ", ws.RemoteAddr())
 		fmt.Println(g)
 
-		s.conns[ws] = true
+		s.OpenConnection(ws)
 
-		unsubscribePlayer, player := g.SubscribePlayer()
-
-		//INFO Reading the direction from the client
-		go func() { s.readLoop(ws, player.Paddle.SetDirection, unsubscribePlayer) }()
-
-		//INFO Writing the game state to the client
-		for {
-			payload := g.ToJson()
-			_, err := ws.Write(payload)
-			if err != nil {
-				fmt.Println("Error writing to client: ", err)
-				unsubscribePlayer()
-				delete(s.conns, ws)
-				break
-			}
-			time.Sleep(utils.Period)
+		if !g.HasPlayer() {
+			g.Canvas.Grid.Fill(0, 0, 0, 0)
 		}
 
+		index := g.GetNextIndex()
+		ioChannel := make(chan game.PlayerMessage)
+		player := game.NewPlayer(g.Canvas, index, ioChannel)
+
+		go func() {
+			for message := range ioChannel {
+				switch payload := message.(type) {
+				case game.PlayerConnectMessage:
+					g.Players[index] = payload.PlayerPayload
+					player.Subscribe()
+					fmt.Println("Player connected: ", payload)
+				case game.PlayerDisconnectMessage:
+					g.Players[index] = nil
+					fmt.Println("Player Disconnected: ")
+					s.CloseConnection(ws)
+				default:
+					continue
+				}
+			}
+		}()
+
+		//TODO Should be removed and pass to inside playerSubscribe
+		for _, ball := range player.Balls {
+			if ball == nil {
+				continue
+			}
+			go ball.Engine(g)
+		}
+
+		// //INFO Reading the input from the client
+		// go player.ReadInput(ws)
+		//INFO Writing the game state to the client
+		g.WriteGameState(ws)
 	}
 }
 
