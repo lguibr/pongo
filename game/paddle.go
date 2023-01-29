@@ -3,19 +3,30 @@ package game
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/lguibr/pongo/utils"
 )
 
+type PaddleMessage interface{}
+
+type PaddlePositionMessage struct {
+	Paddle *Paddle
+}
+type PaddleDirectionMessage struct {
+	Direction []byte
+}
+
 type Paddle struct {
-	X         int     `json:"x"`
-	Y         int     `json:"y"`
-	Width     int     `json:"width"`
-	Height    int     `json:"height"`
-	Index     int     `json:"index"`
-	Direction string  `json:"direction"`
-	Velocity  int     `json:"velocity"`
-	Canvas    *Canvas `json:"canvas"`
+	X          int    `json:"x"`
+	Y          int    `json:"y"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	Index      int    `json:"index"`
+	Direction  string `json:"direction"`
+	Velocity   int    `json:"velocity"`
+	canvasSize int
+	channel    chan PaddleMessage
 }
 
 func (paddle *Paddle) Move() {
@@ -40,26 +51,25 @@ func (paddle *Paddle) Move() {
 		paddle.Y -= velocityY
 	} else {
 
-		if paddle.X+paddle.Width+velocityX > utils.CanvasSize || paddle.Y+paddle.Height-velocityY > utils.CanvasSize {
+		if paddle.X+paddle.Width+velocityX > paddle.canvasSize || paddle.Y+paddle.Height-velocityY > paddle.canvasSize {
 			return
 		}
 
 		paddle.X += velocityX
 		paddle.Y += velocityY
 	}
-
 }
 
-func NewPaddle(canvas *Canvas, index int) *Paddle {
+func NewPaddle(channel chan PaddleMessage, canvasSize, index int) *Paddle {
 
 	offSet := -utils.PaddleLength/2 + utils.PaddleWeight/2
 	if index > 1 {
 		offSet = -offSet
 	}
 
-	cardinalPosition := [2]int{utils.CanvasSize/2 - utils.PaddleWeight/2, offSet}
-	rotateX, rotateY := utils.RotateVector(index, cardinalPosition[0], cardinalPosition[1], utils.CanvasSize, utils.CanvasSize)
-	translatedVector := utils.SumVectors([2]int{rotateX, rotateY}, [2]int{utils.CanvasSize/2 - utils.PaddleWeight/2, utils.CanvasSize/2 - utils.PaddleWeight/2})
+	cardinalPosition := [2]int{canvasSize/2 - utils.PaddleWeight/2, offSet}
+	rotateX, rotateY := utils.RotateVector(index, cardinalPosition[0], cardinalPosition[1], canvasSize, canvasSize)
+	translatedVector := utils.SumVectors([2]int{rotateX, rotateY}, [2]int{canvasSize/2 - utils.PaddleWeight/2, canvasSize/2 - utils.PaddleWeight/2})
 	x, y := translatedVector[0], translatedVector[1]
 
 	indexOdd := index % 2
@@ -74,14 +84,15 @@ func NewPaddle(canvas *Canvas, index int) *Paddle {
 	}
 
 	return &Paddle{
-		X:         x,
-		Y:         y,
-		Index:     index,
-		Width:     width,
-		Height:    height,
-		Direction: "",
-		Velocity:  utils.MinVelocity * 2,
-		Canvas:    canvas,
+		X:          x,
+		Y:          y,
+		Index:      index,
+		Width:      width,
+		Height:     height,
+		Direction:  "",
+		Velocity:   utils.MinVelocity * 2,
+		canvasSize: canvasSize,
+		channel:    channel,
 	}
 }
 
@@ -97,4 +108,15 @@ func (paddle *Paddle) SetDirection(buffer []byte) {
 	}
 	newDirection := utils.DirectionFromString(direction.Direction)
 	paddle.Direction = newDirection
+}
+
+func (paddle *Paddle) Engine() {
+	for {
+		if paddle == nil {
+			break
+		}
+		paddle.Move()
+		paddle.channel <- PaddlePositionMessage{Paddle: paddle}
+		time.Sleep(utils.Period)
+	}
 }

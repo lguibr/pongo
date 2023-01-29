@@ -2,20 +2,22 @@ package game
 
 import (
 	"testing"
+
+	"github.com/lguibr/pongo/utils"
 )
 
 func TestNewBrickData(t *testing.T) {
 	type NewBrickDataTestCase struct {
-		typeOfCell string
+		typeOfCell utils.CellType
 		life       int
 		expected   *BrickData
 	}
 
 	testCases := []NewBrickDataTestCase{
-		{typeOfCell: "Brick", life: 0, expected: &BrickData{Type: "Brick", Life: 1}},
-		{typeOfCell: "Brick", life: 2, expected: &BrickData{Type: "Brick", Life: 2}},
-		{typeOfCell: "Empty", life: 0, expected: &BrickData{Type: "Empty", Life: 0}},
-		{typeOfCell: "Empty", life: 2, expected: &BrickData{Type: "Empty", Life: 0}},
+		{typeOfCell: utils.Cells.Brick, life: 0, expected: &BrickData{Type: utils.Cells.Brick, Life: 1}},
+		{typeOfCell: utils.Cells.Brick, life: 2, expected: &BrickData{Type: utils.Cells.Brick, Life: 2}},
+		{typeOfCell: utils.Cells.Empty, life: 0, expected: &BrickData{Type: utils.Cells.Empty, Life: 0}},
+		{typeOfCell: utils.Cells.Empty, life: 2, expected: &BrickData{Type: utils.Cells.Empty, Life: 0}},
 	}
 
 	for _, test := range testCases {
@@ -34,10 +36,10 @@ func TestBrickData_Compare(t *testing.T) {
 	}
 
 	testCases := []CompareBrickDataTestCase{
-		{&BrickData{Type: "Brick", Life: 1}, &BrickData{Type: "Brick", Life: 1}, true},
-		{&BrickData{Type: "Empty", Life: 0}, &BrickData{Type: "Empty", Life: 0}, true},
-		{&BrickData{Type: "Brick", Life: 2}, &BrickData{Type: "Brick", Life: 1}, false},
-		{&BrickData{Type: "Empty", Life: 0}, &BrickData{Type: "Brick", Life: 0}, false},
+		{&BrickData{Type: utils.Cells.Brick, Life: 1}, &BrickData{Type: utils.Cells.Brick, Life: 1}, true},
+		{&BrickData{Type: utils.Cells.Empty, Life: 0}, &BrickData{Type: utils.Cells.Empty, Life: 0}, true},
+		{&BrickData{Type: utils.Cells.Brick, Life: 2}, &BrickData{Type: utils.Cells.Brick, Life: 1}, false},
+		{&BrickData{Type: utils.Cells.Empty, Life: 0}, &BrickData{Type: utils.Cells.Brick, Life: 0}, false},
 	}
 
 	for _, test := range testCases {
@@ -56,10 +58,10 @@ func TestCell_Compare(t *testing.T) {
 	}
 
 	testCases := []CompareCellsTestCase{
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, true},
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: "Empty", Life: 1}}, false},
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 2}}, false},
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, true},
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, true},
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 1}}, false},
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}, false},
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, true},
 	}
 
 	for _, test := range testCases {
@@ -75,14 +77,14 @@ func TestNewCell(t *testing.T) {
 		x          int
 		y          int
 		life       int
-		typeOfCell string
+		typeOfCell utils.CellType
 		expected   Cell
 	}
 
 	testCases := []NewCellTestCase{
-		{0, 0, 0, "Brick", Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}},
-		{1, 2, 3, "Empty", Cell{X: 1, Y: 2, Data: &BrickData{Type: "Empty", Life: 0}}},
-		{4, 5, 2, "Brick", Cell{X: 4, Y: 5, Data: &BrickData{Type: "Brick", Life: 2}}},
+		{0, 0, 0, utils.Cells.Brick, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
+		{1, 2, 3, utils.Cells.Empty, Cell{X: 1, Y: 2, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}},
+		{4, 5, 2, utils.Cells.Brick, Cell{X: 4, Y: 5, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
 	}
 
 	for _, test := range testCases {
