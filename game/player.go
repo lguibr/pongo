@@ -62,12 +62,3 @@ func (player *Player) ReadInput(ws *websocket.Conn, paddleChannel chan PaddleMes
 		paddleChannel <- PaddleDirectionMessage{Direction: newDirection}
 	}
 }
-
-func (player *Player) WaitDisconnection() {
-	defer fmt.Println("Player disconnected")
-	for {
-		if player == nil {
-			return
-		}
-	}
-}
