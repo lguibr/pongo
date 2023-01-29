@@ -2,6 +2,8 @@ package game
 
 import (
 	"testing"
+
+	"github.com/lguibr/pongo/utils"
 )
 
 func TestGrid_LineIntersectedCellIndices(t *testing.T) {
@@ -72,7 +74,7 @@ func TestGrid_NewGrid(t *testing.T) {
 	// Check that all cells are empty
 	for i := range grid {
 		for j := range grid[i] {
-			if grid[i][j].Data.Type != "Empty" {
+			if grid[i][j].Data.Type != utils.Cells.Empty {
 				t.Errorf("Expected cell at position (%d, %d) to be empty, but got %s", i, j, grid[i][j].Data.Type)
 			}
 			if grid[i][j].Data.Life != 0 {
@@ -103,7 +105,7 @@ func TestCreateQuarterGridSeed(t *testing.T) {
 			for i := 0; i < test.gridSize; i++ {
 				row := []Cell{}
 				for j := 0; j < test.gridSize; j++ {
-					cell := Cell{X: i, Y: j, Data: &BrickData{Type: "Empty", Life: 0}}
+					cell := Cell{X: i, Y: j, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}
 					row = append(row, cell)
 				}
 				grid = append(grid, row)
@@ -115,7 +117,7 @@ func TestCreateQuarterGridSeed(t *testing.T) {
 			count := 0
 			for i := range grid {
 				for j := range grid[i] {
-					if grid[i][j].Data.Type == "Brick" {
+					if grid[i][j].Data.Type == utils.Cells.Brick {
 						count += grid[i][j].Data.Life
 					}
 				}
@@ -127,7 +129,7 @@ func TestCreateQuarterGridSeed(t *testing.T) {
 			// check that all modified cells are in the top-left quarter of the grid
 			for i := range grid {
 				for j := range grid[i] {
-					if grid[i][j].Data.Type == "Brick" {
+					if grid[i][j].Data.Type == utils.Cells.Brick {
 						if i > (test.gridSize/2-1) || j > (test.gridSize/2-1) {
 							t.Errorf("Brick cell at (%d, %d) is not in the top-left quarter of the grid", i, j)
 						}
@@ -148,13 +150,13 @@ func TestGrid_FillGridWithQuarterGrids(t *testing.T) {
 
 		{
 			// Test case 2: q1, q2, q3, and q4 have different values
-			q1: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}}},
-			q2: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}}},
-			q3: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 2}}}},
-			q4: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}}},
+			q1: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}}},
+			q2: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}}},
+			q3: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}}},
+			q4: Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}}},
 			expectedGrid: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Empty", Life: 0}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Brick", Life: 2}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Empty", Life: 0}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}},
 			},
 		},
 	}
@@ -180,32 +182,32 @@ func TestGrid_Rotate(t *testing.T) {
 	testCases := []RotateTestCase{
 		{
 			grid: Grid{
-				{NewCell(0, 0, 0, "Empty"), NewCell(0, 1, 0, "Empty")},
-				{NewCell(1, 0, 0, "Empty"), NewCell(1, 1, 0, "Empty")},
+				{NewCell(0, 0, 0, utils.Cells.Empty), NewCell(0, 1, 0, utils.Cells.Empty)},
+				{NewCell(1, 0, 0, utils.Cells.Empty), NewCell(1, 1, 0, utils.Cells.Empty)},
 			},
 			expected: Grid{
-				{NewCell(1, 0, 0, "Empty"), NewCell(0, 0, 0, "Empty")},
-				{NewCell(1, 1, 0, "Empty"), NewCell(0, 1, 0, "Empty")},
+				{NewCell(1, 0, 0, utils.Cells.Empty), NewCell(0, 0, 0, utils.Cells.Empty)},
+				{NewCell(1, 1, 0, utils.Cells.Empty), NewCell(0, 1, 0, utils.Cells.Empty)},
 			},
 		},
 		{
 			grid: Grid{
-				{NewCell(0, 0, 0, "Empty"), NewCell(0, 1, 0, "Empty"), NewCell(0, 2, 0, "Empty")},
-				{NewCell(1, 0, 0, "Empty"), NewCell(1, 1, 0, "Empty"), NewCell(1, 2, 0, "Empty")},
-				{NewCell(2, 0, 0, "Empty"), NewCell(2, 1, 0, "Empty"), NewCell(2, 2, 0, "Empty")},
+				{NewCell(0, 0, 0, utils.Cells.Empty), NewCell(0, 1, 0, utils.Cells.Empty), NewCell(0, 2, 0, utils.Cells.Empty)},
+				{NewCell(1, 0, 0, utils.Cells.Empty), NewCell(1, 1, 0, utils.Cells.Empty), NewCell(1, 2, 0, utils.Cells.Empty)},
+				{NewCell(2, 0, 0, utils.Cells.Empty), NewCell(2, 1, 0, utils.Cells.Empty), NewCell(2, 2, 0, utils.Cells.Empty)},
 			},
 			expected: Grid{
-				{NewCell(2, 0, 0, "Empty"), NewCell(1, 0, 0, "Empty"), NewCell(0, 0, 0, "Empty")},
-				{NewCell(2, 1, 0, "Empty"), NewCell(1, 1, 0, "Empty"), NewCell(0, 1, 0, "Empty")},
-				{NewCell(2, 2, 0, "Empty"), NewCell(1, 2, 0, "Empty"), NewCell(0, 2, 0, "Empty")},
+				{NewCell(2, 0, 0, utils.Cells.Empty), NewCell(1, 0, 0, utils.Cells.Empty), NewCell(0, 0, 0, utils.Cells.Empty)},
+				{NewCell(2, 1, 0, utils.Cells.Empty), NewCell(1, 1, 0, utils.Cells.Empty), NewCell(0, 1, 0, utils.Cells.Empty)},
+				{NewCell(2, 2, 0, utils.Cells.Empty), NewCell(1, 2, 0, utils.Cells.Empty), NewCell(0, 2, 0, utils.Cells.Empty)},
 			},
 		},
 		{
 			grid: Grid{
-				{NewCell(0, 0, 0, "Empty")},
+				{NewCell(0, 0, 0, utils.Cells.Empty)},
 			},
 			expected: Grid{
-				{NewCell(0, 0, 0, "Empty")},
+				{NewCell(0, 0, 0, utils.Cells.Empty)},
 			},
 		},
 	}
@@ -248,7 +250,7 @@ func TestGrid_RandomWalker(t *testing.T) {
 		totalBricks := 0
 		for i := range test.grid {
 			for j := range test.grid[i] {
-				if test.grid[i][j].Data.Type == "Brick" {
+				if test.grid[i][j].Data.Type == utils.Cells.Brick {
 					totalBricks += test.grid[i][j].Data.Life
 				}
 			}
@@ -287,7 +289,7 @@ func TestGrid_Fill(t *testing.T) {
 			totalBricks := 0
 			for i := range test.grid {
 				for j := range test.grid[i] {
-					if test.grid[i][j].Data.Type == "Brick" {
+					if test.grid[i][j].Data.Type == utils.Cells.Brick {
 						totalBricks += test.grid[i][j].Data.Life
 					}
 				}
@@ -310,36 +312,36 @@ func TestGrid_Compare(t *testing.T) {
 		{
 			name: "Grids are the same",
 			grid: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 			grid2: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 			result: true,
 		},
 		{
 			name: "Grids have different size",
 			grid: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 			grid2: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 			result: false,
 		},
 		{
 			name: "Grids have different column size",
 			grid: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 			grid2: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 
 			result: false,
@@ -347,14 +349,14 @@ func TestGrid_Compare(t *testing.T) {
 		{
 			name: "Grids have different row size",
 			grid: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 			grid2: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}},
 			},
 
 			result: false,
@@ -362,12 +364,12 @@ func TestGrid_Compare(t *testing.T) {
 		{
 			name: "Grids have different data",
 			grid: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 1}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
 			},
 			grid2: Grid{
-				{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 2}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
-				{Cell{X: 1, Y: 0, Data: &BrickData{Type: "Empty", Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: "Brick", Life: 2}}},
+				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+				{Cell{X: 1, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 1, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
 			},
 			result: false,
 		},
@@ -391,7 +393,7 @@ func TestGrid_Compare(t *testing.T) {
 		},
 		{
 			name:   "One element grid and nil grid",
-			grid:   Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: "Brick", Life: 1}}}},
+			grid:   Grid{{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}}},
 			grid2:  nil,
 			result: false,
 		},

@@ -22,8 +22,35 @@ const (
 	PaddleWeight = CellSize / 2
 )
 
-var CellTypes = map[string]string{
-	"Empty": "Empty",
-	"Brick": "Brick",
-	"Block": "Block",
+type CellType int64
+
+const (
+	brick CellType = iota
+	block
+	empty
+)
+
+type cellTypes struct {
+	Brick CellType
+	Block CellType
+	Empty CellType
+}
+
+var Cells = cellTypes{
+	Brick: brick,
+	Block: block,
+	Empty: empty,
+}
+
+func (cellType CellType) String() string {
+	switch cellType {
+	case brick:
+		return "Brick"
+	case block:
+		return "Block"
+	case empty:
+		return "Empty"
+	default:
+		return "Unknown"
+	}
 }

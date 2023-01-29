@@ -497,7 +497,6 @@ func TestAssertPanics(t *testing.T) {
 		defer func() {
 			if r := recover(); r != nil {
 				fmt.Println("Recovered:", r)
-				// t.Errorf("The code panicked, but it should not have")
 			}
 		}()
 		panics, err := AssertPanics(t, shouldNotPanic, "Hello, world")

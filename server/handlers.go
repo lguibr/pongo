@@ -4,39 +4,45 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/lguibr/pongo/game"
-	"github.com/lguibr/pongo/utils"
+
 	"golang.org/x/net/websocket"
 )
 
 func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 	return func(ws *websocket.Conn) {
-
-		fmt.Println("New Connection from client: ", ws.RemoteAddr())
-		fmt.Println(g)
-
-		s.conns[ws] = true
-
-		unsubscribePlayer, player := g.SubscribePlayer()
-
-		//INFO Reading the direction from the client
-		go func() { s.readLoop(ws, player.Paddle.SetDirection, unsubscribePlayer) }()
-
-		//INFO Writing the game state to the client
-		for {
-			payload := g.ToJson()
-			_, err := ws.Write(payload)
-			if err != nil {
-				fmt.Println("Error writing to client: ", err)
-				unsubscribePlayer()
-				delete(s.conns, ws)
-				break
-			}
-			time.Sleep(utils.Period)
+		//INFO Start the WebSocket connection
+		s.OpenConnection(ws)
+		close := func() { s.CloseConnection(ws) }
+		//INFO Initiate a new game if there is no player
+		if !g.HasPlayer() {
+			g.Canvas.Grid.Fill(0, 0, 0, 0)
 		}
-
+		//INFO Initiating channels
+		playerChannel := make(chan game.PlayerMessage)
+		ballChannel := make(chan game.BallMessage)
+		paddleChannel := make(chan game.PaddleMessage)
+		// INFO Initiate the player and player's dependencies
+		playerIndex := g.GetNextIndex()
+		currentBallIndex := len(g.Balls)
+		if currentBallIndex < 0 {
+			currentBallIndex = 0
+		}
+		player := game.NewPlayer(g.Canvas, playerIndex, playerChannel)
+		playerPaddle := game.NewPaddle(paddleChannel, g.Canvas.CanvasSize, playerIndex)
+		initialPlayerBall := game.NewBall(ballChannel, 0, 0, 0, g.Canvas.CanvasSize, playerIndex, currentBallIndex)
+		//INFO Start reading from game's entities channels
+		go g.ReadPlayerChannel(playerIndex, playerChannel, playerPaddle, initialPlayerBall, close)
+		go g.ReadBallChannel(playerIndex, ballChannel)
+		go playerPaddle.ReadPaddleChannel(paddleChannel)
+		//INFO Connect the player
+		player.Connect()
+		//INFO Start reading input from player and writing game state to player
+		go player.ReadInput(ws, paddleChannel)
+		go g.WriteGameState(ws)
+		//INFO Wait for player to disconnect
+		g.Players[playerIndex].WaitDisconnection()
 	}
 }
 

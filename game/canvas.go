@@ -10,7 +10,7 @@ type Canvas struct {
 	Height     int  `json:"height"`
 	GridSize   int  `json:"gridSize"`
 	CanvasSize int  `json:"canvasSize"`
-	CellSize   int
+	CellSize   int  `json:"cellSize"`
 }
 
 func NewCanvas(size, gridSize int) *Canvas {
