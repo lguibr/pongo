@@ -67,7 +67,6 @@ func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) {
 }
 
 func (grid Grid) FillGridWithQuarterGrids(q1, q2, q3, q4 Grid) {
-
 	if len(q1) != len(q2) || len(q1) != len(q3) || len(q1) != len(q4) || len(q1) == 0 {
 		panic("Grids must be of the same size")
 	}
@@ -79,31 +78,25 @@ func (grid Grid) FillGridWithQuarterGrids(q1, q2, q3, q4 Grid) {
 	m := len(grid[0])
 
 	for i := 0; i < n/2; i++ {
-
 		for j := 0; j < m/2; j++ {
-
 			//INFO Filling quarter one of the grid
 			grid[i][j] = q1[i][j]
 			grid[i][j].X = i //INFO Fixing the X value
 			grid[i][j].Y = j //INFO Fixing the Y value
-
 			//INFO Filling quarter two of the grid
 			grid[i][m-1-j] = q2[i][j]
 			grid[i][m-1-j].X = i
 			grid[i][m-1-j].Y = m - 1 - j
-
 			//INFO Filling quarter three of the grid
 			grid[n-1-i][j] = q3[i][j]
 			grid[n-1-i][j].X = n - 1 - i
 			grid[n-1-i][j].Y = j
-
 			//INFO Filling quarter four of the grid
 			grid[n-1-i][m-1-j] = q4[i][j]
 			grid[n-1-i][m-1-j].X = n - 1 - i
 			grid[n-1-i][m-1-j].Y = m - 1 - j
 
 		}
-
 	}
 }
 
@@ -129,7 +122,6 @@ func (grid Grid) RandomWalker(numberOfSteps int) {
 	getNextPoint = func(currentPoint [2]int) [2]int {
 
 		nextPoint := [2]int{currentPoint[0] + utils.RandomNumber(2), currentPoint[1] + utils.RandomNumber(2)}
-
 		if nextPoint[0] < 0 || nextPoint[0] > gridSize || nextPoint[1] < 0 || nextPoint[1] > gridSize {
 			return getNextPoint(currentPoint)
 		}
@@ -137,7 +129,6 @@ func (grid Grid) RandomWalker(numberOfSteps int) {
 	}
 
 	stepsResting := numberOfSteps - 1
-
 	for i := 0; i < stepsResting; i++ {
 		nextPoint := getNextPoint(startPoint)
 		nextCell := grid[nextPoint[0]][nextPoint[1]]
@@ -169,7 +160,6 @@ func (grid Grid) Compare(comparedGrid Grid) bool {
 }
 
 func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps int) {
-
 	if numberOfVectors == 0 {
 		numberOfVectors = utils.NumberOfVectors
 	}
@@ -185,18 +175,15 @@ func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps
 
 	gridSize := len(grid)
 	halfGridSize := gridSize / 2
-
 	quarters := [4]Grid{}
 
 	for i := 0; i < 4; i++ {
-
 		gridSeed := NewGrid(halfGridSize)
 		gridSeed.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)
 		for j := 0; j < randomWalkers; j++ {
 			gridSeed.RandomWalker(randomSteps)
 		}
 		quarters[i] = gridSeed.Rotate().Rotate()
-
 	}
 
 	grid.FillGridWithQuarterGrids(
@@ -205,5 +192,4 @@ func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps
 		quarters[2],
 		quarters[3],
 	)
-
 }

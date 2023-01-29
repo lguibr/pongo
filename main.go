@@ -9,18 +9,14 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+var port = ":3001"
+
 func main() {
-	websocketServer := server.New()
-
 	game := game.StartGame()
-
-	fmt.Println("Game started:")
-	fmt.Println(game)
-
+	websocketServer := server.New()
+	fmt.Println("Server started on port", port)
 	http.HandleFunc("/", websocketServer.HandleGetSit(game))
-
 	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe(game)))
 
-	panic(http.ListenAndServe(":3001", nil))
-
+	panic(http.ListenAndServe(port, nil))
 }
