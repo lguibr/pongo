@@ -68,6 +68,12 @@ func TestStartGame(t *testing.T) {
 
 func TestGame_ToJson(t *testing.T) {
 	game := &Game{
+		Balls: []*Ball{
+			{X: 0, Y: 0, Index: 0},
+			{X: 1, Y: 1, Index: 0},
+			{X: 2, Y: 2, Index: 0},
+		},
+		Paddles: [4]*Paddle{{Index: 0, X: 10, Y: 20, Width: 30, Height: 40}, {X: 15, Y: 25, Width: 35, Height: 45}},
 		Canvas: &Canvas{
 			Grid: Grid{
 				{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 1, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
@@ -75,25 +81,15 @@ func TestGame_ToJson(t *testing.T) {
 			},
 		},
 		Players: [4]*Player{
-			{Id: "player0",
-				Paddle: &Paddle{X: 10, Y: 20, Width: 30, Height: 40},
-				Balls: []*Ball{
-					{X: 0, Y: 0, Index: 0},
-					{X: 1, Y: 1, Index: 0},
-					{X: 2, Y: 2, Index: 0},
-				}},
-			{
-				Id:     "player1",
-				Paddle: &Paddle{X: 15, Y: 25, Width: 35, Height: 45},
-				Balls: []*Ball{
-					{X: 3, Y: 3, Index: 1},
-					{X: 4, Y: 4, Index: 1},
-				}},
+			{Id: "player0"},
+			{Id: "player1"},
 			nil,
 			nil,
 		},
 	}
+
 	gameBytes, err := json.Marshal(game)
+
 	if err != nil {
 		t.Errorf("Error marshalling game: %v", err)
 	}

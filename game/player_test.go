@@ -17,9 +17,7 @@ func TestNewPlayer(t *testing.T) {
 	}
 	canvasSize := 800
 	canvas := &Canvas{Width: canvasSize, Height: canvasSize}
-	balls := []*Ball{
-		NewBall(canvas, 0, 0, 0, 1),
-	}
+
 	color := utils.NewRandomColor()
 	testCases := []NewPlayerTestCase{
 		{
@@ -31,8 +29,6 @@ func TestNewPlayer(t *testing.T) {
 				Id:     "player1",
 				Canvas: canvas,
 				Color:  color,
-				Paddle: NewPaddle(canvasSize, 1),
-				Balls:  balls,
 			}},
 		{
 			canvas: canvas,
@@ -43,8 +39,6 @@ func TestNewPlayer(t *testing.T) {
 				Id:     "player2",
 				Canvas: canvas,
 				Color:  color,
-				Paddle: NewPaddle(canvasSize, 2),
-				Balls:  balls,
 			}},
 	}
 
@@ -55,8 +49,6 @@ func TestNewPlayer(t *testing.T) {
 
 		//INFO Can't compare pointers
 		result.Color = test.expectedPlayer.Color
-		result.Paddle = test.expectedPlayer.Paddle
-		result.Balls = test.expectedPlayer.Balls
 		result.channel = test.expectedPlayer.channel
 
 		if !reflect.DeepEqual(result, test.expectedPlayer) {

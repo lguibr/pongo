@@ -34,7 +34,7 @@ func TestPaddle_SetDirection(t *testing.T) {
 }
 
 func TestPaddle_Move(t *testing.T) {
-	paddle := Paddle{X: 10, Y: 20, Width: 30, Height: 40, Velocity: 5, Index: 3}
+	paddle := Paddle{X: 10, Y: 20, Width: 30, Height: 40, Velocity: 5, canvasSize: utils.CanvasSize}
 	testCases := []struct {
 		index      int
 		direction  string
@@ -52,13 +52,13 @@ func TestPaddle_Move(t *testing.T) {
 		{3, "left", 5, 25, true},
 	}
 
-	for _, tc := range testCases {
+	for index, tc := range testCases {
 		paddle.Index = tc.index
 		paddle.Direction = tc.direction
 		paddle.Move()
 		if tc.shouldMove {
 			if paddle.X != tc.finalX || paddle.Y != tc.finalY {
-				t.Errorf("Expected paddle to move to (%d, %d) but got (%d, %d)", tc.finalX, tc.finalY, paddle.X, paddle.Y)
+				t.Errorf("Expected paddle to move to (%d, %d) but got (%d, %d) in index : %d", tc.finalX, tc.finalY, paddle.X, paddle.Y, index)
 			}
 		} else {
 			if paddle.X != 10 || paddle.Y != 20 {
