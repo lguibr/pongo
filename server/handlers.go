@@ -12,64 +12,37 @@ import (
 
 func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 	return func(ws *websocket.Conn) {
-		fmt.Println("New Connection from client: ", ws.RemoteAddr())
-		fmt.Println(g)
-
+		//INFO Start the WebSocket connection
 		s.OpenConnection(ws)
-
+		close := func() { s.CloseConnection(ws) }
+		//INFO Initiate a new game if there is no player
 		if !g.HasPlayer() {
 			g.Canvas.Grid.Fill(0, 0, 0, 0)
 		}
-
-		index := g.GetNextIndex()
-		//INFO Initiate the player channel
+		//INFO Initiating channels
 		playerChannel := make(chan game.PlayerMessage)
-		//INFO Initiate the ball channel
 		ballChannel := make(chan game.BallMessage)
-
-		initialBall := game.NewBall(ballChannel, 0, 0, 0, g.Canvas.CanvasSize, index)
-
-		player := game.NewPlayer(g.Canvas, index, playerChannel, initialBall)
-
-		fmt.Println("Start reading from player channel")
-		//INFO Reading Player messages
-		go func() {
-			for message := range playerChannel {
-				switch payload := message.(type) {
-				case game.PlayerConnectMessage:
-					g.Players[index] = player
-					fmt.Println("Player connected: ", payload)
-				case game.PlayerDisconnectMessage:
-					g.Players[index] = nil
-					fmt.Println("Player Disconnected: ")
-					s.CloseConnection(ws)
-				default:
-					continue
-				}
-			}
-		}()
-		//INFO Subscribe the player
-		player.Subscribe()
-
-		fmt.Println("Start reading from ball channel")
-		//INFO Reading Ball messages
-		go func() {
-			for message := range ballChannel {
-				switch payload := message.(type) {
-				case game.BallPositionMessage:
-					ball := payload.Ball
-					ball.CollidePaddles(g.Players)
-					ball.CollideCells(g.Canvas.Grid, g.Canvas.CellSize)
-					ball.CollideWalls()
-				default:
-					continue
-				}
-			}
-		}()
-
-		g.WriteGameState(ws)
-		player.ReadInput(ws)
-
+		paddleChannel := make(chan game.PaddleMessage)
+		// INFO Initiate the player and player's dependencies
+		playerIndex := g.GetNextIndex()
+		currentBallIndex := len(g.Balls)
+		if currentBallIndex < 0 {
+			currentBallIndex = 0
+		}
+		player := game.NewPlayer(g.Canvas, playerIndex, playerChannel)
+		playerPaddle := game.NewPaddle(paddleChannel, g.Canvas.CanvasSize, playerIndex)
+		initialPlayerBall := game.NewBall(ballChannel, 0, 0, 0, g.Canvas.CanvasSize, playerIndex, currentBallIndex)
+		//INFO Start reading from game's entities channels
+		go g.ReadPlayerChannel(playerIndex, playerChannel, playerPaddle, initialPlayerBall, close)
+		go g.ReadBallChannel(playerIndex, ballChannel)
+		go playerPaddle.ReadPaddleChannel(paddleChannel)
+		//INFO Connect the player
+		player.Connect()
+		//INFO Start reading input from player and writing game state to player
+		go player.ReadInput(ws, paddleChannel)
+		go g.WriteGameState(ws)
+		//INFO Wait for player to disconnect
+		g.Players[playerIndex].WaitDisconnection()
 	}
 }
 

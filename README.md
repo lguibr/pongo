@@ -33,7 +33,7 @@ The game state is handled by a separate routine that receives the ball and paddl
 
 The paddle movement is handled by a separate routine that processes the paddle position based on the user's last input direction and the paddle's velocity. This data is sent to the game routine via channels.
 
-A separate go routine is responsible for processing the ball position and sending it to the game routine every 40 milliseconds. The game routine then processes collisions and returns a new velocity for the ball, which is used to update the ball's position and reflect it off of bricks or the paddle.
+A separate go routine is responsible for processing the ball position and sending it to the game routine every 20 milliseconds. The game routine then processes collisions and returns a new velocity for the ball, which is used to update the ball's position and reflect it off of bricks or the paddle.
 
 ## Build
 

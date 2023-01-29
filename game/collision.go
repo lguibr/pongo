@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/lguibr/pongo/utils"
@@ -29,8 +28,8 @@ func (ball *Ball) CollidePaddle(paddle *Paddle) {
 	}
 
 	collisionDetected := ball.BallInterceptPaddles(paddle)
-
 	if collisionDetected {
+		ball.OwnerIndex = paddle.Index
 		handlers := [4]func(){
 			ball.HandleCollideRight,
 			ball.HandleCollideTop,
@@ -46,7 +45,6 @@ func (ball *Ball) CollidePaddle(paddle *Paddle) {
 func (ball *Ball) CollideCells(grid Grid, cellSize int) {
 	gridSize := len(grid)
 	row, col := ball.getCenterIndex(grid)
-
 	if row < 0 || row > gridSize-1 || col < 0 || col > gridSize-1 {
 		return
 	}
@@ -54,20 +52,20 @@ func (ball *Ball) CollideCells(grid Grid, cellSize int) {
 	for i := -1; i <= 1; i++ {
 		for j := -1; j <= 1; j++ {
 			surroundingRow, surroundingCol := row+i, col+j
-
 			if surroundingRow < 0 || surroundingRow > gridSize-1 || surroundingCol < 0 || surroundingCol > gridSize-1 {
 				continue
 			}
 
 			ballInterceptsCell := ball.InterceptsIndex(surroundingRow, surroundingCol, cellSize)
-
 			if ballInterceptsCell {
 				t := grid[surroundingRow][surroundingCol].Data.Type
 				if t == utils.Cells.Brick {
 					ball.handleCollideBrick([2]int{row, col}, [2]int{surroundingRow, surroundingCol}, grid)
+					return
 				}
 				if t == utils.Cells.Block {
 					ball.handleCollideBlock([2]int{row, col}, [2]int{surroundingRow, surroundingCol})
+					return
 				}
 			}
 		}
@@ -76,30 +74,25 @@ func (ball *Ball) CollideCells(grid Grid, cellSize int) {
 
 func (ball *Ball) CollideWalls() {
 	if ball.CollidesBottomWall() {
-		fmt.Println("Collide bottom wall")
 		ball.HandleCollideBottom()
 	}
 	if ball.CollidesLeftWall() {
-		fmt.Println("Collide left wall")
 		ball.HandleCollideLeft()
 	}
 	if ball.CollidesTopWall() {
-		fmt.Println("Collide top wall")
 		ball.HandleCollideTop()
 	}
-
 	if ball.CollidesRightWall() {
-		fmt.Println("Collide right wall")
 		ball.HandleCollideRight()
 	}
 }
 
-func (ball *Ball) CollidePaddles(players [4]*Player) {
-	for _, player := range players {
-		if player == nil {
+func (ball *Ball) CollidePaddles(paddles [4]*Paddle) {
+	for _, paddle := range paddles {
+		if paddle == nil {
 			continue
 		}
-		ball.CollidePaddle(player.Paddle)
+		ball.CollidePaddle(paddle)
 	}
 }
 
@@ -124,7 +117,6 @@ func (ball *Ball) handleCollideBlock(oldIndices, newIndices [2]int) {
 }
 
 func (ball *Ball) BallInterceptPaddles(paddle *Paddle) bool {
-
 	paddleTopLeftX := paddle.X
 	paddleTopLeftY := paddle.Y
 
@@ -159,7 +151,6 @@ func (ball *Ball) BallInterceptPaddles(paddle *Paddle) bool {
 }
 
 func (ball *Ball) InterceptsIndex(x, y, cellSize int) bool {
-
 	leftTopX := x * cellSize
 	leftTopY := y * cellSize
 

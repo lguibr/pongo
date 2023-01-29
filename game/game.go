@@ -13,6 +13,8 @@ import (
 type Game struct {
 	Canvas  *Canvas    `json:"canvas"`
 	Players [4]*Player `json:"players"`
+	Paddles [4]*Paddle `json:"paddles"`
+	Balls   []*Ball    `json:"balls"`
 }
 
 func StartGame() *Game {
@@ -34,7 +36,7 @@ func StartGame() *Game {
 func (game *Game) ToJson() []byte {
 	gameBytes, err := json.Marshal(game)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error Marshaling the game state", err)
 		return []byte{}
 	}
 	return gameBytes
@@ -67,4 +69,23 @@ func (game *Game) WriteGameState(ws *websocket.Conn) {
 		}
 		time.Sleep(utils.Period)
 	}
+}
+
+func (game *Game) RemovePlayer(playerIndex int) {
+	game.Players[playerIndex] = nil
+	game.Paddles[playerIndex] = nil
+	for i, ball := range game.Balls {
+		if ball.OwnerIndex == playerIndex {
+			game.Balls = append(game.Balls[:i], game.Balls[i+1:]...)
+		}
+	}
+}
+
+func (g *Game) AddPlayer(index int, player *Player, playerPaddle *Paddle, initialPlayerBall *Ball) {
+	g.Players[index] = player
+	g.Paddles[index] = playerPaddle
+	go playerPaddle.Engine()
+	g.Balls = append(g.Balls, initialPlayerBall)
+	go initialPlayerBall.Engine()
+
 }

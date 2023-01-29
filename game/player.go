@@ -20,56 +20,54 @@ type Player struct {
 	Id      string  `json:"id"`
 	Canvas  *Canvas `json:"canvas"`
 	Color   [3]int  `json:"color"`
-	Paddle  *Paddle `json:"paddle"`
-	Balls   []*Ball `json:"balls"`
 	channel chan PlayerMessage
 }
 
-func NewPlayer(canvas *Canvas, index int, channel chan PlayerMessage, initialBall *Ball) *Player {
-
+func NewPlayer(canvas *Canvas, index int, channel chan PlayerMessage) *Player {
 	return &Player{
 		Index:   index,
 		Id:      "player" + fmt.Sprint(index),
 		Canvas:  canvas,
 		Color:   utils.NewRandomColor(),
-		Paddle:  NewPaddle(canvas.CanvasSize, index),
-		Balls:   []*Ball{initialBall},
 		channel: channel,
 	}
 }
 
-func (player *Player) Subscribe() {
-	defer func() { fmt.Println("Player subscribed: ", player) }()
-
-	go player.Paddle.Engine()
-	go player.Balls[0].Engine()
-	fmt.Println("Player dependencies engined: ", player)
+func (player *Player) Connect() {
 	player.channel <- PlayerConnectMessage{PlayerPayload: player}
-	fmt.Println("Player Subscribed: ", player)
-
 }
 
-func (player *Player) Unsubscribe() {
-	fmt.Println("UnSubscribePlayer of index: ", player.Index)
+func (player *Player) Disconnect() {
 	player.channel <- PlayerDisconnectMessage{}
 }
 
-func (player *Player) ReadInput(ws *websocket.Conn) {
+func (player *Player) ReadInput(ws *websocket.Conn, paddleChannel chan PaddleMessage) {
 	defer func() {
-		player.Unsubscribe()
+		player.Disconnect()
 	}()
 
-	buffer := make([]byte, 1024)
 	for {
+		buffer := make([]byte, 1024)
 		size, err := ws.Read(buffer)
 		if err != nil {
-			fmt.Println("Error reading from client:", err)
+			fmt.Println("EOFError reading from client:", err)
 			if err == io.EOF {
 				fmt.Println("Connection closed by the client:", err)
 				return
 			}
 			continue
 		}
-		player.Paddle.SetDirection(buffer[:size])
+		//Send I/O message to change the paddle direction
+		newDirection := buffer[:size]
+		paddleChannel <- PaddleDirectionMessage{Direction: newDirection}
+	}
+}
+
+func (player *Player) WaitDisconnection() {
+	defer fmt.Println("Player disconnected")
+	for {
+		if player == nil {
+			return
+		}
 	}
 }

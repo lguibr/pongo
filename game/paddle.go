@@ -8,6 +8,15 @@ import (
 	"github.com/lguibr/pongo/utils"
 )
 
+type PaddleMessage interface{}
+
+type PaddlePositionMessage struct {
+	Paddle *Paddle
+}
+type PaddleDirectionMessage struct {
+	Direction []byte
+}
+
 type Paddle struct {
 	X          int    `json:"x"`
 	Y          int    `json:"y"`
@@ -16,7 +25,8 @@ type Paddle struct {
 	Index      int    `json:"index"`
 	Direction  string `json:"direction"`
 	Velocity   int    `json:"velocity"`
-	CanvasSize int    `json:"canvasSize"`
+	canvasSize int
+	channel    chan PaddleMessage
 }
 
 func (paddle *Paddle) Move() {
@@ -41,17 +51,16 @@ func (paddle *Paddle) Move() {
 		paddle.Y -= velocityY
 	} else {
 
-		if paddle.X+paddle.Width+velocityX > paddle.CanvasSize || paddle.Y+paddle.Height-velocityY > paddle.CanvasSize {
+		if paddle.X+paddle.Width+velocityX > paddle.canvasSize || paddle.Y+paddle.Height-velocityY > paddle.canvasSize {
 			return
 		}
 
 		paddle.X += velocityX
 		paddle.Y += velocityY
 	}
-
 }
 
-func NewPaddle(canvasSize, index int) *Paddle {
+func NewPaddle(channel chan PaddleMessage, canvasSize, index int) *Paddle {
 
 	offSet := -utils.PaddleLength/2 + utils.PaddleWeight/2
 	if index > 1 {
@@ -82,7 +91,8 @@ func NewPaddle(canvasSize, index int) *Paddle {
 		Height:     height,
 		Direction:  "",
 		Velocity:   utils.MinVelocity * 2,
-		CanvasSize: canvasSize,
+		canvasSize: canvasSize,
+		channel:    channel,
 	}
 }
 
@@ -106,6 +116,7 @@ func (paddle *Paddle) Engine() {
 			break
 		}
 		paddle.Move()
+		paddle.channel <- PaddlePositionMessage{Paddle: paddle}
 		time.Sleep(utils.Period)
 	}
 }

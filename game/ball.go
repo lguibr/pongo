@@ -10,12 +10,6 @@ import (
 
 type BallMessage interface{}
 
-type PositionPayload struct {
-	X      int
-	Y      int
-	Radius int
-}
-
 type BallPositionMessage struct {
 	Ball *Ball
 }
@@ -29,17 +23,17 @@ type Ball struct {
 	Ay         int `json:"ay"`
 	Radius     int `json:"radius"`
 	Index      int `json:"index"`
+	OwnerIndex int `json:"ownerIndex"`
 	channel    chan BallMessage
 	canvasSize int
 }
 
-func NewBall(channel chan BallMessage, x, y, radius, canvasSize, index int) *Ball {
-
+func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, index int) *Ball {
 	if x == 0 && y == 0 {
 		cardinalPosition := [2]int{canvasSize/2 - utils.CellSize*1.5, 0}
 
 		rotateX, rotateY := utils.RotateVector(
-			index,
+			ownerIndex,
 			cardinalPosition[0],
 			cardinalPosition[1],
 			canvasSize,
@@ -64,8 +58,7 @@ func NewBall(channel chan BallMessage, x, y, radius, canvasSize, index int) *Bal
 	cardinalVX := minVelocity + rand.Intn(maxVelocity-minVelocity)
 	cardinalVY := utils.RandomNumberN(maxVelocity)
 
-	vx, vy := utils.RotateVector(index, -cardinalVX, cardinalVY, 1, 1)
-
+	vx, vy := utils.RotateVector(ownerIndex, -cardinalVX, cardinalVY, 1, 1)
 	return &Ball{
 		X:          x,
 		Y:          y,
@@ -73,6 +66,7 @@ func NewBall(channel chan BallMessage, x, y, radius, canvasSize, index int) *Bal
 		Vy:         vy,
 		Radius:     radius,
 		Index:      index,
+		OwnerIndex: ownerIndex,
 		canvasSize: canvasSize,
 		channel:    channel,
 	}
@@ -92,13 +86,11 @@ func (ball *Ball) Engine() {
 }
 
 func (ball *Ball) Move() {
-
 	ball.X += ball.Vx + ball.Ax/2
 	ball.Y += ball.Vy + ball.Ay/2
 
 	ball.Vx += ball.Ax
 	ball.Vy += ball.Ay
-
 }
 
 func (ball *Ball) getCenterIndex(grid Grid) (x, y int) {
