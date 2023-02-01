@@ -20,3 +20,11 @@ func (s *Server) CloseConnection(ws *websocket.Conn) {
 	ws.Close()
 	delete(s.conns, ws) // remove the connection from the map
 }
+
+func (s *Server) KeepConnection(ws *websocket.Conn) {
+	for {
+		if !ws.IsServerConn() {
+			s.CloseConnection(ws)
+		}
+	}
+}
