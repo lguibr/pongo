@@ -87,10 +87,11 @@ func TestBall_HandleCollideBrick(t *testing.T) {
 			data := &Cell{Data: NewBrickData(utils.Cells.Brick, tc.life)}
 			grid := NewGrid(10)
 			grid[tc.newIndices[0]][tc.newIndices[1]] = *data
-			ball := &Ball{Channel: make(chan BallMessage), Vx: 1, Vy: 1, Mass: 1}
+			ballChannel := NewBallChannel()
+			ball := &Ball{Channel: ballChannel, Vx: 1, Vy: 1, Mass: 1}
 
 			go func() {
-				for message := range ball.Channel {
+				for message := range ballChannel {
 					switch message {
 					default:
 						continue
@@ -185,17 +186,17 @@ func TestBall_CollideWalls(t *testing.T) {
 		expectedVx int
 		expectedVy int
 	}{
-		// {
-		// 	name:       "Collide bottom wall",
-		// 	ballX:      75,
-		// 	ballY:      100,
-		// 	ballVx:     1,
-		// 	ballVy:     1,
-		// 	ballRadius: 10,
-		// 	canvasSize: 100,
-		// 	expectedVx: 1,
-		// 	expectedVy: -1,
-		// },
+		{
+			name:       "Collide bottom wall",
+			ballX:      75,
+			ballY:      100,
+			ballVx:     1,
+			ballVy:     1,
+			ballRadius: 10,
+			canvasSize: 100,
+			expectedVx: 1,
+			expectedVy: -1,
+		},
 		{
 			name:       "Collide top wall",
 			ballX:      75,
@@ -208,7 +209,7 @@ func TestBall_CollideWalls(t *testing.T) {
 			expectedVy: 1,
 		},
 		{
-			name:       "Collide Right wall and top wall",
+			name:       "Collide Right wall",
 			ballX:      95,
 			ballY:      10,
 			ballVx:     1,
@@ -216,7 +217,7 @@ func TestBall_CollideWalls(t *testing.T) {
 			ballRadius: 10,
 			canvasSize: 100,
 			expectedVx: -1,
-			expectedVy: 1,
+			expectedVy: -1,
 		},
 		{
 			name:       "Collide All Walls, last collisions at Top and Right ",
@@ -240,7 +241,17 @@ func TestBall_CollideWalls(t *testing.T) {
 				Vx:         test.ballVx,
 				Vy:         test.ballVy,
 				canvasSize: test.canvasSize,
+				Channel:    NewBallChannel(),
 			}
+
+			go func() {
+				for message := range ball.Channel {
+					switch message {
+					default:
+						continue
+					}
+				}
+			}()
 
 			ball.CollideWalls()
 
