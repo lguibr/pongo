@@ -14,13 +14,21 @@ type PlayerConnectMessage struct {
 	PlayerPayload *Player
 }
 type PlayerDisconnectMessage struct{}
+type PlayerScore struct {
+	Score int
+}
 
 type Player struct {
 	Index   int     `json:"index"`
 	Id      string  `json:"id"`
 	Canvas  *Canvas `json:"canvas"`
 	Color   [3]int  `json:"color"`
+	Score   int     `json:"score"`
 	channel chan PlayerMessage
+}
+
+func NewPlayerChannel() chan PlayerMessage {
+	return make(chan PlayerMessage)
 }
 
 func NewPlayer(canvas *Canvas, index int, channel chan PlayerMessage) *Player {
@@ -30,6 +38,7 @@ func NewPlayer(canvas *Canvas, index int, channel chan PlayerMessage) *Player {
 		Canvas:  canvas,
 		Color:   utils.NewRandomColor(),
 		channel: channel,
+		Score:   utils.InitialScore,
 	}
 }
 

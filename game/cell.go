@@ -3,8 +3,9 @@ package game
 import "github.com/lguibr/pongo/utils"
 
 type BrickData struct {
-	Type utils.CellType `json:"type"`
-	Life int            `json:"life"`
+	Type  utils.CellType `json:"type"`
+	Life  int            `json:"life"`
+	Level int            `json:"level"`
 }
 type Cell struct {
 	X    int        `json:"x"`
@@ -23,7 +24,7 @@ func NewBrickData(typeOfCell utils.CellType, life int) *BrickData {
 	if typeOfCell == utils.Cells.Empty {
 		life = 0
 	}
-	return &BrickData{Type: typeOfCell, Life: life}
+	return &BrickData{Type: typeOfCell, Life: life, Level: life}
 }
 
 func (cell *Cell) Compare(comparedCell Cell) bool {
@@ -31,6 +32,9 @@ func (cell *Cell) Compare(comparedCell Cell) bool {
 		return false
 	}
 	if cell.Data.Life != comparedCell.Data.Life {
+		return false
+	}
+	if cell.Data.Level != comparedCell.Data.Level {
 		return false
 	}
 	return true
@@ -41,6 +45,9 @@ func (data *BrickData) Compare(comparedData *BrickData) bool {
 		return false
 	}
 	if data.Life != comparedData.Life {
+		return false
+	}
+	if data.Level != comparedData.Level {
 		return false
 	}
 	return true

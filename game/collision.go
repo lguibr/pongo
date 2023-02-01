@@ -1,10 +1,21 @@
 package game
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/lguibr/pongo/utils"
 )
+
+type WallCollisionMessage struct {
+	Index int
+	Ball  *Ball
+}
+
+type BreakBrickMessage struct {
+	BallPayload *Ball
+	Level       int
+}
 
 func (ball *Ball) CollidesTopWall() bool {
 	return ball.Y-ball.Radius <= 0
@@ -72,18 +83,25 @@ func (ball *Ball) CollideCells(grid Grid, cellSize int) {
 	}
 }
 
+type WallCollision struct {
+	Collides func() bool
+	Handle   func()
+}
+
 func (ball *Ball) CollideWalls() {
-	if ball.CollidesBottomWall() {
-		ball.HandleCollideBottom()
+	wallsCollision := [4]*WallCollision{
+		{ball.CollidesRightWall, ball.HandleCollideRight},
+		{ball.CollidesTopWall, ball.HandleCollideTop},
+		{ball.CollidesLeftWall, ball.HandleCollideLeft},
+		{ball.CollidesBottomWall, ball.HandleCollideBottom},
 	}
-	if ball.CollidesLeftWall() {
-		ball.HandleCollideLeft()
-	}
-	if ball.CollidesTopWall() {
-		ball.HandleCollideTop()
-	}
-	if ball.CollidesRightWall() {
-		ball.HandleCollideRight()
+
+	for index, wallCollision := range wallsCollision {
+		if wallCollision.Collides() {
+			wallCollision.Handle()
+			ball.Channel <- WallCollisionMessage{Index: index, Ball: ball}
+			return
+		}
 	}
 }
 
@@ -98,13 +116,21 @@ func (ball *Ball) CollidePaddles(paddles [4]*Paddle) {
 
 func (ball *Ball) handleCollideBrick(oldIndices, newIndices [2]int, grid Grid) {
 	ball.handleCollideBlock(oldIndices, newIndices)
-	grid[newIndices[0]][newIndices[1]].Data.Life -= 1
-	if grid[newIndices[0]][newIndices[1]].Data.Life == 0 {
+
+	grid[newIndices[0]][newIndices[1]].Data.Life -= ball.Mass
+	if grid[newIndices[0]][newIndices[1]].Data.Life <= 0 {
 		grid[newIndices[0]][newIndices[1]].Data.Type = utils.Cells.Empty
+		level := grid[newIndices[0]][newIndices[1]].Data.Level
+		ball.Channel <- BreakBrickMessage{Level: level, BallPayload: ball}
 	}
 }
 
 func (ball *Ball) handleCollideBlock(oldIndices, newIndices [2]int) {
+	fmt.Println("Ball is phasing ? " + fmt.Sprint(ball.Phasing))
+	if ball.Phasing {
+		return
+	}
+
 	velocityReflector := utils.SubtractVectors(oldIndices, newIndices)
 
 	if velocityReflector[0] != 0 {

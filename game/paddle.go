@@ -29,6 +29,10 @@ type Paddle struct {
 	channel    chan PaddleMessage
 }
 
+func NewPaddleChannel() chan PaddleMessage {
+	return make(chan PaddleMessage)
+}
+
 func (paddle *Paddle) Move() {
 	if paddle.Direction != "left" && paddle.Direction != "right" {
 		return
