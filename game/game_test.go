@@ -69,9 +69,9 @@ func TestStartGame(t *testing.T) {
 func TestGame_ToJson(t *testing.T) {
 	game := &Game{
 		Balls: []*Ball{
-			{X: 0, Y: 0, Index: 0},
-			{X: 1, Y: 1, Index: 0},
-			{X: 2, Y: 2, Index: 0},
+			{X: 0, Y: 0, Id: 0},
+			{X: 1, Y: 1, Id: 0},
+			{X: 2, Y: 2, Id: 0},
 		},
 		Paddles: [4]*Paddle{{Index: 0, X: 10, Y: 20, Width: 30, Height: 40}, {X: 15, Y: 25, Width: 35, Height: 45}},
 		Canvas: &Canvas{

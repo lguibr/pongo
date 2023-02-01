@@ -25,6 +25,7 @@ func TestNewPlayer(t *testing.T) {
 			index:  1,
 			id:     "player1",
 			expectedPlayer: &Player{
+				Score:  100,
 				Index:  1,
 				Id:     "player1",
 				Canvas: canvas,
@@ -35,6 +36,7 @@ func TestNewPlayer(t *testing.T) {
 			index:  2,
 			id:     "player2",
 			expectedPlayer: &Player{
+				Score:  100,
 				Index:  2,
 				Id:     "player2",
 				Canvas: canvas,

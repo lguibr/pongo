@@ -3,7 +3,9 @@ package utils
 import "time"
 
 const (
-	Period = 20 * time.Millisecond
+	Period = 10 * time.Millisecond
+
+	InitialScore = 100
 
 	CanvasSize = 576 //INFO Must be divisible by GridSize
 	GridSize   = 12  //INFO Must be divisible by 2
@@ -17,6 +19,7 @@ const (
 	NumberOfRandomWalkers = GridSize / 4
 	NumberOfRandomSteps   = GridSize / 2
 
+	BallMass     = 1
 	BallSize     = CellSize / 4
 	PaddleLength = CellSize * 3
 	PaddleWeight = CellSize / 2

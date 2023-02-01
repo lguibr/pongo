@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
 
@@ -15,17 +16,25 @@ type BallPositionMessage struct {
 }
 
 type Ball struct {
-	X          int `json:"x"`
-	Y          int `json:"y"`
-	Vx         int `json:"vx"`
-	Vy         int `json:"vy"`
-	Ax         int `json:"ax"`
-	Ay         int `json:"ay"`
-	Radius     int `json:"radius"`
-	Index      int `json:"index"`
-	OwnerIndex int `json:"ownerIndex"`
-	channel    chan BallMessage
+	X          int              `json:"x"`
+	Y          int              `json:"y"`
+	Vx         int              `json:"vx"`
+	Vy         int              `json:"vy"`
+	Ax         int              `json:"ax"`
+	Ay         int              `json:"ay"`
+	Radius     int              `json:"radius"`
+	Id         int              `json:"id"`
+	OwnerIndex int              `json:"ownerIndex"`
+	Phasing    bool             `json:"phasing"`
+	Mass       int              `json:"mass"`
+	Channel    chan BallMessage `json:"-"`
 	canvasSize int
+	open       bool
+}
+
+func NewBallChannel() chan BallMessage {
+	return make(chan BallMessage, 1)
+
 }
 
 func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, index int) *Ball {
@@ -48,6 +57,8 @@ func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, ind
 		x, y = translatedVector[0], translatedVector[1]
 	}
 
+	mass := utils.BallMass
+
 	if radius == 0 {
 		radius = utils.BallSize
 	}
@@ -65,22 +76,22 @@ func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, ind
 		Vx:         vx,
 		Vy:         vy,
 		Radius:     radius,
-		Index:      index,
+		Id:         index,
 		OwnerIndex: ownerIndex,
 		canvasSize: canvasSize,
-		channel:    channel,
+		Channel:    channel,
+		open:       true,
+		Mass:       mass,
 	}
 }
 
 func (ball *Ball) Engine() {
 	for {
-		if ball == nil {
-			fmt.Println("player ball", ball.Index, "disconnected")
+		if !ball.open {
 			return
 		}
-
 		ball.Move()
-		ball.channel <- BallPositionMessage{ball}
+		ball.Channel <- BallPositionMessage{ball}
 		time.Sleep(utils.Period)
 	}
 }
@@ -122,4 +133,23 @@ func (ball *Ball) ReflectVelocityX() {
 
 func (ball *Ball) ReflectVelocityY() {
 	ball.Vy = -ball.Vy
+}
+
+func (ball *Ball) IncreaseVelocity(ratio float64) {
+	ball.Vx = int(math.Floor(float64(ball.Vx) * ratio))
+	ball.Vy = int(math.Floor(float64(ball.Vy) * ratio))
+}
+
+func (ball *Ball) IncreaseMass(additional int) {
+	ball.Mass += additional
+	ball.Radius += additional * 2
+}
+func (ball *Ball) SetBallPhasing(expiresIn int) {
+	ball.Phasing = true
+	fmt.Println("Phasing for ", expiresIn*time.Now().Second(), " seconds")
+	go time.AfterFunc(time.Duration(expiresIn)*time.Second, func() {
+		fmt.Println("Phasing ended")
+		ball.Phasing = false
+	})
+
 }
