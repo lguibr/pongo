@@ -24,7 +24,7 @@ func TestNewBall(t *testing.T) {
 			10, 20, 30,
 		},
 	}
-	ballChannel := make(chan BallMessage)
+	ballChannel := NewBallChannel()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ball := NewBall(ballChannel, tc.x, tc.y, tc.radius, canvasSize, tc.index, tc.index)
@@ -38,8 +38,8 @@ func TestNewBall(t *testing.T) {
 				t.Errorf("Expected Radius to be %d, but got %d", tc.expectedRadius, ball.Radius)
 			}
 
-			if ball.Index != tc.index {
-				t.Errorf("Expected Index to be %d, but got %d", tc.index, ball.Index)
+			if ball.Id != tc.index {
+				t.Errorf("Expected Index to be %d, but got %d", tc.index, ball.Id)
 			}
 		})
 	}

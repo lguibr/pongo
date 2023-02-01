@@ -87,7 +87,17 @@ func TestBall_HandleCollideBrick(t *testing.T) {
 			data := &Cell{Data: NewBrickData(utils.Cells.Brick, tc.life)}
 			grid := NewGrid(10)
 			grid[tc.newIndices[0]][tc.newIndices[1]] = *data
-			ball := &Ball{Vx: 1, Vy: 1}
+			ballChannel := NewBallChannel()
+			ball := &Ball{Channel: ballChannel, Vx: 1, Vy: 1, Mass: 1}
+
+			go func() {
+				for message := range ballChannel {
+					switch message {
+					default:
+						continue
+					}
+				}
+			}()
 
 			ball.handleCollideBrick(tc.oldIndices, tc.newIndices, grid)
 
@@ -199,7 +209,7 @@ func TestBall_CollideWalls(t *testing.T) {
 			expectedVy: 1,
 		},
 		{
-			name:       "Collide Right wall and top wall",
+			name:       "Collide Right wall",
 			ballX:      95,
 			ballY:      10,
 			ballVx:     1,
@@ -207,7 +217,7 @@ func TestBall_CollideWalls(t *testing.T) {
 			ballRadius: 10,
 			canvasSize: 100,
 			expectedVx: -1,
-			expectedVy: 1,
+			expectedVy: -1,
 		},
 		{
 			name:       "Collide All Walls, last collisions at Top and Right ",
@@ -231,7 +241,17 @@ func TestBall_CollideWalls(t *testing.T) {
 				Vx:         test.ballVx,
 				Vy:         test.ballVy,
 				canvasSize: test.canvasSize,
+				Channel:    NewBallChannel(),
 			}
+
+			go func() {
+				for message := range ball.Channel {
+					switch message {
+					default:
+						continue
+					}
+				}
+			}()
 
 			ball.CollideWalls()
 
@@ -243,7 +263,7 @@ func TestBall_CollideWalls(t *testing.T) {
 	}
 }
 func TestBall_Move(t *testing.T) {
-	ball := NewBall(make(chan BallMessage), 10, 20, 30, utils.CanvasSize, 1, 1)
+	ball := NewBall(NewBallChannel(), 10, 20, 30, utils.CanvasSize, 1, 1)
 	ball.Ax = 1
 	ball.Ay = 2
 	testCases := []struct {
@@ -282,7 +302,7 @@ func TestBall_Move(t *testing.T) {
 }
 
 func TestBall_CollidePaddle(t *testing.T) {
-	ball := NewBall(make(chan BallMessage), 10, 20, 30, utils.CanvasSize, 1, 1)
+	ball := NewBall(NewBallChannel(), 10, 20, 30, utils.CanvasSize, 1, 1)
 	paddle := NewPaddle(make(chan PaddleMessage), utils.CanvasSize, 0)
 	testCases := []struct {
 		name                                        string
@@ -320,7 +340,7 @@ func TestBall_CollidePaddle(t *testing.T) {
 }
 
 func TestCollideCells(t *testing.T) {
-	ball := NewBall(make(chan BallMessage), 10, 10, 30, 12, 1, 1)
+	ball := NewBall(NewBallChannel(), 10, 10, 30, 12, 1, 1)
 
 	// Set up test cases
 	testCases := []struct {

@@ -14,10 +14,10 @@ func TestNewBrickData(t *testing.T) {
 	}
 
 	testCases := []NewBrickDataTestCase{
-		{typeOfCell: utils.Cells.Brick, life: 0, expected: &BrickData{Type: utils.Cells.Brick, Life: 1}},
-		{typeOfCell: utils.Cells.Brick, life: 2, expected: &BrickData{Type: utils.Cells.Brick, Life: 2}},
-		{typeOfCell: utils.Cells.Empty, life: 0, expected: &BrickData{Type: utils.Cells.Empty, Life: 0}},
-		{typeOfCell: utils.Cells.Empty, life: 2, expected: &BrickData{Type: utils.Cells.Empty, Life: 0}},
+		{typeOfCell: utils.Cells.Brick, life: 0, expected: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}},
+		{typeOfCell: utils.Cells.Brick, life: 2, expected: &BrickData{Type: utils.Cells.Brick, Life: 2, Level: 2}},
+		{typeOfCell: utils.Cells.Empty, life: 0, expected: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}},
+		{typeOfCell: utils.Cells.Empty, life: 2, expected: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}},
 	}
 
 	for _, test := range testCases {
@@ -82,9 +82,9 @@ func TestNewCell(t *testing.T) {
 	}
 
 	testCases := []NewCellTestCase{
-		{0, 0, 0, utils.Cells.Brick, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}},
-		{1, 2, 3, utils.Cells.Empty, Cell{X: 1, Y: 2, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}},
-		{4, 5, 2, utils.Cells.Brick, Cell{X: 4, Y: 5, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}},
+		{0, 0, 0, utils.Cells.Brick, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}},
+		{1, 2, 3, utils.Cells.Empty, Cell{X: 1, Y: 2, Data: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}}},
+		{4, 5, 2, utils.Cells.Brick, Cell{X: 4, Y: 5, Data: &BrickData{Type: utils.Cells.Brick, Life: 2, Level: 2}}},
 	}
 
 	for _, test := range testCases {
