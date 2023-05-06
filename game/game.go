@@ -3,7 +3,6 @@ package game
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"time"
 
 	"github.com/lguibr/pongo/utils"
@@ -12,23 +11,23 @@ import (
 
 type GameMessage interface{}
 
-type AddBall struct {
+type AddBallMsg struct {
 	BallPayload *Ball
 	ExpireIn    int
 }
-type RemoveBall struct {
+type RemoveBallMsg struct {
 	Id int
 }
 
-type IncreaseBallVelocity struct {
+type IncreaseBallVelocityMsg struct {
 	BallPayload *Ball
 	Ratio       float64
 }
-type IncreaseBallMass struct {
+type IncreaseBallMassMsg struct {
 	BallPayload *Ball
 	Additional  int
 }
-type BallPhasing struct {
+type BallPhasingMsg struct {
 	BallPayload *Ball
 	ExpireIn    int
 }
@@ -41,9 +40,7 @@ type Game struct {
 	channel chan GameMessage
 }
 
-func StartGame() *Game {
-	rand.Seed(time.Now().UnixNano())
-
+func NewGame() *Game {
 	canvas := NewCanvas(0, 0)
 	canvas.Grid.Fill(0, 0, 0, 0)
 	players := [4]*Player{}
@@ -109,7 +106,7 @@ func (game *Game) RemovePlayer(playerIndex int) {
 			continue
 		}
 
-		game.channel <- RemoveBall{Id: ball.Id}
+		game.channel <- RemoveBallMsg{Id: ball.Id}
 	}
 }
 
@@ -132,7 +129,7 @@ func (game *Game) AddBall(ball *Ball, expire int) {
 		time.Sleep(time.Duration(expire) * time.Second)
 		for _, b := range game.Balls {
 			if b.Id == ball.Id {
-				game.channel <- RemoveBall{Id: ball.Id}
+				game.channel <- RemoveBallMsg{Id: ball.Id}
 			}
 		}
 	}()
@@ -143,12 +140,39 @@ func (game *Game) RemoveBall(id int) {
 		if ball.Id != id {
 			continue
 		}
-		fmt.Println("Removing ball", ball.Id)
 		ball.open = false
 		if index < len(game.Balls)-1 {
 			game.Balls = append(game.Balls[:index], game.Balls[index+1:]...)
 		} else {
 			game.Balls = game.Balls[:index]
+		}
+	}
+}
+
+func (game *Game) ReadChannel() {
+	for message := range game.channel {
+		switch message := message.(type) {
+		case AddBallMsg:
+			ball := message.BallPayload
+			expire := message.ExpireIn
+			game.AddBall(ball, expire)
+		case RemoveBallMsg:
+			id := message.Id
+			game.RemoveBall(id)
+		case IncreaseBallVelocityMsg:
+			ball := message.BallPayload
+			ratio := message.Ratio
+			ball.IncreaseVelocity(ratio)
+		case IncreaseBallMassMsg:
+			ball := message.BallPayload
+			additional := message.Additional
+			ball.IncreaseMass(additional)
+		case BallPhasingMsg:
+			ball := message.BallPayload
+			expireIn := message.ExpireIn
+			ball.SetBallPhasing(expireIn)
+		default:
+			continue
 		}
 	}
 }

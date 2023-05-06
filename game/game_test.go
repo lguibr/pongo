@@ -49,7 +49,7 @@ func TestGame_GetNextIndex(t *testing.T) {
 }
 
 func TestStartGame(t *testing.T) {
-	game := StartGame()
+	game := NewGame()
 	if game.Canvas == nil {
 		t.Errorf("Expected game to have a canvas, but got nil")
 	}

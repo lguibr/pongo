@@ -10,10 +10,10 @@ import (
 
 type PaddleMessage interface{}
 
-type PaddlePositionMessage struct {
+type PaddlePositionMsg struct {
 	Paddle *Paddle
 }
-type PaddleDirectionMessage struct {
+type PaddleDirectionMsg struct {
 	Direction []byte
 }
 
@@ -120,7 +120,19 @@ func (paddle *Paddle) Engine() {
 			break
 		}
 		paddle.Move()
-		paddle.channel <- PaddlePositionMessage{Paddle: paddle}
+		paddle.channel <- PaddlePositionMsg{Paddle: paddle}
 		time.Sleep(utils.Period)
+	}
+}
+
+func (playerPaddle *Paddle) Read(paddleChannel chan PaddleMessage) {
+	for message := range paddleChannel {
+		switch message := message.(type) {
+		case PaddleDirectionMsg:
+			direction := message.Direction
+			playerPaddle.SetDirection(direction)
+		default:
+			continue
+		}
 	}
 }

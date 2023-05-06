@@ -68,6 +68,6 @@ func (player *Player) ReadInput(ws *websocket.Conn, paddleChannel chan PaddleMes
 		}
 		//Send I/O message to change the paddle direction
 		newDirection := buffer[:size]
-		paddleChannel <- PaddleDirectionMessage{Direction: newDirection}
+		paddleChannel <- PaddleDirectionMsg{Direction: newDirection}
 	}
 }

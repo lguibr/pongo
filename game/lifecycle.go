@@ -33,7 +33,7 @@ func (game *Game) LifeCycle(ws *websocket.Conn, close func()) {
 	)
 	//INFO Start reading from game's entities channels
 	go game.ReadPlayerChannel(playerIndex, playerChannel, playerPaddle, initialPlayerBall, close)
-	go playerPaddle.ReadPaddleChannel(paddleChannel)
+	go playerPaddle.Read(paddleChannel)
 	go game.ReadBallChannel(playerIndex, initialPlayerBall)
 	//INFO Connect the player
 	player.Connect()
