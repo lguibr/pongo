@@ -12,13 +12,13 @@ import (
 var port = ":3001"
 
 func main() {
-	g := game.StartGame()
-	go g.ReadGameChannel()
+	newGame := game.NewGame()
+	go newGame.ReadChannel()
 
 	websocketServer := server.New()
 	fmt.Println("Server started on port", port)
-	http.HandleFunc("/", websocketServer.HandleGetSit(g))
-	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe(g)))
+	http.HandleFunc("/", websocketServer.HandleGetSit(newGame))
+	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe(newGame)))
 
 	panic(http.ListenAndServe(port, nil))
 }
