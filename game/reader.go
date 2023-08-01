@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"math/rand"
 	"time"
 
@@ -45,7 +44,7 @@ func (g *Game) ReadBallChannel(ownerIndex int, ball *Ball) {
 			}
 			g.Players[playerIndex].channel <- PlayerScore{level}
 			random := rand.Intn(4)
-			fmt.Println("Reward random numb:", random)
+			// fmt.Println("Reward random numb:", random)
 			if random == 0 {
 				g.channel <- AddBall{
 					NewBall(

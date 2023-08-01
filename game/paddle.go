@@ -29,6 +29,11 @@ type Paddle struct {
 	channel    chan PaddleMessage
 }
 
+func (p *Paddle) GetX() int      { return p.X }
+func (p *Paddle) GetY() int      { return p.Y }
+func (p *Paddle) GetWidth() int  { return p.Width }
+func (p *Paddle) GetHeight() int { return p.Height }
+
 func NewPaddleChannel() chan PaddleMessage {
 	return make(chan PaddleMessage)
 }

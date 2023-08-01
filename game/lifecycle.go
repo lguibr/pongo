@@ -1,12 +1,15 @@
 package game
 
 import (
+	"fmt"
 	"time"
 
 	"golang.org/x/net/websocket"
 )
 
 func (game *Game) LifeCycle(ws *websocket.Conn, close func()) {
+	fmt.Println("LifeCycle")
+
 	//INFO Start the WebSocket connection
 	playerIndex := game.GetNextIndex()
 

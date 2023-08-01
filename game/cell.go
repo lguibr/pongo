@@ -13,6 +13,14 @@ type Cell struct {
 	Data *BrickData `json:"data"`
 }
 
+func (c *Cell) GetX() int           { return c.X }
+func (c *Cell) GetY() int           { return c.Y }
+func (c *Cell) GetData() *BrickData { return c.Data }
+func (c *Cell) GetType() int        { return int(c.Data.Type) }
+
+func (b *BrickData) GetLife() int  { return b.Life }
+func (b *BrickData) GetLevel() int { return b.Level }
+
 func NewCell(x, y, life int, typeOfCell utils.CellType) Cell {
 	return Cell{X: x, Y: y, Data: NewBrickData(typeOfCell, life)}
 }

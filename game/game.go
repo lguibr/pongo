@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/lguibr/pongo/render"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -94,6 +95,14 @@ func (game *Game) WriteGameState(ws *websocket.Conn) {
 	for {
 		time.Sleep(utils.Period)
 		_, err := ws.Write(game.ToJson())
+
+		rgbaGrid := game.Canvas.DrawGameOnRGBGrid(game.Paddles, game.Balls)
+
+		ascii := render.RenderToASCII(rgbaGrid, 64)
+		// render.ClearScreen()
+
+		fmt.Println(ascii)
+
 		if err != nil {
 			fmt.Println("Error writing to client: ", err)
 			return
@@ -143,7 +152,7 @@ func (game *Game) RemoveBall(id int) {
 		if ball.Id != id {
 			continue
 		}
-		fmt.Println("Removing ball", ball.Id)
+		// fmt.Println("Removing ball", ball.Id)
 		ball.open = false
 		if index < len(game.Balls)-1 {
 			game.Balls = append(game.Balls[:index], game.Balls[index+1:]...)

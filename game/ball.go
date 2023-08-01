@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -31,6 +30,10 @@ type Ball struct {
 	canvasSize int
 	open       bool
 }
+
+func (b *Ball) GetX() int      { return b.X }
+func (b *Ball) GetY() int      { return b.Y }
+func (b *Ball) GetRadius() int { return b.Radius }
 
 func NewBallChannel() chan BallMessage {
 	return make(chan BallMessage, 1)
@@ -146,9 +149,9 @@ func (ball *Ball) IncreaseMass(additional int) {
 }
 func (ball *Ball) SetBallPhasing(expiresIn int) {
 	ball.Phasing = true
-	fmt.Println("Phasing for ", expiresIn*time.Now().Second(), " seconds")
+	// fmt.Println("Phasing for ", expiresIn*time.Now().Second(), " seconds")
 	go time.AfterFunc(time.Duration(expiresIn)*time.Second, func() {
-		fmt.Println("Phasing ended")
+		// fmt.Println("Phasing ended")
 		ball.Phasing = false
 	})
 
