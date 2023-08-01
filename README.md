@@ -15,6 +15,12 @@ This game combines elements of the classic Pong game with the gameplay of breaki
 
 The core entities in the game include the Player, GameState, Paddle, Ball, Grid, and the WebSocket connection between the server and player.
 
+# New Feature ASCII Mode:
+
+In an innovative twist, Pongo now offers ASCII Mode. This charmingly nostalgic feature transforms our game world into an immersive ASCII art experience. Revel in a pixel-perfect rendition of the game, colorfully rendered in your terminal. It's an engaging way to enjoy the game that you don't want to miss!
+
+![ASCI Mode](ascii.gif)
+
 ## Getting Started
 
 To run the game, you will need to have Go installed on your system. Once you have Go installed, clone the repository and run the following command in the project directory:
