@@ -1,7 +1,7 @@
 package game
 
 import (
-	"github.com/lguibr/pongo/types"
+	"github.com/lguibr/asciiring/types"
 	"github.com/lguibr/pongo/utils"
 )
 
@@ -79,6 +79,9 @@ func (canvas *Canvas) DrawGameOnRGBGrid(paddles [4]*Paddle, balls []*Ball) [][]t
 		}
 		for i := paddle.GetX(); i < paddle.GetX()+paddle.GetWidth(); i++ {
 			for j := paddle.GetY(); j < paddle.GetY()+paddle.GetHeight(); j++ {
+				if i >= len(grid) || j >= len(grid[i]) {
+					continue
+				}
 				grid[i][j] = paddleColor
 			}
 		}

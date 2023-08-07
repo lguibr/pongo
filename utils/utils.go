@@ -1,8 +1,11 @@
 package utils
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 )
@@ -203,4 +206,37 @@ func AssertPanics(t *testing.T, testingFunction func(), message string) (panics 
 	}()
 
 	return panics, errorMessage
+}
+
+// Define the interface
+type JSONable interface {
+	ToJson() []byte
+}
+
+func JsonLogger(filePath string, data interface{}) error {
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func Logger(filePath string, data string) error {
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer file.Close()
+	if _, err := file.Write([]byte(data)); err != nil {
+		return fmt.Errorf("failed to write to log file: %w", err)
+	}
+
+	return nil
 }

@@ -109,14 +109,19 @@ type Direction struct {
 	Direction string `json:"direction"`
 }
 
-func (paddle *Paddle) SetDirection(buffer []byte) {
+func (paddle *Paddle) SetDirection(buffer []byte) (Direction, error) {
 	direction := Direction{}
 	err := json.Unmarshal(buffer, &direction)
 	if err != nil {
 		fmt.Println("Error unmarshalling message:", err)
+		return direction, err
 	}
+	fmt.Println("New direction:", direction.Direction)
 	newDirection := utils.DirectionFromString(direction.Direction)
+
+	utils.Logger("./data/direction.json", fmt.Sprintf("newDirection: %v", newDirection))
 	paddle.Direction = newDirection
+	return direction, nil
 }
 
 func (paddle *Paddle) Engine() {

@@ -3,7 +3,7 @@ package utils
 import "time"
 
 const (
-	Period = 10 * time.Millisecond
+	Period = 24 * time.Millisecond
 
 	InitialScore = 100
 

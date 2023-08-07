@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
-	"github.com/lguibr/pongo/render"
+	"github.com/lguibr/asciiring/render"
+	"github.com/lguibr/asciiring/types"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -92,21 +94,32 @@ func (game *Game) HasPlayer() bool {
 }
 
 func (game *Game) WriteGameState(ws *websocket.Conn) {
+	timestamp := time.Now().Format("20060102150405") // YYYYMMDDHHMMSS
+	frame := 0
 	for {
 		time.Sleep(utils.Period)
-		_, err := ws.Write(game.ToJson())
-
 		rgbaGrid := game.Canvas.DrawGameOnRGBGrid(game.Paddles, game.Balls)
+		dirPath := fmt.Sprintf("./data/%s", timestamp)
 
-		ascii := render.RenderToASCII(rgbaGrid, 64)
-		// render.ClearScreen()
+		// Create directory if it doesn't exist
+		err := os.MkdirAll(dirPath, 0755)
+		if err != nil {
+			fmt.Println("Error creating directory: ", err)
+			return
+		}
 
+		filePath := fmt.Sprintf("%s/%d.json", dirPath, frame)
+		utils.JsonLogger(filePath, game)
+		color := types.RGBPixel{R: 255, G: 255, B: 255}
+		ascii := render.RenderToASCII(rgbaGrid, 64, &color)
 		fmt.Println(ascii)
+		_, err = ws.Write([]byte(ascii))
 
 		if err != nil {
 			fmt.Println("Error writing to client: ", err)
 			return
 		}
+		frame++
 	}
 }
 
