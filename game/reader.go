@@ -1,6 +1,7 @@
 package game
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -76,7 +77,10 @@ func (playerPaddle *Paddle) ReadPaddleChannel(paddleChannel chan PaddleMessage) 
 		switch message := message.(type) {
 		case PaddleDirectionMessage:
 			direction := message.Direction
-			playerPaddle.SetDirection(direction)
+			_, err := playerPaddle.SetDirection(direction)
+			if err != nil {
+				fmt.Println("Error setting direction :", err)
+			}
 		default:
 			continue
 		}
