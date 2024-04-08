@@ -149,9 +149,7 @@ func (ball *Ball) IncreaseMass(additional int) {
 }
 func (ball *Ball) SetBallPhasing(expiresIn int) {
 	ball.Phasing = true
-	// fmt.Println("Phasing for ", expiresIn*time.Now().Second(), " seconds")
 	go time.AfterFunc(time.Duration(expiresIn)*time.Second, func() {
-		// fmt.Println("Phasing ended")
 		ball.Phasing = false
 	})
 

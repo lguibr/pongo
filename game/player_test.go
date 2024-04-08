@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -46,8 +45,6 @@ func TestNewPlayer(t *testing.T) {
 
 	for _, test := range testCases {
 		result := NewPlayer(test.canvas, test.index, make(chan PlayerMessage))
-		fmt.Println("result", result)
-		fmt.Println("test.expectedPlayer", test.expectedPlayer)
 
 		//INFO Can't compare pointers
 		result.Color = test.expectedPlayer.Color

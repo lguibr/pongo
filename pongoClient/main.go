@@ -71,7 +71,7 @@ func main() {
 
 		for {
 			message := make([]byte, 0)
-			buffer := make([]byte, 64) // This can be adjusted depending on the expected size of the messages
+			buffer := make([]byte, 64) //NOTE This can be adjusted depending on the expected size of the messages
 			for {
 				size, err := websocketConnection.Read(buffer)
 				if err != nil {

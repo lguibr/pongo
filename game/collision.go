@@ -125,7 +125,6 @@ func (ball *Ball) handleCollideBrick(oldIndices, newIndices [2]int, grid Grid) {
 }
 
 func (ball *Ball) handleCollideBlock(oldIndices, newIndices [2]int) {
-	// fmt.Println("Ball is phasing ? " + fmt.Sprint(ball.Phasing))
 	if ball.Phasing {
 		return
 	}

@@ -116,7 +116,6 @@ func (paddle *Paddle) SetDirection(buffer []byte) (Direction, error) {
 		fmt.Println("Error unmarshalling message:", err)
 		return direction, err
 	}
-	fmt.Println("New direction:", direction.Direction)
 	newDirection := utils.DirectionFromString(direction.Direction)
 
 	utils.Logger("./data/direction.json", fmt.Sprintf("newDirection: %v", newDirection))
