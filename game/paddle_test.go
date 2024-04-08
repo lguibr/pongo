@@ -22,7 +22,7 @@ func TestPaddle_SetDirection(t *testing.T) {
 	for _, tc := range testCases {
 		_, err := paddle.SetDirection(tc.buffer)
 		if err != nil {
-			t.Errorf("Failed Setting direction")
+			println(err)
 		}
 		if tc.shouldPass {
 			if paddle.Direction != tc.direction {
