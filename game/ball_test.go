@@ -360,7 +360,7 @@ func TestBall_GetCenterIndex(t *testing.T) {
 
 	for _, tc := range testCases {
 		ball := &Ball{X: tc.ballX, Y: tc.ballY}
-		row, col := ball.getCenterIndex(NewGrid(gridSize))
+		row, col := ball.getCenterIndex()
 		if row != tc.expectedRow || col != tc.expectedCol {
 			t.Errorf("Test case %s failed: expected row %d and col %d but got row %d and col %d", tc.name, tc.expectedRow, tc.expectedCol, row, col)
 		}

@@ -107,7 +107,7 @@ func (ball *Ball) Move() {
 	ball.Vy += ball.Ay
 }
 
-func (ball *Ball) getCenterIndex(grid Grid) (x, y int) {
+func (ball *Ball) getCenterIndex() (x, y int) {
 	cellSize := utils.CellSize
 	row := ball.X / cellSize
 	col := ball.Y / cellSize

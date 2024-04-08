@@ -54,7 +54,7 @@ func (ball *Ball) CollidePaddle(paddle *Paddle) {
 
 func (ball *Ball) CollideCells(grid Grid, cellSize int) {
 	gridSize := len(grid)
-	row, col := ball.getCenterIndex(grid)
+	row, col := ball.getCenterIndex()
 	if row < 0 || row > gridSize-1 || col < 0 || col > gridSize-1 {
 		return
 	}

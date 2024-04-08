@@ -118,7 +118,6 @@ func (paddle *Paddle) SetDirection(buffer []byte) (Direction, error) {
 	}
 	newDirection := utils.DirectionFromString(direction.Direction)
 
-	utils.Logger("./data/direction.json", fmt.Sprintf("newDirection: %v", newDirection))
 	paddle.Direction = newDirection
 	return direction, nil
 }

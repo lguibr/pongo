@@ -20,7 +20,10 @@ func TestPaddle_SetDirection(t *testing.T) {
 		{[]byte(``), "", false},
 	}
 	for _, tc := range testCases {
-		paddle.SetDirection(tc.buffer)
+		_, err := paddle.SetDirection(tc.buffer)
+		if err != nil {
+			t.Errorf("Failed Setting direction")
+		}
 		if tc.shouldPass {
 			if paddle.Direction != tc.direction {
 				t.Errorf("Expected direction to be %s but got %s", tc.direction, paddle.Direction)
