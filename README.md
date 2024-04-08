@@ -1,6 +1,6 @@
 # PonGo
 
-![Coverage](https://img.shields.io/badge/Coverage-59.2%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-59.0%25-yellow)
 ![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)
 ![Building](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build)
 ![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)
@@ -14,12 +14,6 @@ Welcome to my Pong and Breaking Brick Game!
 This game combines elements of the classic Pong game with the gameplay of breaking brick games. The backend of the game is written in Go and utilizes the Actor Model pattern to handle different game elements, such as player input, game state, paddle movement, and ball movement. The game has zero dependencies.
 
 The core entities in the game include the Player, GameState, Paddle, Ball, Grid, and the WebSocket connection between the server and player.
-
-# New Feature ASCII Mode:
-
-In an innovative twist, Pongo now offers ASCII Mode. This charmingly nostalgic feature transforms our game world into an immersive ASCII art experience. Revel in a pixel-perfect rendition of the game, colorfully rendered in your terminal. It's an engaging way to enjoy the game that you don't want to miss!
-
-![ASCI Mode](ascii.gif)
 
 ## Getting Started
 

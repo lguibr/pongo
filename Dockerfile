@@ -32,5 +32,5 @@ COPY --from=builder /app/pongo .
 # Expose port 3001
 EXPOSE 3001
 
-# Command to run the binary
-CMD ["./pongo"]
+# Define the executable to run when the container starts
+ENTRYPOINT ["./pongo"]
