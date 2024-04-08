@@ -1,6 +1,6 @@
 # PonGo
 
-![Coverage](https://img.shields.io/badge/Coverage-59.2%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-59.0%25-yellow)
 ![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)
 ![Building](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build)
 ![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)
