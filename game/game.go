@@ -78,7 +78,7 @@ func (game *Game) GetNextIndex() int {
 			return i
 		}
 	}
-	return 0
+	return -1
 }
 
 func (game *Game) HasPlayer() bool {
