@@ -1,11 +1,12 @@
+// File: game/player.go
 package game
 
 import (
 	"fmt"
-	"io"
+	// "io" // No longer needed here
 
 	"github.com/lguibr/pongo/utils"
-	"golang.org/x/net/websocket"
+	// "golang.org/x/net/websocket" // No longer needed here
 )
 
 type PlayerMessage interface{}
@@ -43,31 +44,23 @@ func NewPlayer(canvas *Canvas, index int, channel chan PlayerMessage) *Player {
 }
 
 func (player *Player) Connect() {
-	player.channel <- PlayerConnectMessage{PlayerPayload: player}
-}
-
-func (player *Player) Disconnect() {
-	player.channel <- PlayerDisconnectMessage{}
-}
-
-func (player *Player) ReadInput(ws *websocket.Conn, paddleChannel chan PaddleMessage) {
-	defer func() {
-		player.Disconnect()
-	}()
-
-	for {
-		buffer := make([]byte, 1024)
-		size, err := ws.Read(buffer)
-		if err != nil {
-			fmt.Println("EOFError reading from client:", err)
-			if err == io.EOF {
-				fmt.Println("Connection closed by the client:", err)
-				return
-			}
-			continue
-		}
-		//Send I/O message to change the paddle direction
-		newDirection := buffer[:size]
-		paddleChannel <- PaddleDirectionMessage{Direction: newDirection}
+	// Send connect message to the game logic (e.g., GameActor)
+	select {
+	case player.channel <- PlayerConnectMessage{PlayerPayload: player}:
+		fmt.Printf("Player %d sent connect message\n", player.Index)
+	default:
+		fmt.Printf("Player %d could not send connect message (channel full/closed?)\n", player.Index)
 	}
 }
+
+// Disconnect sends a message to the game logic actor to clean up player state.
+func (player *Player) Disconnect() {
+	// Use a non-blocking send in case the channel is closed or full during shutdown
+	select {
+	case player.channel <- PlayerDisconnectMessage{}:
+		fmt.Printf("Player %d sent disconnect message to game logic\n", player.Index)
+	default:
+		fmt.Printf("Player %d could not send disconnect message (channel closed/full?)\n", player.Index)
+	}
+}
+
