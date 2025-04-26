@@ -4,46 +4,55 @@ package game
 import (
 	"encoding/json"
 	"fmt"
-	"runtime/debug" // Import debug package
-	"time"
+	// "runtime/debug" // No longer needed here if Engine removed
+	// "time" // No longer needed here if Engine removed
 
 	"github.com/lguibr/pongo/utils"
 )
 
+// PaddleMessage is the base interface for messages related to paddles
+// (Kept for potential use by actors, e.g., GameActor receiving PaddlePositionMessage)
 type PaddleMessage interface{}
 
+// PaddlePositionMessage signals the paddle's current state.
+// Typically sent *by* the PaddleActor.
 type PaddlePositionMessage struct {
-	Paddle *Paddle
-}
-type PaddleDirectionMessage struct {
-	Direction []byte
+	Paddle *Paddle // Send a pointer to a copy of the state
 }
 
+// PaddleDirectionMessage signals a desired direction change.
+// Typically sent *to* the PaddleActor.
+type PaddleDirectionMessage struct {
+	Direction []byte // Expecting JSON: {"direction": "ArrowLeft"} or {"direction": "ArrowRight"}
+}
+
+// Paddle struct holds the state of a paddle. It's primarily data now.
 type Paddle struct {
 	X          int    `json:"x"`
 	Y          int    `json:"y"`
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
 	Index      int    `json:"index"`
-	Direction  string `json:"direction"` // This is internal state, not the message key
+	Direction  string `json:"direction"` // Internal state ("left", "right", "")
 	Velocity   int    `json:"velocity"`
 	canvasSize int
-	channel    chan PaddleMessage // This channel is internal, not used by frontend directly anymore
+	// channel field removed
 }
+
+// --- Getters ---
 
 func (p *Paddle) GetX() int      { return p.X }
 func (p *Paddle) GetY() int      { return p.Y }
 func (p *Paddle) GetWidth() int  { return p.Width }
 func (p *Paddle) GetHeight() int { return p.Height }
 
-func NewPaddleChannel() chan PaddleMessage {
-	// This function might become obsolete or change with actor refactoring
-	return make(chan PaddleMessage, 10) // Added buffer
-}
+// --- Movement Logic (Used by PaddleActor) ---
 
+// Move updates the paddle's position based on its current direction and velocity.
+// This logic is called by the PaddleActor internally.
 func (paddle *Paddle) Move() {
 	if paddle.Direction != "left" && paddle.Direction != "right" {
-		return
+		return // No movement if direction is not set
 	}
 
 	velocity := [2]int{0, paddle.Velocity}
@@ -85,7 +94,10 @@ func (paddle *Paddle) Move() {
 	}
 }
 
-func NewPaddle(channel chan PaddleMessage, canvasSize, index int) *Paddle {
+// --- Constructor ---
+
+// NewPaddle creates a new Paddle data structure with initial position and dimensions.
+func NewPaddle(canvasSize, index int) *Paddle {
 
 	offSet := -utils.PaddleLength/2 + utils.PaddleWeight/2
 	if index > 1 {
@@ -117,22 +129,28 @@ func NewPaddle(channel chan PaddleMessage, canvasSize, index int) *Paddle {
 		Direction:  "", // Initial internal direction state
 		Velocity:   utils.MinVelocity * 2,
 		canvasSize: canvasSize,
-		channel:    channel,
+		// channel field removed
 	}
 }
 
+// --- Input Handling (Reference, Logic moved to Actor) ---
+
 // Direction struct used for unmarshaling messages from the frontend
+// This might be better placed in a shared types package if used elsewhere (e.g., by the actor).
 type Direction struct {
 	// The json tag ensures Go unmarshals the lowercase "direction" key from the frontend
 	Direction string `json:"direction"`
 }
 
-// SetDirection updates the paddle's internal direction state based on the received message.
+// SetDirection updates the paddle's internal direction state based on the received message buffer.
+// NOTE: This logic is now primarily handled within PaddleActor.Receive,
+// but the function is kept here for reference or potential utility. It does NOT
+// belong to the core state management of the Paddle struct anymore.
 func (paddle *Paddle) SetDirection(buffer []byte) (Direction, error) {
 	receivedDirection := Direction{}
 	err := json.Unmarshal(buffer, &receivedDirection)
 	if err != nil {
-		// Avoid printing full buffer in production, could contain sensitive info if format changes
+		// Avoid printing full buffer in production
 		fmt.Printf("Error unmarshalling direction message for paddle %d: %v\n", paddle.Index, err)
 		return receivedDirection, err
 	}
@@ -146,39 +164,6 @@ func (paddle *Paddle) SetDirection(buffer []byte) (Direction, error) {
 	return receivedDirection, nil
 }
 
-// Engine simulates the paddle's independent movement loop.
-// Added panic recovery.
-func (paddle *Paddle) Engine() {
-	// Panic Recovery
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("PANIC recovered in Paddle %d Engine: %v\nStack trace:\n%s\n", paddle.Index, r, string(debug.Stack()))
-		}
-		fmt.Printf("Paddle %d Engine loop stopped.\n", paddle.Index)
-	}()
-
-	fmt.Printf("Paddle %d Engine loop started.\n", paddle.Index)
-	ticker := time.NewTicker(utils.Period)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		// A proper stop mechanism (e.g., listening on a stop channel) is better.
-		// For now, rely on the channel check.
-		if paddle.channel == nil {
-			fmt.Printf("Paddle %d channel is nil, stopping engine.\n", paddle.Index)
-			return // Exit loop if channel is nil (might happen during cleanup)
-		}
-
-		paddle.Move()
-
-		// Send position update - non-blocking
-		// In an actor model, this would be sending a message to the GameActor.
-		select {
-		case paddle.channel <- PaddlePositionMessage{Paddle: paddle}:
-			// Position sent
-		default:
-			// Log if channel is full, but don't block or panic
-			// fmt.Printf("Paddle %d channel full, could not send position.\n", paddle.Index)
-		}
-	}
-}
+// --- Deprecated Goroutine Logic ---
+// func NewPaddleChannel()... removed
+// func (paddle *Paddle) Engine()... removed

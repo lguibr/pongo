@@ -87,7 +87,7 @@ func (g *Game) ReadBallChannel(ownerIndex int, ball *Ball) {
 					g.channel <- IncreaseBallVelocity{BallPayload: breakingBall, Ratio: 1.1}
 				case 3: // Ball phasing
 					fmt.Println("Triggering BallPhasing event")
-					g.channel <- BallPhasing{BallPayload: breakingBall, ExpireIn: 1}
+				g.channel <- BallPhasing{BallPayload: breakingBall, ExpireIn: 1}
 				}
 			} else {
 				fmt.Printf("Player %d not found for score update after brick break.\n", playerIndex)
@@ -100,30 +100,13 @@ func (g *Game) ReadBallChannel(ownerIndex int, ball *Ball) {
 	}
 }
 
-// ReadPaddleChannel processes messages originating from a specific Paddle instance.
-// TODO: This logic should move into the GameActor or PaddleActor.
+// ReadPaddleChannel is DEPRECATED. Logic moved to PaddleActor.
 func (playerPaddle *Paddle) ReadPaddleChannel(paddleChannel chan PaddleMessage) {
-	for message := range paddleChannel {
-		switch msg := message.(type) {
-		case PaddleDirectionMessage:
-			// This message comes from player input via ReadInput
-			directionBytes := msg.Direction
-			_, err := playerPaddle.SetDirection(directionBytes) // Update paddle's internal state
-			if err != nil {
-				fmt.Printf("Error setting paddle %d direction: %v\n", playerPaddle.Index, err)
-			}
-		case PaddlePositionMessage:
-			// This message comes from the paddle's own Engine loop
-			// The GameActor needs this information to update the game state.
-			// In the current structure, this might send to the main game channel.
-			// game.channel <- msg // Example: Forward position to main game loop/actor
-			// fmt.Printf("Paddle %d position: X=%d, Y=%d\n", msg.Paddle.Index, msg.Paddle.X, msg.Paddle.Y) // Debug
-		default:
-			fmt.Printf("Paddle %d received unknown message type: %T\n", playerPaddle.Index, message)
-			continue
-		}
+	fmt.Printf("ReadPaddleChannel for Paddle %d is DEPRECATED and should not be called.\n", playerPaddle.Index)
+	// Drain channel to prevent goroutine leak if it was somehow started and channel wasn't closed
+	for range paddleChannel {
 	}
-	fmt.Printf("Paddle channel closed for paddle %d\n", playerPaddle.Index)
+	fmt.Printf("Paddle channel drained/closed for paddle %d\n", playerPaddle.Index)
 }
 
 // ReadPlayerChannel processes messages related to a specific player's lifecycle and score.
@@ -131,7 +114,7 @@ func (playerPaddle *Paddle) ReadPaddleChannel(paddleChannel chan PaddleMessage) 
 func (g *Game) ReadPlayerChannel(
 	index int,
 	playerChannel chan PlayerMessage,
-	paddle *Paddle, // Passed in to associate with the player
+	paddle *Paddle, // Passed in to associate with the player (still needed?)
 	ball *Ball,     // Passed in to associate with the player
 ) {
 	fmt.Printf("Starting ReadPlayerChannel for player index %d\n", index)

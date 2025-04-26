@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"runtime/debug" // Import debug package
 
+	"github.com/lguibr/pongo/bollywood" // Import bollywood
 	"github.com/lguibr/pongo/game"
 	"github.com/lguibr/pongo/utils"
 
@@ -41,7 +42,7 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 
 		stopCh := make(chan struct{}) // Channel to signal writer to stop
 		var player *game.Player       // Declare player reference
-		var paddleChannel chan game.PaddleMessage // Declare paddle channel reference
+		var paddlePID *bollywood.PID // PID for the PaddleActor
 
 		// Coordinated close function
 		coordinatedClose := func() {
@@ -57,7 +58,7 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 			s.CloseConnection(ws) // Close the actual websocket via server method
 		}
 
-		// Start game logic components (player state, paddle, ball, writer)
+		// Start game logic components (player state, paddle actor, ball, writer)
 		fmt.Printf("Calling LifeCycle for player %d (%s)...\n", playerIndex, ws.RemoteAddr()) // Log before call
 		lifecycleData, err := g.LifeCycle(ws, playerIndex, stopCh, coordinatedClose)
 		if err != nil {
@@ -66,17 +67,19 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 			return
 		}
 		// Assign values after successful LifeCycle call
-		paddleChannel = lifecycleData.PaddleChannel
+		paddlePID = lifecycleData.PaddlePID // Get PID from result
 		player = lifecycleData.Player
-		fmt.Printf("LifeCycle call successful for player %d (%s).\n", playerIndex, ws.RemoteAddr()) // Log after call
+		fmt.Printf("LifeCycle call successful for player %d (%s). Paddle PID: %s\n", playerIndex, ws.RemoteAddr(), paddlePID)
 
 		// --- Read Loop ---
 		fmt.Printf("Starting read loop for player %d (%s).\n", playerIndex, ws.RemoteAddr()) // Log before loop
 		defer func() {
 			fmt.Printf("Exiting read loop for player %d (%s). Triggering cleanup.\n", playerIndex, ws.RemoteAddr())
 			if player != nil {
-				player.Disconnect() // Signal game logic about disconnect
+				player.Disconnect() // Signal game logic about disconnect (e.g., to GameActor)
 			}
+			// TODO: Need to stop the PaddleActor using engine.Stop(paddlePID)
+			fmt.Printf("WARNING: PaddleActor %s for player %d needs to be stopped explicitly.\n", paddlePID, playerIndex)
 			coordinatedClose() // Close connection and signal writer
 			fmt.Printf("Cleanup finished for player %d (%s)\n", playerIndex, ws.RemoteAddr())
 		}()
@@ -91,13 +94,6 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 				if err == io.EOF {
 					fmt.Printf("Read loop: Player %d (%s) disconnected (EOF).\n", playerIndex, ws.RemoteAddr())
 				} else {
-					// Check if it's the expected error on close
-					// if errors.Is(err, net.ErrClosed) || strings.Contains(err.Error(), "use of closed network connection") {
-					// 	fmt.Printf("Read loop: Connection closed for player %d (%s).\n", playerIndex, ws.RemoteAddr())
-					// } else {
-					// 	fmt.Printf("Read loop: Error reading from player %d (%s): %v\n", playerIndex, ws.RemoteAddr(), err)
-					// }
-					// More general logging for now:
 					fmt.Printf("Read loop: Error reading from player %d (%s): %v\n", playerIndex, ws.RemoteAddr(), err)
 				}
 				return // Exit loop, defer handles cleanup
@@ -105,17 +101,21 @@ func (s *Server) HandleSubscribe(g *game.Game) func(ws *websocket.Conn) {
 
 			// Process the received message (Paddle Direction)
 			receivedData := buffer[:size]
-			var dirMsg game.Direction
+			
+			// TODO: Need reference to the main bollywood.Engine instance (e.g., s.Engine)
+			// engine := s.Engine // Assuming server 's' holds the engine
+			
+			var dirMsg game.Direction // Parse to validate message format
 			if err := json.Unmarshal(receivedData, &dirMsg); err == nil {
 				internalDir := utils.DirectionFromString(dirMsg.Direction)
-				if internalDir != "" {
-					// Send the raw bytes containing the valid JSON message
-					select {
-					case paddleChannel <- game.PaddleDirectionMessage{Direction: receivedData}:
-						// Message sent to paddle logic
-					default:
-						fmt.Printf("Read loop: Player %d paddle channel full, dropping direction message.\n", playerIndex)
-					}
+				if internalDir != "" { // Check if direction is valid ("left" or "right")
+					// Send the raw JSON bytes as the message payload to the specific PaddleActor
+					// The actor's Receive method will handle the unmarshaling again.
+					// Example: engine.Send(paddlePID, game.PaddleDirectionMessage{Direction: receivedData}, nil)
+					fmt.Printf("[TODO: Engine Needed] Read loop: Player %d would send direction '%s' (%d bytes) to PaddleActor %s\n", playerIndex, internalDir, len(receivedData), paddlePID)
+					// *** Replace above fmt.Printf with actual engine.Send call below when engine is available ***
+					// engine.Send(paddlePID, game.PaddleDirectionMessage{Direction: receivedData}, nil) // Sender is nil (from outside actor system)
+					
 				} // Ignore unknown directions
 			} // Ignore invalid JSON
 		}

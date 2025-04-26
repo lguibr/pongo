@@ -5,7 +5,10 @@
 
 Welcome to my Pong and Breaking Brick Game!
 
-![logo](bitmap.png)
+
+<p align="center">
+  <img src="bitmap.png" alt="Logo" width="300"/>
+</p>
 
 This game combines elements of the classic Pong game with the gameplay of breaking brick games. The backend of the game is written in Go and utilizes the Actor Model pattern via the [Bollywood actor library](./bollywood/README.md) to handle different game elements, such as player input, game state, paddle movement, and ball movement. The game has zero external dependencies beyond the standard library and the websocket package (and the internal Bollywood library).
 
