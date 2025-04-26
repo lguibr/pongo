@@ -18,13 +18,11 @@ type PaddleActor struct {
 }
 
 // NewPaddleActorProducer creates a bollywood.Producer for PaddleActor.
-// It takes the initial state *by value* to ensure the actor owns its state copy.
 func NewPaddleActorProducer(initialState Paddle, gameActorPID *bollywood.PID) bollywood.Producer {
 	return func() bollywood.Actor {
-		// Create a new Paddle instance for the actor, copying initialState.
 		actorState := initialState
 		return &PaddleActor{
-			state:        &actorState, // Store pointer to the owned state
+			state:        &actorState,
 			stopTickerCh: make(chan struct{}),
 			gameActorPID: gameActorPID,
 		}
@@ -36,93 +34,89 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 	switch msg := ctx.Message().(type) {
 	case bollywood.Started:
 		fmt.Printf("PaddleActor %d started.\n", a.state.Index)
-		// Start the internal ticker loop
 		a.ticker = time.NewTicker(utils.Period)
 		go a.runTicker(ctx)
+		if a.gameActorPID != nil {
+			snapshot := *a.state
+			ctx.Engine().Send(a.gameActorPID, PaddlePositionMessage{Paddle: &snapshot}, ctx.Self())
+		}
 
 	case *internalTick:
-		// Message from internal ticker
-		a.state.Move() // Update the actor's internal state
-		// Send position update to GameActor (if PID is known)
+		a.state.Move()
 		if a.gameActorPID != nil {
-			// Send a pointer to the current state. The GameActor should
-			// ideally copy this state upon receipt if it needs to store it,
-			// to avoid race conditions if the PaddleActor modifies it later.
-			// For simplicity here, we send the pointer directly.
-			// Create a snapshot copy to send
-            snapshot := *a.state
+			snapshot := *a.state
 			ctx.Engine().Send(a.gameActorPID, PaddlePositionMessage{Paddle: &snapshot}, ctx.Self())
 		} else {
-			// Log infrequently or remove in production
 			// fmt.Printf("PaddleActor %d: No gameActorPID to send position update to.\n", a.state.Index)
 		}
 
-	case PaddleDirectionMessage: // Message from websocket handler (via Engine.Send)
-		// Replicate SetDirection logic here
+	case PaddleDirectionMessage:
 		var receivedDirection Direction
 		err := json.Unmarshal(msg.Direction, &receivedDirection)
 		if err == nil {
 			newInternalDirection := utils.DirectionFromString(receivedDirection.Direction)
 			if newInternalDirection != "" {
-				a.state.Direction = newInternalDirection // Update internal state
-				// fmt.Printf("PaddleActor %d internal direction set to: %s\n", a.state.Index, a.state.Direction)
-			} // else: ignore invalid directions from frontend
+				if a.state.Direction != newInternalDirection {
+					a.state.Direction = newInternalDirection
+				}
+			} else {
+				a.state.Direction = ""
+			}
 		} else {
 			fmt.Printf("PaddleActor %d failed to unmarshal direction: %v\n", a.state.Index, err)
+			a.state.Direction = ""
 		}
 
 	case bollywood.Stopping:
 		fmt.Printf("PaddleActor %d stopping...\n", a.state.Index)
-		// Stop the internal ticker
 		if a.ticker != nil {
-			a.ticker.Stop()
-			// Use non-blocking close for safety
-			select {
-			case <-a.stopTickerCh:
-				// Already closed
-			default:
-				close(a.stopTickerCh)
-			}
+			a.ticker.Stop() // Stop the ticker first
+		}
+		// Close channel non-blockingly to signal goroutine
+		select {
+		case <-a.stopTickerCh: // Already closed
+		default:
+			close(a.stopTickerCh)
 		}
 
 	case bollywood.Stopped:
 		fmt.Printf("PaddleActor %d stopped.\n", a.state.Index)
-		// Final cleanup if any
 
 	default:
 		fmt.Printf("PaddleActor %d received unknown message: %T\n", a.state.Index, msg)
 	}
 }
 
-// internalTick is a message sent by the ticker goroutine to the actor's mailbox.
-type internalTick struct{}
-
 // runTicker is the internal loop that sends tick messages to the actor's mailbox.
 func (a *PaddleActor) runTicker(ctx bollywood.Context) {
 	fmt.Printf("PaddleActor %d ticker started.\n", a.state.Index)
 	defer fmt.Printf("PaddleActor %d ticker stopped.\n", a.state.Index)
 
-	selfPID := ctx.Self()
 	engine := ctx.Engine()
+	selfPID := ctx.Self()
+
+	if engine == nil || selfPID == nil {
+		fmt.Printf("ERROR: PaddleActor %d ticker cannot start, invalid engine/PID.\n", a.state.Index)
+		return
+	}
+
+	tickMsg := &internalTick{}
 
 	for {
 		select {
+		case <-a.stopTickerCh: // Prioritize stop signal
+			return
 		case <-a.ticker.C:
-			// Send tick message to self (non-blocking)
-			// Use Engine.Send to ensure it goes through the mailbox
-			// Use a pointer for internalTick as it's likely more efficient.
-			engine.Send(selfPID, &internalTick{}, nil) // Sender is nil as it's internal
-		case <-a.stopTickerCh:
-			return // Exit goroutine
+			// Check stop signal again before sending
+			select {
+			case <-a.stopTickerCh:
+				return
+			default:
+				// Send tick message to self
+				engine.Send(selfPID, tickMsg, nil)
+			}
 		}
 	}
 }
 
-// Direction struct used for unmarshaling messages from the frontend
-// This is duplicated from paddle.go - consider creating a shared types package
-// or moving paddle.go's version if it's only used for this.
-/*
-type Direction struct {
-	Direction string `json:"direction"`
-}
-*/
+// Direction struct defined in paddle.go is used here for unmarshalling.

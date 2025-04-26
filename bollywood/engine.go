@@ -1,4 +1,3 @@
-
 package bollywood
 
 import (
@@ -34,7 +33,7 @@ func (e *Engine) nextPID() *PID {
 func (e *Engine) Spawn(props *Props) *PID {
 	if e.stopping.Load() {
 		fmt.Println("Engine is stopping, cannot spawn new actors")
-		return nil // Or return an error
+		return nil
 	}
 
 	pid := e.nextPID()
@@ -44,19 +43,22 @@ func (e *Engine) Spawn(props *Props) *PID {
 	e.actors[pid.ID] = proc
 	e.mu.Unlock()
 
-	go proc.run() // Start the actor's message loop
+	go proc.run()
 
-	// Send the Started message *after* the process is running
 	e.Send(pid, Started{}, nil)
 
 	return pid
 }
 
 // Send delivers a message to the actor identified by the PID.
-// sender can be nil if the message originates from outside the actor system.
 func (e *Engine) Send(pid *PID, message interface{}, sender *PID) {
-	if e.stopping.Load() {
-		fmt.Printf("Engine is stopping, dropping message for %s\n", pid.ID)
+	// Allow system messages during shutdown for cleanup
+	_, isStopping := message.(Stopping)
+	_, isStopped := message.(Stopped)
+	isSystemMsg := isStopping || isStopped || (message == Started{}) // Add Started
+
+	if e.stopping.Load() && !isSystemMsg {
+		// fmt.Printf("Engine is stopping, dropping user message for %s\n", pid.ID) // Reduce noise
 		return
 	}
 
@@ -67,35 +69,44 @@ func (e *Engine) Send(pid *PID, message interface{}, sender *PID) {
 	if ok {
 		proc.sendMessage(message, sender)
 	} else {
-		// TODO: Implement dead letter queue?
-		fmt.Printf("Actor %s not found, dropping message\n", pid.ID)
+		// Avoid logging dropped messages during shutdown tests if actor was already stopped
+		// if !e.stopping.Load() {
+		// 	fmt.Printf("Actor %s not found, dropping message %T\n", pid.ID, message)
+		// }
 	}
 }
 
 // Stop requests an actor to stop processing messages and shut down.
-// The actor will process a Stopping message, followed by a Stopped message
-// after its goroutine exits.
+// It sends the Stopping message and also directly signals the actor's stop channel.
 func (e *Engine) Stop(pid *PID) {
 	e.mu.RLock()
-	_, ok := e.actors[pid.ID] // Use _ if proc is not needed when ok is true
+	proc, ok := e.actors[pid.ID]
 	e.mu.RUnlock()
 
 	if ok {
-		e.Send(pid, Stopping{}, nil) // Send Stopping first
+		// Send Stopping message first to allow graceful cleanup within the actor's context
+		e.Send(pid, Stopping{}, nil)
+
+		// Directly signal the stop channel to ensure termination even if mailbox is full
+		// Use non-blocking close
+		select {
+		case <-proc.stopCh: // Already closed
+		default:
+			close(proc.stopCh)
+			// fmt.Printf("Engine directly closed stopCh for %s\n", pid.ID) // Debug log
+		}
 	}
 }
 
 // remove removes an actor process from the engine's tracking.
-// This is called internally by the process when it fully stops.
 func (e *Engine) remove(pid *PID) {
 	e.mu.Lock()
 	delete(e.actors, pid.ID)
 	e.mu.Unlock()
-	// fmt.Printf("Actor %s removed from engine\n", pid.ID) // Debug logging
+	// fmt.Printf("Actor %s removed from engine\n", pid.ID)
 }
 
 // Shutdown stops all actors and waits for them to terminate gracefully.
-// Note: Simple shutdown, might need refinement for complex dependencies.
 func (e *Engine) Shutdown(timeout time.Duration) {
 	if !e.stopping.CompareAndSwap(false, true) {
 		fmt.Println("Engine already shutting down")
@@ -112,10 +123,9 @@ func (e *Engine) Shutdown(timeout time.Duration) {
 
 	fmt.Printf("Stopping %d actors...\n", len(pidsToStop))
 	for _, pid := range pidsToStop {
-		e.Stop(pid)
+		e.Stop(pid) // Stop now signals stopCh directly too
 	}
 
-	// Wait for actors to be removed (simple polling)
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		e.mu.RLock()
@@ -125,17 +135,21 @@ func (e *Engine) Shutdown(timeout time.Duration) {
 			fmt.Println("All actors stopped.")
 			break
 		}
-		// fmt.Printf("%d actors remaining...\n", remaining) // Debug logging
 		time.Sleep(50 * time.Millisecond)
 	}
 
 	e.mu.RLock()
-	if len(e.actors) > 0 {
-		fmt.Printf("Engine shutdown timeout: %d actors did not stop gracefully.\n", len(e.actors))
-		// Force remove remaining actors (might leak resources if actors are stuck)
+	remainingCount := len(e.actors)
+	if remainingCount > 0 {
+		fmt.Printf("Engine shutdown timeout: %d actors did not stop gracefully.\n", remainingCount)
+		remainingActors := []string{}
+		for pidStr := range e.actors {
+			remainingActors = append(remainingActors, pidStr)
+		}
+		fmt.Printf("Remaining actors: %v\n", remainingActors)
 		e.mu.RUnlock()
 		e.mu.Lock()
-		e.actors = make(map[string]*process) // Clear map forcefully
+		e.actors = make(map[string]*process)
 		e.mu.Unlock()
 	} else {
 		e.mu.RUnlock()

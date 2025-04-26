@@ -173,6 +173,22 @@ func Abs(x int) int {
 	return x
 }
 
+// MaxInt returns the greater of two integers.
+func MaxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// MinInt returns the smaller of two integers.
+func MinInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // DEV string
 func DirectionFromString(direction string) string {
 	if direction == "ArrowLeft" {
@@ -193,15 +209,25 @@ func AssertPanics(t *testing.T, testingFunction func(), message string) (panics 
 	panics = false
 	errorMessage = ""
 
+	// Define the defer function
 	deferFunc := func() {
 		if r := recover(); r != nil {
 			panics = true
-			errorMessage = r.(string)
+			// Try to convert recover() result to string
+			switch v := r.(type) {
+			case string:
+				errorMessage = v
+			case error:
+				errorMessage = v.Error()
+			default:
+				errorMessage = fmt.Sprintf("%v", v)
+			}
 		}
 	}
 
+	// Anonymous function to execute the test function with the defer
 	func() {
-		defer deferFunc()
+		defer deferFunc() // Correct: Call the defer function
 		testingFunction()
 	}()
 

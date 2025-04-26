@@ -1,27 +1,25 @@
-// File: game/paddle.go
 package game
 
 import (
 	"encoding/json"
 	"fmt"
-	// "runtime/debug" // No longer needed here if Engine removed
-	// "time" // No longer needed here if Engine removed
+
+	// "runtime/debug" // No longer needed here
+	// "time" // No longer needed here
 
 	"github.com/lguibr/pongo/utils"
 )
 
-// PaddleMessage is the base interface for messages related to paddles
-// (Kept for potential use by actors, e.g., GameActor receiving PaddlePositionMessage)
+// PaddleMessage interface might still be useful if GameActor sends specific commands.
 type PaddleMessage interface{}
 
-// PaddlePositionMessage signals the paddle's current state.
-// Typically sent *by* the PaddleActor.
+// PaddlePositionMessage signals the paddle's current state. Sent BY PaddleActor.
 type PaddlePositionMessage struct {
 	Paddle *Paddle // Send a pointer to a copy of the state
 }
 
-// PaddleDirectionMessage signals a desired direction change.
-// Typically sent *to* the PaddleActor.
+// PaddleDirectionMessage signals a desired direction change. Sent TO PaddleActor.
+// Payload is raw JSON bytes.
 type PaddleDirectionMessage struct {
 	Direction []byte // Expecting JSON: {"direction": "ArrowLeft"} or {"direction": "ArrowRight"}
 }
@@ -35,7 +33,7 @@ type Paddle struct {
 	Index      int    `json:"index"`
 	Direction  string `json:"direction"` // Internal state ("left", "right", "")
 	Velocity   int    `json:"velocity"`
-	canvasSize int
+	canvasSize int    // Keep internal canvas size for boundary checks
 	// channel field removed
 }
 
@@ -55,41 +53,48 @@ func (paddle *Paddle) Move() {
 		return // No movement if direction is not set
 	}
 
+	// Calculate base velocity vector (vertical movement for index 0, 2)
 	velocity := [2]int{0, paddle.Velocity}
 
-	if paddle.Index%2 != 0 { // Horizontal paddles (1, 3) move along X
+	// Swap for horizontal paddles (index 1, 3)
+	if paddle.Index%2 != 0 {
 		velocity = utils.SwapVectorCoordinates(velocity)
 	}
 
 	velocityX, velocityY := velocity[0], velocity[1]
 
-	if paddle.Direction == "left" { // "Left" means decreasing Y for vertical, decreasing X for horizontal
-		if paddle.Index%2 == 0 { // Vertical paddle (Index 0, 2)
-			if paddle.Y-velocityY < 0 {
-				paddle.Y = 0 // Clamp to boundary
-				return
+	// Apply movement based on direction and orientation
+	if paddle.Direction == "left" { // "Left" relative to paddle orientation
+		if paddle.Index%2 == 0 { // Vertical paddle (Index 0, 2) - Move Up (decrease Y)
+			newY := paddle.Y - velocityY
+			if newY < 0 {
+				paddle.Y = 0 // Clamp to top boundary
+			} else {
+				paddle.Y = newY
 			}
-			paddle.Y -= velocityY
-		} else { // Horizontal paddle (Index 1, 3)
-			if paddle.X-velocityX < 0 {
-				paddle.X = 0 // Clamp to boundary
-				return
+		} else { // Horizontal paddle (Index 1, 3) - Move Left (decrease X)
+			newX := paddle.X - velocityX
+			if newX < 0 {
+				paddle.X = 0 // Clamp to left boundary
+			} else {
+				paddle.X = newX
 			}
-			paddle.X -= velocityX
 		}
-	} else { // Moving "right" (relative to paddle orientation) - increasing Y for vertical, increasing X for horizontal
-		if paddle.Index%2 == 0 { // Vertical paddle (Index 0, 2)
-			if paddle.Y+paddle.Height+velocityY > paddle.canvasSize {
-				paddle.Y = paddle.canvasSize - paddle.Height // Clamp to boundary
-				return
+	} else { // Moving "right" relative to paddle orientation
+		if paddle.Index%2 == 0 { // Vertical paddle (Index 0, 2) - Move Down (increase Y)
+			newY := paddle.Y + velocityY
+			if newY+paddle.Height > paddle.canvasSize {
+				paddle.Y = paddle.canvasSize - paddle.Height // Clamp to bottom boundary
+			} else {
+				paddle.Y = newY
 			}
-			paddle.Y += velocityY
-		} else { // Horizontal paddle (Index 1, 3)
-			if paddle.X+paddle.Width+velocityX > paddle.canvasSize {
-				paddle.X = paddle.canvasSize - paddle.Width // Clamp to boundary
-				return
+		} else { // Horizontal paddle (Index 1, 3) - Move Right (increase X)
+			newX := paddle.X + velocityX
+			if newX+paddle.Width > paddle.canvasSize {
+				paddle.X = paddle.canvasSize - paddle.Width // Clamp to right boundary
+			} else {
+				paddle.X = newX
 			}
-			paddle.X += velocityX
 		}
 	}
 }
@@ -99,23 +104,37 @@ func (paddle *Paddle) Move() {
 // NewPaddle creates a new Paddle data structure with initial position and dimensions.
 func NewPaddle(canvasSize, index int) *Paddle {
 
-	offSet := -utils.PaddleLength/2 + utils.PaddleWeight/2
-	if index > 1 {
-		offSet = -offSet
+	// offSet := utils.PaddleLength / 2 // Offset from center line
+	var x, y int
+
+	// Determine position based on index (0: right, 1: top, 2: left, 3: bottom)
+	switch index {
+	case 0: // Right wall
+		x = canvasSize - utils.PaddleWeight
+		y = canvasSize/2 - utils.PaddleLength/2
+	case 1: // Top wall
+		x = canvasSize/2 - utils.PaddleLength/2
+		y = 0
+	case 2: // Left wall
+		x = 0
+		y = canvasSize/2 - utils.PaddleLength/2
+	case 3: // Bottom wall
+		x = canvasSize/2 - utils.PaddleLength/2
+		y = canvasSize - utils.PaddleWeight
+	default:
+		// Default to player 0 position if index is invalid
+		x = canvasSize - utils.PaddleWeight
+		y = canvasSize/2 - utils.PaddleLength/2
+		fmt.Printf("Warning: Invalid paddle index %d, defaulting to 0.\n", index)
 	}
 
-	cardinalPosition := [2]int{canvasSize/2 - utils.PaddleWeight/2, offSet}
-	rotateX, rotateY := utils.RotateVector(index, cardinalPosition[0], cardinalPosition[1], canvasSize, canvasSize)
-	translatedVector := utils.SumVectors([2]int{rotateX, rotateY}, [2]int{canvasSize/2 - utils.PaddleWeight/2, canvasSize/2 - utils.PaddleWeight/2})
-	x, y := translatedVector[0], translatedVector[1]
-
+	// Determine width/height based on orientation
 	indexOdd := index % 2
 	var width, height int
-
-	if indexOdd == 0 {
-		height = utils.PaddleLength
+	if indexOdd == 0 { // Vertical (index 0, 2)
 		width = utils.PaddleWeight
-	} else {
+		height = utils.PaddleLength
+	} else { // Horizontal (index 1, 3)
 		width = utils.PaddleLength
 		height = utils.PaddleWeight
 	}
@@ -136,31 +155,19 @@ func NewPaddle(canvasSize, index int) *Paddle {
 // --- Input Handling (Reference, Logic moved to Actor) ---
 
 // Direction struct used for unmarshaling messages from the frontend
-// This might be better placed in a shared types package if used elsewhere (e.g., by the actor).
 type Direction struct {
-	// The json tag ensures Go unmarshals the lowercase "direction" key from the frontend
 	Direction string `json:"direction"`
 }
 
-// SetDirection updates the paddle's internal direction state based on the received message buffer.
-// NOTE: This logic is now primarily handled within PaddleActor.Receive,
-// but the function is kept here for reference or potential utility. It does NOT
-// belong to the core state management of the Paddle struct anymore.
+// SetDirection is DEPRECATED. Logic handled by PaddleActor.
 func (paddle *Paddle) SetDirection(buffer []byte) (Direction, error) {
+	fmt.Println("WARNING: paddle.SetDirection() is deprecated. Logic moved to PaddleActor.")
 	receivedDirection := Direction{}
 	err := json.Unmarshal(buffer, &receivedDirection)
 	if err != nil {
-		// Avoid printing full buffer in production
-		fmt.Printf("Error unmarshalling direction message for paddle %d: %v\n", paddle.Index, err)
 		return receivedDirection, err
 	}
-
-	// Convert "ArrowLeft"/"ArrowRight" to internal "left"/"right" state
-	newInternalDirection := utils.DirectionFromString(receivedDirection.Direction)
-
-	// Update the paddle's internal state
-	paddle.Direction = newInternalDirection
-	// fmt.Printf("Paddle %d direction set to: %s\n", paddle.Index, paddle.Direction) // Debug log
+	paddle.Direction = utils.DirectionFromString(receivedDirection.Direction)
 	return receivedDirection, nil
 }
 

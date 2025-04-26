@@ -1,9 +1,9 @@
-
 package bollywood
 
 import (
 	"fmt"
 	"runtime/debug"
+	"sync/atomic"
 )
 
 const defaultMailboxSize = 1024
@@ -16,7 +16,7 @@ type process struct {
 	mailbox chan *messageEnvelope
 	props   *Props
 	stopCh  chan struct{} // Signal to stop the run loop
-	stopped bool          // Indicates if the actor is stopped or stopping
+	stopped atomic.Bool   // Use atomic bool for safer concurrent checks
 }
 
 func newProcess(engine *Engine, pid *PID, props *Props) *process {
@@ -31,6 +31,15 @@ func newProcess(engine *Engine, pid *PID, props *Props) *process {
 
 // sendMessage sends a message to the actor's mailbox.
 func (p *process) sendMessage(message interface{}, sender *PID) {
+	// Optimization: Don't bother sending user messages if already stopped/stopping
+	// Allow system messages (like Stopping, Stopped) through.
+	_, isStopping := message.(Stopping)
+	_, isStopped := message.(Stopped)
+	if p.stopped.Load() && !isStopping && !isStopped {
+		// fmt.Printf("Actor %s already stopped, dropping user message %T\n", p.pid.ID, message)
+		return
+	}
+
 	envelope := &messageEnvelope{
 		Sender:  sender,
 		Message: message,
@@ -41,7 +50,6 @@ func (p *process) sendMessage(message interface{}, sender *PID) {
 	case p.mailbox <- envelope:
 		// Message sent successfully
 	default:
-		// TODO: Handle mailbox full scenario (e.g., drop, log, deadletter)
 		fmt.Printf("Actor %s mailbox full, dropping message type %T\n", p.pid.ID, message)
 	}
 }
@@ -51,21 +59,35 @@ func (p *process) run() {
 	// Defer cleanup and removal from engine
 	defer func() {
 		// Ensure actor is marked as stopped
-		p.stopped = true
-		// Send the final Stopped message
-		p.invokeReceive(Stopped{}, nil)
+		p.stopped.Store(true)
+		// Send the final Stopped message if actor was initialized
+		if p.actor != nil {
+			// Use a panic-safe invoke here as well
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("Actor %s panicked during Stopped processing: %v\n", p.pid.ID, r)
+					}
+				}()
+				p.invokeReceive(Stopped{}, nil)
+			}()
+		}
 		// Remove from engine *after* Stopped message is processed
 		p.engine.remove(p.pid)
 		// fmt.Printf("Actor %s goroutine exiting.\n", p.pid.ID) // Debug logging
 	}()
 
-	// Defer panic recovery
+	// Defer panic recovery for the main loop
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("Actor %s panicked: %v\nStack trace:\n%s\n", p.pid.ID, r, string(debug.Stack()))
-			// TODO: Implement supervisor strategy (restart, stop, escalate)
-			// For now, just log and stop the actor.
-			p.stopped = true // Mark as stopped to prevent further processing
+			p.stopped.Store(true) // Mark as stopped
+			// Ensure stopCh is closed on panic (non-blocking)
+			select {
+			case <-p.stopCh: // Already closed
+			default:
+				close(p.stopCh)
+			}
 		}
 	}()
 
@@ -81,14 +103,35 @@ func (p *process) run() {
 	for {
 		select {
 		case <-p.stopCh:
-			// Stop signal received, exit loop after cleanup
-			// fmt.Printf("Actor %s received stop signal.\n", p.pid.ID) // Debug logging
+			// Stop signal received directly (e.g., from engine.Stop or panic recovery)
+			// fmt.Printf("Actor %s received stop signal via stopCh.\n", p.pid.ID) // Debug logging
+			if p.stopped.CompareAndSwap(false, true) {
+				// If not already marked stopped (e.g., by Stopping message),
+				// invoke Stopping handler now before exiting.
+				// fmt.Printf("Actor %s invoking Stopping due to stopCh closure.\n", p.pid.ID)
+				p.invokeReceive(Stopping{}, nil)
+			}
 			return // Exit the loop, deferred functions will run
 
-		case envelope := <-p.mailbox:
-			if p.stopped {
-				// If already stopping/stopped, ignore further messages except system ones handled below
-				// fmt.Printf("Actor %s is stopped, ignoring message type %T\n", p.pid.ID, envelope.Message) // Debug logging
+		case envelope, ok := <-p.mailbox:
+			if !ok {
+				// Mailbox closed unexpectedly? Should not happen.
+				fmt.Printf("Actor %s mailbox closed unexpectedly.\n", p.pid.ID)
+				p.stopped.Store(true) // Mark as stopped
+				select {
+				case <-p.stopCh:
+				default:
+					close(p.stopCh)
+				}
+				return
+			}
+
+			// Check if stopped *after* receiving from mailbox,
+			// but before processing, unless it's a system message.
+			_, isStopping := envelope.Message.(Stopping)
+			_, isStoppedMsg := envelope.Message.(Stopped) // Renamed to avoid conflict
+			if p.stopped.Load() && !isStopping && !isStoppedMsg {
+				// fmt.Printf("Actor %s is stopped, ignoring message type %T\n", p.pid.ID, envelope.Message)
 				continue
 			}
 
@@ -98,21 +141,25 @@ func (p *process) run() {
 				p.invokeReceive(msg, envelope.Sender)
 			case Stopping:
 				// fmt.Printf("Actor %s processing Stopping message.\n", p.pid.ID) // Debug logging
-				p.stopped = true // Mark as stopping
-				p.invokeReceive(msg, envelope.Sender)
-				// Signal the loop to stop *after* processing Stopping
-				close(p.stopCh)
+				if p.stopped.CompareAndSwap(false, true) { // Process only once
+					p.invokeReceive(msg, envelope.Sender)
+					// Signal the loop to stop *after* processing Stopping
+					select {
+					case <-p.stopCh: // Already closed by engine.Stop?
+					default:
+						close(p.stopCh)
+					}
+				}
 			case Stopped:
-				// This case should ideally not be hit via mailbox, but handled in defer.
-				// If it arrives here, it means something sent it manually.
+				// Should be handled in defer, but log if received via mailbox
 				fmt.Printf("Actor %s received unexpected Stopped message via mailbox.\n", p.pid.ID)
-				p.stopped = true
-				p.invokeReceive(msg, envelope.Sender)
-				// Ensure stopCh is closed if not already
-				select {
-				case <-p.stopCh: // Already closed
-				default:
-					close(p.stopCh)
+				if p.stopped.CompareAndSwap(false, true) {
+					p.invokeReceive(msg, envelope.Sender)
+					select {
+					case <-p.stopCh:
+					default:
+						close(p.stopCh)
+					}
 				}
 			default:
 				// Process regular user message
@@ -132,7 +179,15 @@ func (p *process) invokeReceive(msg interface{}, sender *PID) {
 		message: msg,
 	}
 
-	// Call the actor's Receive method
-	// Panic recovery is handled in the run loop's defer
-	p.actor.Receive(ctx)
+	// Call the actor's Receive method, recovering from panics within it
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("Actor %s panicked during Receive(%T): %v\nStack trace:\n%s\n", p.pid.ID, msg, r, string(debug.Stack()))
+				// TODO: Notify supervisor?
+				// For now, just log. The main loop's panic handler will ensure shutdown.
+			}
+		}()
+		p.actor.Receive(ctx)
+	}()
 }
