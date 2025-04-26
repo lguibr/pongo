@@ -2,65 +2,68 @@
 package game
 
 import (
-	"fmt" // <-- Import fmt
+	"fmt"
 	"math"
-	"math/rand"
-	"runtime/debug"
-	"time"
+	"math/rand" // Needed for NewBall velocity
+	// "runtime/debug" // No longer needed as Engine removed
+	// "time"          // No longer needed here
 
 	"github.com/lguibr/pongo/utils"
 )
 
-// --- Message Types for Ball Channel ---
+// --- Message Types for Ball Communication (Sent BY BallActor or TO BallActor) ---
 
-// BallMessage is the base interface for messages sent FROM the ball's channel
+// BallMessage is the base interface for messages sent FROM the ball actor
+// (Currently only BallPositionMessage)
 type BallMessage interface{}
 
-// BallPositionMessage signals the ball's current state.
+// BallPositionMessage signals the ball's current state (sent by BallActor).
 type BallPositionMessage struct {
-	Ball *Ball
+	Ball *Ball // Pointer to a state snapshot
 }
 
-// WallCollisionMessage signals a collision with a canvas boundary.
-type WallCollisionMessage struct { // <-- Definition
+// WallCollisionMessage signals a collision with a canvas boundary (sent by GameActor).
+// No longer sent by Ball itself.
+type WallCollisionMessage struct {
 	Index int   // Which wall was hit (0: Right, 1: Top, 2: Left, 3: Bottom)
 	Ball  *Ball // Reference to the ball that hit the wall
 }
 
-// BreakBrickMessage signals that a brick was broken.
-type BreakBrickMessage struct { // <-- Definition
+// BreakBrickMessage signals that a brick was broken (sent by GameActor).
+// No longer sent by Ball itself.
+type BreakBrickMessage struct {
 	BallPayload *Ball // Reference to the ball that broke the brick
 	Level       int   // Level of the broken brick (for scoring)
 }
 
-// --- Ball Struct and Methods ---
+// --- Ball Struct (State Holder) ---
 
 type Ball struct {
-	X          int              `json:"x"`
-	Y          int              `json:"y"`
-	Vx         int              `json:"vx"`
-	Vy         int              `json:"vy"`
-	Ax         int              `json:"ax"`
-	Ay         int              `json:"ay"`
-	Radius     int              `json:"radius"`
-	Id         int              `json:"id"`
-	OwnerIndex int              `json:"ownerIndex"`
-	Phasing    bool             `json:"phasing"`
-	Mass       int              `json:"mass"`
-	Channel    chan BallMessage `json:"-"` // Internal channel for this ball's events
-	canvasSize int
-	open       bool // Flag to signal the engine loop to stop
+	X          int  `json:"x"`
+	Y          int  `json:"y"`
+	Vx         int  `json:"vx"`
+	Vy         int  `json:"vy"`
+	Ax         int  `json:"ax"` // Acceleration - currently unused?
+	Ay         int  `json:"ay"` // Acceleration - currently unused?
+	Radius     int  `json:"radius"`
+	Id         int  `json:"id"` // Unique ID (e.g., timestamp)
+	OwnerIndex int  `json:"ownerIndex"` // Index of the player who last hit it
+	Phasing    bool `json:"phasing"`    // Is the ball currently phasing?
+	Mass       int  `json:"mass"`
+	canvasSize int  // Keep for boundary checks within Move or getters if needed
+	open       bool // Flag used by old engine loop, potentially reusable for actor state? (Set false on stop)
+	// Channel    chan BallMessage `json:"-"` // Removed
 }
 
 func (b *Ball) GetX() int      { return b.X }
 func (b *Ball) GetY() int      { return b.Y }
 func (b *Ball) GetRadius() int { return b.Radius }
 
-func NewBallChannel() chan BallMessage {
-	return make(chan BallMessage, 10) // Added buffer
-}
+// NewBallChannel removed
 
-func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, index int) *Ball {
+// NewBall creates the initial state data structure for a ball.
+func NewBall(x, y, radius, canvasSize, ownerIndex, index int) *Ball {
+	// If position is zero, calculate initial position based on owner
 	if x == 0 && y == 0 {
 		cardinalPosition := [2]int{canvasSize/2 - utils.CellSize*1.5, 0}
 
@@ -86,6 +89,7 @@ func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, ind
 		radius = utils.BallSize
 	}
 
+	// Calculate initial velocity based on owner index
 	maxVelocity := utils.MaxVelocity
 	minVelocity := utils.MinVelocity
 
@@ -96,6 +100,7 @@ func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, ind
 	cardinalVY := utils.RandomNumberN(maxVelocity) // Already ensures non-zero
 
 	vx, vy := utils.RotateVector(ownerIndex, -cardinalVX, cardinalVY, 1, 1)
+
 	return &Ball{
 		X:          x,
 		Y:          y,
@@ -105,117 +110,76 @@ func NewBall(channel chan BallMessage, x, y, radius, canvasSize, ownerIndex, ind
 		Id:         index, // Use provided index (timestamp) as ID
 		OwnerIndex: ownerIndex,
 		canvasSize: canvasSize,
-		Channel:    channel,
+		// Channel:    channel, // Removed
 		open:       true, // Ball starts active
 		Mass:       mass,
 	}
 }
 
-// Engine runs the ball's movement and update loop.
-// Added panic recovery.
-func (ball *Ball) Engine() {
-	// Panic Recovery
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("PANIC recovered in Ball %d Engine: %v\nStack trace:\n%s\n", ball.Id, r, string(debug.Stack()))
-		}
-		// Ensure channel is closed if this goroutine exits unexpectedly
-		if ball.Channel != nil {
-			// Check if channel is already closed before trying to close it
-			select {
-			case _, ok := <-ball.Channel:
-				if !ok {
-					// Already closed
-				} else {
-					// Received a message unexpectedly? Put it back? Or just close.
-					// For simplicity, just attempt to close if it wasn't already.
-					close(ball.Channel)
-				}
-			default:
-				// Channel is empty, safe to close
-				close(ball.Channel)
-			}
-			ball.Channel = nil // Prevent further use after closing attempt
-		}
-		fmt.Printf("Ball %d Engine loop stopped.\n", ball.Id)
-	}()
+// Engine removed
 
-	fmt.Printf("Ball %d Engine loop started.\n", ball.Id)
-	ticker := time.NewTicker(utils.Period)
-	defer ticker.Stop()
-
-	for {
-		// Use select for non-blocking check on ball.open and ticker
-		select {
-		case <-ticker.C:
-			if !ball.open {
-				fmt.Printf("Ball %d is not open, stopping engine.\n", ball.Id)
-				return // Exit loop if ball is marked closed
-			}
-
-			if ball.Channel == nil {
-				fmt.Printf("Ball %d channel is nil, stopping engine.\n", ball.Id)
-				return // Exit if channel is somehow nil
-			}
-
-			ball.Move()
-
-			// Send position update - non-blocking
-			// In actor model, send message to GameActor.
-			select {
-			case ball.Channel <- BallPositionMessage{Ball: ball}:
-				// Position sent
-			default:
-				// Log if channel is full, but don't block or panic
-				// fmt.Printf("Ball %d channel full, could not send position.\n", ball.Id)
-			}
-		// Optional: Add a case here to listen on a dedicated stop channel for the ball
-		// case <-ball.stopCh:
-		//     fmt.Printf("Ball %d received stop signal.\n", ball.Id)
-		//     return
-		}
-	}
-}
-
+// Move updates the ball's position based on velocity and acceleration.
+// Called by BallActor.
 func (ball *Ball) Move() {
-	ball.X += ball.Vx + ball.Ax/2
-	ball.Y += ball.Vy + ball.Ay/2
+    // Basic physics update
+	ball.X += ball.Vx // + ball.Ax/2 // Acceleration not used currently
+	ball.Y += ball.Vy // + ball.Ay/2 // Acceleration not used currently
 
-	ball.Vx += ball.Ax
-	ball.Vy += ball.Ay
+    // Update velocity from acceleration (if used)
+	// ball.Vx += ball.Ax
+	// ball.Vy += ball.Ay
+
+    // TODO: Add optional friction or velocity damping here?
+    // ball.Vx = int(float64(ball.Vx) * 0.99)
+    // ball.Vy = int(float64(ball.Vy) * 0.99)
 }
 
-func (ball *Ball) getCenterIndex() (x, y int) {
-	cellSize := utils.CellSize
-	row := ball.X / cellSize
-	col := ball.Y / cellSize
+// getCenterIndex calculates the grid cell indices for the ball's center.
+func (ball *Ball) getCenterIndex() (row, col int) {
+	// Might be used by GameActor for collision checks.
+	if utils.CellSize == 0 { // Avoid division by zero
+		fmt.Println("WARN: getCenterIndex called with utils.CellSize = 0")
+		return 0, 0
+	}
+	row = ball.X / utils.CellSize
+	col = ball.Y / utils.CellSize
 	return row, col
 }
 
-func (ball *Ball) HandleCollideRight() {
-	ball.Vx = -utils.Abs(ball.Vx)
-}
+// --- Velocity/State Modification Methods (Called by BallActor via messages) ---
 
-func (ball *Ball) HandleCollideLeft() {
-	ball.Vx = utils.Abs(ball.Vx)
-}
-
-func (ball *Ball) HandleCollideTop() {
-	ball.Vy = utils.Abs(ball.Vy)
-}
-
-func (ball *Ball) HandleCollideBottom() {
-	ball.Vy = -utils.Abs(ball.Vy)
-}
-
+// ReflectVelocityX reverses the X velocity.
 func (ball *Ball) ReflectVelocityX() {
 	ball.Vx = -ball.Vx
 }
 
+// ReflectVelocityY reverses the Y velocity.
 func (ball *Ball) ReflectVelocityY() {
 	ball.Vy = -ball.Vy
 }
 
+// HandleCollideRight adjusts velocity for hitting the right side of something.
+func (ball *Ball) HandleCollideRight() {
+	ball.Vx = -utils.Abs(ball.Vx) // Ensure velocity moves left
+}
+
+// HandleCollideLeft adjusts velocity for hitting the left side of something.
+func (ball *Ball) HandleCollideLeft() {
+	ball.Vx = utils.Abs(ball.Vx) // Ensure velocity moves right
+}
+
+// HandleCollideTop adjusts velocity for hitting the top side of something.
+func (ball *Ball) HandleCollideTop() {
+	ball.Vy = utils.Abs(ball.Vy) // Ensure velocity moves down
+}
+
+// HandleCollideBottom adjusts velocity for hitting the bottom side of something.
+func (ball *Ball) HandleCollideBottom() {
+	ball.Vy = -utils.Abs(ball.Vy) // Ensure velocity moves up
+}
+
+
+// IncreaseVelocity scales the ball's velocity components.
 func (ball *Ball) IncreaseVelocity(ratio float64) {
 	newVx := int(math.Floor(float64(ball.Vx) * ratio))
 	newVy := int(math.Floor(float64(ball.Vy) * ratio))
@@ -230,193 +194,37 @@ func (ball *Ball) IncreaseVelocity(ratio float64) {
 	ball.Vy = newVy
 }
 
+// IncreaseMass increases the ball's mass and scales its radius slightly.
 func (ball *Ball) IncreaseMass(additional int) {
 	ball.Mass += additional
-	ball.Radius += additional * 2 // Simple scaling, adjust if needed
-}
-
-func (ball *Ball) SetBallPhasing(expiresIn int) {
-	ball.Phasing = true
-	go time.AfterFunc(time.Duration(expiresIn)*time.Second, func() {
-		// TODO: This needs to be thread-safe if accessed concurrently.
-		// In actor model, send a message back to the ball actor to turn phasing off.
-		ball.Phasing = false
-	})
-}
-
-// --- Collision Logic (belongs in Ball or GameActor) ---
-
-func (ball *Ball) CollidesTopWall() bool {
-	return ball.Y-ball.Radius <= 0
-}
-
-func (ball *Ball) CollidesBottomWall() bool {
-	return ball.Y+ball.Radius >= ball.canvasSize
-}
-
-func (ball *Ball) CollidesRightWall() bool {
-	return ball.X+ball.Radius >= ball.canvasSize
-}
-
-func (ball *Ball) CollidesLeftWall() bool {
-	return ball.X-ball.Radius <= 0
-}
-
-// CollidePaddle checks and handles collision with a single paddle.
-// Sends messages back via the ball's channel if collision occurs.
-func (ball *Ball) CollidePaddle(paddle *Paddle) {
-	if paddle == nil {
-		return
-	}
-
-	collisionDetected := ball.BallInterceptPaddles(paddle)
-	if collisionDetected {
-		fmt.Printf("Ball %d collided with Paddle %d\n", ball.Id, paddle.Index)
-		ball.OwnerIndex = paddle.Index // Ball now belongs to this player
-		handlers := [4]func(){
-			ball.HandleCollideRight, // Index 0 (Right wall relative to player 0)
-			ball.HandleCollideTop,   // Index 1 (Top wall relative to player 1)
-			ball.HandleCollideLeft,  // Index 2 (Left wall relative to player 2)
-			ball.HandleCollideBottom,// Index 3 (Bottom wall relative to player 3)
-		}
-
-		// Apply reflection based on which paddle was hit
-		handlerCollision := handlers[paddle.Index]
-		handlerCollision()
-		// Optionally add some velocity based on paddle movement?
+	// Simple radius scaling based on mass, adjust if needed
+	// Might be better to calculate radius based on mass: R = k * Mass^(1/3) ?
+	ball.Radius += additional * 2 // Example scaling
+	if ball.Radius <= 0 { // Prevent negative/zero radius
+		ball.Radius = 1
 	}
 }
 
-// CollideCells checks and handles collision with grid cells.
-// Sends messages back via the ball's channel if collision occurs.
-func (ball *Ball) CollideCells(grid Grid, cellSize int) {
-	gridSize := len(grid)
-	if gridSize == 0 {
-		return
-	}
-	row, col := ball.getCenterIndex()
+// SetBallPhasing removed (handled by BallActor state and timer)
 
-	// Check a 3x3 area around the ball's center cell index
-	for i := -1; i <= 1; i++ {
-		for j := -1; j <= 1; j++ {
-			checkRow, checkCol := row+i, col+j
+// --- Collision Logic (REMOVED - To be handled by GameActor) ---
+// func (ball *Ball) CollidesTopWall()... removed
+// func (ball *Ball) CollidesBottomWall()... removed
+// func (ball *Ball) CollidesRightWall()... removed
+// func (ball *Ball) CollidesLeftWall()... removed
+// func (ball *Ball) CollidePaddle()... removed
+// func (ball *Ball) CollideCells()... removed
+// func (ball *Ball) CollideWalls()... removed
+// func (ball *Ball) CollidePaddles()... removed
+// func (ball *Ball) handleCollideBrick()... removed
+// func (ball *Ball) handleCollideBlock()... removed
 
-			// Ensure indices are within grid bounds
-			if checkRow < 0 || checkRow >= gridSize || checkCol < 0 || checkCol >= len(grid[checkRow]) {
-				continue
-			}
+// --- Geometric Intersection Checks (May be useful for GameActor) ---
 
-			// Check if the ball physically intercepts this cell
-			if ball.InterceptsIndex(checkRow, checkCol, cellSize) {
-				cell := &grid[checkRow][checkCol] // Get pointer to modify cell directly (needs locking later)
-				cellType := cell.Data.Type
-
-				if cellType == utils.Cells.Brick && cell.Data.Life > 0 {
-					// fmt.Printf("Ball %d checking collision with Brick at [%d,%d]\n", ball.Id, checkRow, checkCol)
-					ball.handleCollideBrick([2]int{row, col}, [2]int{checkRow, checkCol}, cell) // Pass cell pointer
-					return // Handle only one collision per step for simplicity
-				}
-				if cellType == utils.Cells.Block {
-					// fmt.Printf("Ball %d checking collision with Block at [%d,%d]\n", ball.Id, checkRow, checkCol)
-					ball.handleCollideBlock([2]int{row, col}, [2]int{checkRow, checkCol})
-					return // Handle only one collision per step
-				}
-			}
-		}
-	}
-}
-
-// WallCollision struct definition moved into ball.go
-type WallCollision struct {
-	Collides func() bool
-	Handle   func()
-}
-
-// CollideWalls checks and handles collisions with outer canvas boundaries.
-// Sends messages back via the ball's channel if collision occurs.
-func (ball *Ball) CollideWalls() {
-	wallsCollision := [4]*WallCollision{
-		{ball.CollidesRightWall, ball.HandleCollideRight}, // Index 0
-		{ball.CollidesTopWall, ball.HandleCollideTop},     // Index 1
-		{ball.CollidesLeftWall, ball.HandleCollideLeft},   // Index 2
-		{ball.CollidesBottomWall, ball.HandleCollideBottom}, // Index 3
-	}
-
-	for index, wallCollision := range wallsCollision {
-		if wallCollision.Collides() {
-			wallCollision.Handle()
-			// Send message indicating which wall was hit
-			select {
-			case ball.Channel <- WallCollisionMessage{Index: index, Ball: ball}: // Use defined struct
-				// Message sent
-			default:
-				// fmt.Printf("Ball %d channel full, could not send WallCollisionMessage.\n", ball.Id)
-			}
-			return // Handle only one wall collision per step
-		}
-	}
-}
-
-// CollidePaddles iterates through paddles and calls CollidePaddle.
-// This is typically called by the GameActor or the main game loop.
-func (ball *Ball) CollidePaddles(paddles [4]*Paddle) {
-	for _, paddle := range paddles {
-		ball.CollidePaddle(paddle) // CollidePaddle handles nil check
-	}
-}
-
-// handleCollideBrick handles the logic when a ball hits a destructible brick.
-// It modifies the cell directly (needs locking or actor message later).
-func (ball *Ball) handleCollideBrick(oldIndices, newIndices [2]int, cell *Cell) {
-	if ball.Phasing {
-		return // Phasing balls pass through bricks
-	}
-
-	ball.handleCollideBlock(oldIndices, newIndices) // Reflect velocity first
-
-	// Decrease brick life (needs thread safety)
-	cell.Data.Life -= ball.Mass
-	fmt.Printf("Brick [%d,%d] life reduced to %d by ball %d\n", newIndices[0], newIndices[1], cell.Data.Life, ball.Id)
-
-	if cell.Data.Life <= 0 {
-		level := cell.Data.Level // Get level before changing type
-		cell.Data.Type = utils.Cells.Empty
-		cell.Data.Life = 0 // Ensure life is 0
-		fmt.Printf("Brick [%d,%d] broken by ball %d\n", newIndices[0], newIndices[1], ball.Id)
-
-		// Send message about the brick break
-		select {
-		case ball.Channel <- BreakBrickMessage{Level: level, BallPayload: ball}: // Use defined struct
-			// Message sent
-		default:
-			// fmt.Printf("Ball %d channel full, could not send BreakBrickMessage.\n", ball.Id)
-		}
-	}
-}
-
-// handleCollideBlock handles reflection logic for hitting any solid object (brick or block).
-func (ball *Ball) handleCollideBlock(oldIndices, newIndices [2]int) {
-	if ball.Phasing {
-		return // Phasing balls pass through blocks too
-	}
-
-	// Determine reflection direction based on relative positions
-	dx := newIndices[0] - oldIndices[0]
-	dy := newIndices[1] - oldIndices[1]
-
-	// Simple reflection logic (can be improved)
-	if dx != 0 && dy == 0 { // Horizontal collision
-		ball.ReflectVelocityX()
-	} else if dy != 0 && dx == 0 { // Vertical collision
-		ball.ReflectVelocityY()
-	} else { // Diagonal collision - reflect both for simplicity
-		ball.ReflectVelocityX()
-		ball.ReflectVelocityY()
-	}
-}
-
-// BallInterceptPaddles checks for intersection using distance to closest point.
+// BallInterceptPaddles checks for intersection using distance to closest point on paddle rectangle.
+// Note: Takes a single paddle, GameActor would iterate.
 func (ball *Ball) BallInterceptPaddles(paddle *Paddle) bool {
+    if paddle == nil { return false }
 	closestX := math.Max(float64(paddle.X), math.Min(float64(ball.X), float64(paddle.X+paddle.Width)))
 	closestY := math.Max(float64(paddle.Y), math.Min(float64(ball.Y), float64(paddle.Y+paddle.Height)))
 	distance := utils.Distance(ball.X, ball.Y, int(closestX), int(closestY))
@@ -425,12 +233,17 @@ func (ball *Ball) BallInterceptPaddles(paddle *Paddle) bool {
 
 // InterceptsIndex checks if the ball circle intersects with a grid cell rectangle.
 func (ball *Ball) InterceptsIndex(x, y, cellSize int) bool {
+    if cellSize <= 0 { return false } // Avoid issues with zero cell size
 	cellLeft := x * cellSize
 	cellTop := y * cellSize
 	cellRight := cellLeft + cellSize
 	cellBottom := cellTop + cellSize
+	// Find the closest point on the cell rectangle to the center of the ball
 	closestX := math.Max(float64(cellLeft), math.Min(float64(ball.X), float64(cellRight)))
 	closestY := math.Max(float64(cellTop), math.Min(float64(ball.Y), float64(cellBottom)))
+	// Calculate the distance between the ball's center and this closest point
 	distance := utils.Distance(ball.X, ball.Y, int(closestX), int(closestY))
+	// If the distance is less than the ball's radius, an intersection occurs
 	return distance < float64(ball.Radius)
 }
+

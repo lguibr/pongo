@@ -10,24 +10,25 @@ func TestNewBall(t *testing.T) {
 	canvasSize := utils.CanvasSize
 	testCases := []struct {
 		name                                 string
-		x, y, radius, index                  int
+		x, y, radius, ownerIndex, id         int // Added ownerIndex, id params
 		expectedX, expectedY, expectedRadius int
 	}{
 		{
 			"TestCase1",
-			10, 10, 0, 1,
+			10, 10, 0, 1, 1, // x, y, radius, ownerIndex, id
 			10, 10, utils.BallSize,
 		},
 		{
 			"TestCase2",
-			10, 20, 30, 1,
+			10, 20, 30, 2, 2, // x, y, radius, ownerIndex, id
 			10, 20, 30,
 		},
 	}
-	ballChannel := NewBallChannel()
+	// ballChannel := NewBallChannel() // Removed
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ball := NewBall(ballChannel, tc.x, tc.y, tc.radius, canvasSize, tc.index, tc.index)
+			// Call NewBall with correct signature (no channel, ownerIndex added)
+			ball := NewBall(tc.x, tc.y, tc.radius, canvasSize, tc.ownerIndex, tc.id)
 			if ball.X != tc.expectedX {
 				t.Errorf("Expected X to be %d, but got %d", tc.expectedX, ball.X)
 			}
@@ -37,9 +38,12 @@ func TestNewBall(t *testing.T) {
 			if ball.Radius != tc.expectedRadius {
 				t.Errorf("Expected Radius to be %d, but got %d", tc.expectedRadius, ball.Radius)
 			}
-
-			if ball.Id != tc.index {
-				t.Errorf("Expected Index to be %d, but got %d", tc.index, ball.Id)
+			// Check owner index and ID if needed
+			if ball.OwnerIndex != tc.ownerIndex {
+				 t.Errorf("Expected OwnerIndex to be %d, but got %d", tc.ownerIndex, ball.OwnerIndex)
+			}
+			if ball.Id != tc.id {
+				t.Errorf("Expected Id to be %d, but got %d", tc.id, ball.Id)
 			}
 		})
 	}
@@ -115,123 +119,10 @@ func TestBall_InterceptsIndex(t *testing.T) {
 	}
 }
 
-func TestBall_CollidesLeftWall(t *testing.T) {
-	testCases := []struct {
-		name              string
-		ballX             int
-		ballRadius        int
-		expectedCollision bool
-	}{
-		{"ball is inside the wall", 10, 5, false},
-		{"ball touches the left wall", 5, 5, true},
-		{"ball is on the left wall", 0, 5, true},
-		{"ball is outside of the left wall", -5, 5, true},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ball := &Ball{X: tc.ballX, Radius: tc.ballRadius}
-			if collision := ball.CollidesLeftWall(); collision != tc.expectedCollision {
-				t.Errorf("Expected collision to be %t but got %t for ballX = %d, ballRadius = %d", tc.expectedCollision, collision, tc.ballX, tc.ballRadius)
-			}
-		})
-	}
-}
-
-func TestBall_CollideRightWall(t *testing.T) {
-	type CollideRightWallTestCase struct {
-		name     string
-		ball     Ball
-		expected bool
-	}
-	testCases := []CollideRightWallTestCase{
-		{
-			name:     "ball just touches the right wall",
-			ball:     Ball{X: 900, Radius: 10, canvasSize: 900},
-			expected: true,
-		},
-		{
-			name:     "ball is still inside the canvas",
-			ball:     Ball{X: 800, Radius: 10, canvasSize: 900},
-			expected: false,
-		},
-		{
-			name:     "ball exceeds the right wall",
-			ball:     Ball{X: 905, Radius: 10, canvasSize: 900},
-			expected: true,
-		},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			result := testCase.ball.CollidesRightWall()
-			if result != testCase.expected {
-				t.Errorf("For test case %s expected %v but got %v", testCase.name, testCase.expected, result)
-			}
-		})
-	}
-}
-
-func TestBall_CollidesBottomWall(t *testing.T) {
-	testCases := []struct {
-		name              string
-		ballY             int
-		ballRadius        int
-		canvasHeight      int
-		expectedCollision bool
-	}{
-		{
-			name:              "ball with bottom edge outside canvas",
-			ballY:             10,
-			ballRadius:        5,
-			canvasHeight:      15,
-			expectedCollision: true,
-		},
-		{
-			name:              "ball with bottom edge inside canvas",
-			ballY:             5,
-			ballRadius:        5,
-			canvasHeight:      15,
-			expectedCollision: false,
-		},
-		{
-			name:              "ball with top edge outside canvas",
-			ballY:             -5,
-			ballRadius:        5,
-			canvasHeight:      15,
-			expectedCollision: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ball := &Ball{Y: tc.ballY, Radius: tc.ballRadius, canvasSize: tc.canvasHeight}
-			if collision := ball.CollidesBottomWall(); collision != tc.expectedCollision {
-				t.Errorf("Expected collision to be %t but got %t for ballY = %d, ballRadius = %d, canvasHeight = %d", tc.expectedCollision, collision, tc.ballY, tc.ballRadius, tc.canvasHeight)
-			}
-		})
-	}
-}
-
-func TestBall_CollidesTopWall(t *testing.T) {
-	testCases := []struct {
-		name              string
-		ballY             int
-		ballRadius        int
-		expectedCollision bool
-	}{
-		{"ball above top wall", 10, 5, false},
-		{"ball at top wall", 5, 5, true},
-		{"ball at 0", 0, 5, true},
-		{"ball inside top wall", -5, 5, true},
-	}
-
-	for _, tc := range testCases {
-		ball := &Ball{Y: tc.ballY, Radius: tc.ballRadius}
-		if collision := ball.CollidesTopWall(); collision != tc.expectedCollision {
-			t.Errorf("Test case %s: Expected collision to be %t but got %t for ballY = %d, ballRadius = %d", tc.name, tc.expectedCollision, collision, tc.ballY, tc.ballRadius)
-		}
-	}
-}
+// TestBall_CollidesLeftWall removed
+// TestBall_CollideRightWall removed
+// TestBall_CollidesBottomWall removed
+// TestBall_CollidesTopWall removed
 
 func TestBall_HandleCollideBottom(t *testing.T) {
 	testCases := []struct {
@@ -316,10 +207,6 @@ func TestBall_HandleCollideRight(t *testing.T) {
 }
 
 func TestBall_GetCenterIndex(t *testing.T) {
-
-	cellSize := 10
-	gridSize := 50
-
 	testCases := []struct {
 		name        string
 		ballX       int
@@ -327,18 +214,18 @@ func TestBall_GetCenterIndex(t *testing.T) {
 		expectedRow int
 		expectedCol int
 	}{
-
 		{
 			name:        "center of cell",
-			ballX:       cellSize / 2,
-			ballY:       cellSize / 2,
+			// Use actual utils.CellSize for calculation
+			ballX:       utils.CellSize / 2,
+			ballY:       utils.CellSize / 2,
 			expectedRow: 0,
 			expectedCol: 0,
 		},
 		{
 			name:        "bottom right of cell",
-			ballX:       cellSize - 1,
-			ballY:       cellSize - 1,
+			ballX:       utils.CellSize - 1,
+			ballY:       utils.CellSize - 1,
 			expectedRow: 0,
 			expectedCol: 0,
 		},
@@ -350,19 +237,26 @@ func TestBall_GetCenterIndex(t *testing.T) {
 			expectedCol: 0,
 		},
 		{
-			name:        "center of grid",
-			ballX:       cellSize * gridSize / 2,
-			ballY:       cellSize * gridSize / 2,
-			expectedRow: gridSize / cellSize,
-			expectedCol: gridSize / cellSize,
+			name:        "specific cell",
+			// Calculate X and Y to fall within the expected cell (3, 2) using the actual CellSize
+			ballX:       utils.CellSize * 3 + utils.CellSize/2, // Center of cell (3, ...)
+			ballY:       utils.CellSize * 2 + utils.CellSize/2, // Center of cell (..., 2)
+			expectedRow: 3,
+			expectedCol: 2,
 		},
 	}
 
 	for _, tc := range testCases {
-		ball := &Ball{X: tc.ballX, Y: tc.ballY}
-		row, col := ball.getCenterIndex()
-		if row != tc.expectedRow || col != tc.expectedCol {
-			t.Errorf("Test case %s failed: expected row %d and col %d but got row %d and col %d", tc.name, tc.expectedRow, tc.expectedCol, row, col)
-		}
+		t.Run(tc.name, func(t *testing.T) { // Use t.Run for subtests
+			ball := &Ball{X: tc.ballX, Y: tc.ballY}
+			// Call the function using the actual utils.CellSize internally
+		    row, col := ball.getCenterIndex()
+		    if row != tc.expectedRow || col != tc.expectedCol {
+			    t.Errorf("Test case %s failed: expected row %d and col %d but got row %d and col %d", tc.name, tc.expectedRow, tc.expectedCol, row, col)
+		    }
+		})
 	}
 }
+
+
+

@@ -1,3 +1,8 @@
 .vscode/
 coverage.out
 data/
+.gocache
+.gopath/
+.gotmp
+vendor
+vendor

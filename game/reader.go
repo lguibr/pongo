@@ -3,16 +3,19 @@ package game
 
 import (
 	"fmt"
-	"math/rand"
-	"time"
-
-	"github.com/lguibr/pongo/utils"
+	// "math/rand" // No longer used in this file
+	// "time" // No longer used in this file
+	// "github.com/lguibr/pongo/utils" // No longer used in this file
 )
 
 // ReadBallChannel processes messages originating from a specific Ball instance.
 // TODO: This logic should move into the GameActor's Receive method.
+// DEPRECATED: Ball logic is now intended to be handled by BallActor sending
+// position updates to GameActor, and GameActor performing collisions/reactions.
 func (g *Game) ReadBallChannel(ownerIndex int, ball *Ball) {
-	ballChannel := ball.Channel // Get the specific channel for this ball
+	fmt.Printf("ReadBallChannel for Ball %d is DEPRECATED and should not be called.\n", ball.Id)
+	/* // Old logic removed:
+	ballChannel := ball.Channel // Removed field
 
 	for {
 		message, ok := <-ballChannel
@@ -70,15 +73,15 @@ func (g *Game) ReadBallChannel(ownerIndex int, ball *Ball) {
 				case 0: // Add new ball
 					fmt.Println("Triggering AddBall event")
 					newBall := NewBall(
-						NewBallChannel(), // Each new ball needs its own channel/actor
+						// NewBallChannel(), // Removed
 						breakingBall.X, breakingBall.Y, utils.BallSize,
 						utils.CanvasSize, playerIndex, time.Now().Nanosecond(),
 					)
 					// Send message to GameActor to add the ball
 					g.channel <- AddBall{BallPayload: newBall, ExpireIn: rand.Intn(2) + 1}
 					// Start the new ball's engine (will be handled by actor spawn)
-					go g.ReadBallChannel(playerIndex, newBall)
-					go newBall.Engine()
+					// go g.ReadBallChannel(playerIndex, newBall) // Removed
+					// go newBall.Engine() // Removed
 				case 1: // Increase ball mass
 					fmt.Println("Triggering IncreaseBallMass event")
 					g.channel <- IncreaseBallMass{BallPayload: breakingBall, Additional: 1}
@@ -87,7 +90,7 @@ func (g *Game) ReadBallChannel(ownerIndex int, ball *Ball) {
 					g.channel <- IncreaseBallVelocity{BallPayload: breakingBall, Ratio: 1.1}
 				case 3: // Ball phasing
 					fmt.Println("Triggering BallPhasing event")
-				g.channel <- BallPhasing{BallPayload: breakingBall, ExpireIn: 1}
+					g.channel <- BallPhasing{BallPayload: breakingBall, ExpireIn: 1}
 				}
 			} else {
 				fmt.Printf("Player %d not found for score update after brick break.\n", playerIndex)
@@ -98,6 +101,7 @@ func (g *Game) ReadBallChannel(ownerIndex int, ball *Ball) {
 			continue
 		}
 	}
+	*/
 }
 
 // ReadPaddleChannel is DEPRECATED. Logic moved to PaddleActor.
@@ -111,11 +115,12 @@ func (playerPaddle *Paddle) ReadPaddleChannel(paddleChannel chan PaddleMessage) 
 
 // ReadPlayerChannel processes messages related to a specific player's lifecycle and score.
 // TODO: This logic should move into the GameActor's Receive method.
+// It currently still relies on the deprecated game.channel for some actions.
 func (g *Game) ReadPlayerChannel(
 	index int,
 	playerChannel chan PlayerMessage,
-	paddle *Paddle, // Passed in to associate with the player (still needed?)
-	ball *Ball,     // Passed in to associate with the player
+	paddle *Paddle, // Reference to initial paddle state (might not be needed long term)
+	ball *Ball,     // Reference to initial ball state (might not be needed long term)
 ) {
 	fmt.Printf("Starting ReadPlayerChannel for player index %d\n", index)
 	for message := range playerChannel {
@@ -124,25 +129,27 @@ func (g *Game) ReadPlayerChannel(
 		case PlayerConnectMessage:
 			player := payload.PlayerPayload
 			fmt.Printf("Processing PlayerConnect for index %d, ID %s\n", index, player.Id)
-			// Add player and paddle to game state (should be done by GameActor)
+			// Add player and paddle state to game (should be done by GameActor)
 			g.AddPlayer(index, player, paddle)
-			// Add the initial ball associated with this player (should be done by GameActor)
-			g.channel <- AddBall{BallPayload: ball, ExpireIn: 0} // Send to main game channel/actor
+			// Add the initial ball state to game (should be done by GameActor)
+			g.channel <- AddBall{BallPayload: ball, ExpireIn: 0} // Send to old game channel
 
 		case PlayerDisconnectMessage:
 			fmt.Printf("Processing PlayerDisconnect for index %d\n", index)
 			// Remove player state (should be done by GameActor)
 			g.RemovePlayer(index)
-			// **Removed:** callback() - The callback is now called directly by ReadInput's defer
 
 		case PlayerScore:
 			scoreChange := payload.Score
+			// Lock needed here until GameActor handles state
+			g.mu.Lock()
 			if g.Players[index] != nil {
 				g.Players[index].Score += scoreChange
 				fmt.Printf("Player %d score updated by %d to %d\n", index, scoreChange, g.Players[index].Score)
 			} else {
 				fmt.Printf("Attempted to update score for disconnected player %d\n", index)
 			}
+			g.mu.Unlock()
 
 		default:
 			fmt.Printf("Game logic received unknown message type for player %d: %T\n", index, message)
@@ -152,41 +159,44 @@ func (g *Game) ReadPlayerChannel(
 	fmt.Printf("Player channel closed for player index %d\n", index)
 }
 
-// ReadGameChannel processes messages sent to the main game loop/actor.
+// ReadGameChannel processes messages sent to the main game loop/actor (DEPRECATED).
 // TODO: This logic should move into the GameActor's Receive method.
 func (g *Game) ReadGameChannel() {
-	fmt.Println("Starting ReadGameChannel loop")
-	for message := range g.channel {
+	fmt.Println("Starting ReadGameChannel loop (DEPRECATED)")
+	for message := range g.channel { // Reads from deprecated channel
 		// fmt.Printf("Main game channel received message: %T\n", message) // Debug log
 		switch msg := message.(type) {
 		case AddBall:
 			ball := msg.BallPayload
 			expire := msg.ExpireIn
-			fmt.Printf("Game adding ball ID %d (owner %d), expires in %d sec\n", ball.Id, ball.OwnerIndex, expire)
-			g.AddBall(ball, expire) // Add ball to game state and start its goroutines
+			fmt.Printf("Game adding ball ID %d (owner %d), expires in %d sec (DEPRECATED - Use GameActor)\n", ball.Id, ball.OwnerIndex, expire)
+			g.AddBall(ball, expire) // Add ball state to game list
 
 		case RemoveBall:
 			id := msg.Id
-			fmt.Printf("Game removing ball ID %d\n", id)
-			g.RemoveBall(id) // Remove ball from game state and stop its goroutines
+			fmt.Printf("Game removing ball ID %d (DEPRECATED - Use GameActor)\n", id)
+			g.RemoveBall(id) // Remove ball state from game list
 
 		case IncreaseBallVelocity:
 			ball := msg.BallPayload
 			ratio := msg.Ratio
-			fmt.Printf("Game increasing velocity for ball ID %d by %.2f\n", ball.Id, ratio)
-			ball.IncreaseVelocity(ratio) // Modify ball state directly (should be message to BallActor)
+			fmt.Printf("Game increasing velocity for ball ID %d by %.2f (DEPRECATED - Use message to BallActor)\n", ball.Id, ratio)
+			// TODO: Need to find BallActor PID and send IncreaseVelocityCommand
+			// ball.IncreaseVelocity(ratio) // Incorrect - modifies potentially shared state
 
 		case IncreaseBallMass:
 			ball := msg.BallPayload
 			additional := msg.Additional
-			fmt.Printf("Game increasing mass for ball ID %d by %d\n", ball.Id, additional)
-			ball.IncreaseMass(additional) // Modify ball state directly (should be message to BallActor)
+			fmt.Printf("Game increasing mass for ball ID %d by %d (DEPRECATED - Use message to BallActor)\n", ball.Id, additional)
+			// TODO: Need to find BallActor PID and send IncreaseMassCommand
+			// ball.IncreaseMass(additional) // Incorrect
 
 		case BallPhasing:
 			ball := msg.BallPayload
 			expireIn := msg.ExpireIn
-			fmt.Printf("Game setting phasing for ball ID %d for %d sec\n", ball.Id, expireIn)
-			ball.SetBallPhasing(expireIn) // Modify ball state directly (should be message to BallActor)
+			fmt.Printf("Game setting phasing for ball ID %d for %d sec (DEPRECATED - Use message to BallActor)\n", ball.Id, expireIn)
+			// TODO: Need to find BallActor PID and send SetPhasingCommand
+			// ball.SetBallPhasing(expireIn) // Removed
 
 		default:
 			fmt.Printf("Main game channel received unknown message type: %T\n", message)

@@ -77,7 +77,7 @@ func (e *Engine) Send(pid *PID, message interface{}, sender *PID) {
 // after its goroutine exits.
 func (e *Engine) Stop(pid *PID) {
 	e.mu.RLock()
-	proc, ok := e.actors[pid.ID]
+	_, ok := e.actors[pid.ID] // Use _ if proc is not needed when ok is true
 	e.mu.RUnlock()
 
 	if ok {

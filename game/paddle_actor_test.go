@@ -54,7 +54,8 @@ func TestPaddleActor_ReceivesDirectionAndMoves(t *testing.T) {
 	// 2. Setup Paddle Actor
 	initialPaddleState := NewPaddle(utils.CanvasSize, 0) // Create initial data for paddle 0
     initialY := initialPaddleState.Y // Store initial Y
-	paddleProps := NewPaddleActorProducer(*initialPaddleState, receiverPID) // Pass data copy and receiver PID
+	paddleProducer := NewPaddleActorProducer(*initialPaddleState, receiverPID) // Create the producer func
+	paddleProps := bollywood.NewProps(paddleProducer) // Wrap producer in Props
 	paddlePID := engine.Spawn(paddleProps)
 	assert.NotNil(t, paddlePID, "Paddle PID should not be nil")
 

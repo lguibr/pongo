@@ -36,14 +36,15 @@ func TestGame_GetNextIndex(t *testing.T) {
 		{[4]*Player{{Id: "player1"}, nil, nil}, 1},
 		{[4]*Player{{Id: "player1"}, {Id: "player2"}, nil}, 2},
 		{[4]*Player{{Id: "player1"}, {Id: "player2"}, {Id: "player3"}}, 3},
-		{[4]*Player{{Id: "player1"}, {Id: "player2"}, {Id: "player3"}, {Id: "player4"}}, 0},
+		{[4]*Player{{Id: "player1"}, {Id: "player2"}, {Id: "player3"}, {Id: "player4"}}, -1}, // Corrected: Should return -1 when full
 	}
 
 	for _, tc := range testCases {
 		game := Game{Players: tc.players}
 		result := game.GetNextIndex()
 		if result != tc.nextIndex {
-			t.Errorf("Game.GetNextIndex() = %v, want %v", result, tc.nextIndex)
+			// Use t.Fatalf to stop on first failure for this test case
+			t.Fatalf("Test Case: Players=%+v\nGame.GetNextIndex() = %v, want %v", tc.players, result, tc.nextIndex)
 		}
 	}
 }
