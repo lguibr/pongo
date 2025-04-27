@@ -4,7 +4,7 @@ package server
 import (
 	"fmt"
 
-	"github.com/lguibr/pongo/bollywood" // Import bollywood
+	"github.com/lguibr/bollywood" // Import bollywood
 	// "golang.org/x/net/websocket" // No longer needed here
 )
 

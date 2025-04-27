@@ -5,21 +5,28 @@ import (
 	"net/http"
 	"time" // Added for shutdown timeout
 
-	"github.com/lguibr/pongo/bollywood" // Import bollywood
+	"github.com/lguibr/bollywood" // Import bollywood
 	"github.com/lguibr/pongo/game"
 	"github.com/lguibr/pongo/server"
+	"github.com/lguibr/pongo/utils" // Import utils
 	"golang.org/x/net/websocket"
 )
 
 var port = ":3001"
 
 func main() {
+	// 0. Load Configuration
+	// For now, using default config. Later, could load from file.
+	cfg := utils.DefaultConfig()
+	fmt.Println("Configuration loaded (using defaults).")
+	fmt.Printf("Canvas Size: %d, Grid Size: %d, Tick Period: %v\n", cfg.CanvasSize, cfg.GridSize, cfg.GameTickPeriod)
+
 	// 1. Initialize Bollywood Engine
 	engine := bollywood.NewEngine()
 	fmt.Println("Bollywood Engine created.")
 
-	// 2. Spawn the GameActor
-	gameActorProps := bollywood.NewProps(game.NewGameActorProducer(engine))
+	// 2. Spawn the GameActor, passing the config
+	gameActorProps := bollywood.NewProps(game.NewGameActorProducer(engine, cfg)) // Pass cfg
 	gameActorPID := engine.Spawn(gameActorProps)
 	if gameActorPID == nil {
 		panic("Failed to spawn GameActor")
@@ -35,7 +42,7 @@ func main() {
 	fmt.Println("WebSocket Server created.")
 
 	// 4. Setup Handlers (pass engine and gameActorPID)
-	http.HandleFunc("/", websocketServer.HandleGetSit()) // Modify HandleGetSit
+	http.HandleFunc("/", websocketServer.HandleGetSit())                            // Modify HandleGetSit
 	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe())) // Modify HandleSubscribe
 
 	// 5. Start Server

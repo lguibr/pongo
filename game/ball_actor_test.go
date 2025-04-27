@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lguibr/pongo/bollywood"
+	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,34 +22,35 @@ func TestBallActor_SpawnsAndSendsPosition(t *testing.T) {
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
 	time.Sleep(50 * time.Millisecond) // Wait for receiver
 
-	initialBall := NewBall(100, 100, 10, utils.CanvasSize, 0, 123)
+	cfg := utils.DefaultConfig() // Create default config
+
+	// Pass config and isPermanent=false (default for tests)
+	initialBall := NewBall(cfg, 100, 100, 0, 123, false)
 	initialX, initialY := initialBall.X, initialBall.Y
 
-	ballProducer := NewBallActorProducer(*initialBall, mockGameActorPID) // Pass mock PID
+	// Pass config to producer
+	ballProducer := NewBallActorProducer(*initialBall, mockGameActorPID, cfg)
 	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
 	assert.NotNil(t, ballPID)
 
-	time.Sleep(utils.Period * 5) // Wait longer for actor to start and send initial position + tick
+	// Use config tick period for waiting
+	time.Sleep(cfg.GameTickPeriod * 5)
 
-	// Check if initial position was sent
 	received := mockGameActor.GetMessages()
 	initialPosFound := false
 	var lastBallState *Ball
 	for _, msg := range received {
 		if posMsg, ok := msg.(BallPositionMessage); ok {
-			// Make a copy before assigning to lastBallState
 			ballCopy := *posMsg.Ball
 			lastBallState = &ballCopy
 			if posMsg.Ball.Id == initialBall.Id && posMsg.Ball.X == initialX && posMsg.Ball.Y == initialY {
 				initialPosFound = true
-				// Don't break, let it process ticks too
 			}
 		}
 	}
 	assert.True(t, initialPosFound, "Should have received initial position message")
 	assert.NotNil(t, lastBallState, "Should have received at least one position message")
 
-	// Check if movement occurred after ticks
 	assert.NotEqual(t, initialX, lastBallState.X, "Ball X should change after ticks")
 	assert.NotEqual(t, initialY, lastBallState.Y, "Ball Y should change after ticks")
 	fmt.Printf("Ball moved to X=%d, Y=%d\n", lastBallState.X, lastBallState.Y)
@@ -61,25 +62,28 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 
 	mockGameActor := &MockGameActor{}
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
-	time.Sleep(50 * time.Millisecond) // Wait longer
+	time.Sleep(50 * time.Millisecond)
 
-	initialBall := NewBall(100, 100, 10, utils.CanvasSize, 0, 456)
+	cfg := utils.DefaultConfig() // Create default config
+
+	// Pass config and isPermanent=false
+	initialBall := NewBall(cfg, 100, 100, 0, 456, false)
 	initialVx, initialVy := initialBall.Vx, initialBall.Vy
 	initialMass, initialRadius := initialBall.Mass, initialBall.Radius
 
-	ballProducer := NewBallActorProducer(*initialBall, mockGameActorPID)
+	// Pass config to producer
+	ballProducer := NewBallActorProducer(*initialBall, mockGameActorPID, cfg)
 	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
-	time.Sleep(utils.Period * 2) // Wait longer for start
+	time.Sleep(cfg.GameTickPeriod * 2) // Use config tick period
 
 	// --- Test Velocity Increase ---
-	velRatio := 1.5
+	velRatio := cfg.PowerUpIncreaseVelRatio // Use config ratio
 	engine.Send(ballPID, IncreaseVelocityCommand{Ratio: velRatio}, nil)
-	time.Sleep(utils.Period) // Wait for processing
+	time.Sleep(cfg.GameTickPeriod)
 
-	// Force tick to get updated state sent to mock GameActor
-	mockGameActor.ClearMessages() // Use safe method
+	mockGameActor.ClearMessages()
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(utils.Period * 2) // Wait longer
+	time.Sleep(cfg.GameTickPeriod * 2)
 
 	received := mockGameActor.GetMessages()
 	velUpdated := false
@@ -87,7 +91,6 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 		if posMsg, ok := msg.(BallPositionMessage); ok && posMsg.Ball.Id == initialBall.Id {
 			expectedVx := int(math.Floor(float64(initialVx) * velRatio))
 			expectedVy := int(math.Floor(float64(initialVy) * velRatio))
-			// Handle potential zeroing due to floor
 			if initialVx != 0 && expectedVx == 0 {
 				expectedVx = int(math.Copysign(1, float64(initialVx)))
 			}
@@ -98,44 +101,45 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 			assert.Equal(t, expectedVx, posMsg.Ball.Vx, "Vx should be increased")
 			assert.Equal(t, expectedVy, posMsg.Ball.Vy, "Vy should be increased")
 			velUpdated = true
-			initialVx, initialVy = posMsg.Ball.Vx, posMsg.Ball.Vy // Update for next test
+			initialVx, initialVy = posMsg.Ball.Vx, posMsg.Ball.Vy
 			break
 		}
 	}
 	assert.True(t, velUpdated, "Position message with updated velocity not received")
 
 	// --- Test Mass Increase ---
-	massAdd := 5
+	massAdd := cfg.PowerUpIncreaseMassAdd // Use config value
 	engine.Send(ballPID, IncreaseMassCommand{Additional: massAdd}, nil)
-	time.Sleep(utils.Period) // Wait
+	time.Sleep(cfg.GameTickPeriod)
 
-	mockGameActor.ClearMessages() // Use safe method
+	mockGameActor.ClearMessages()
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(utils.Period * 2) // Wait longer
+	time.Sleep(cfg.GameTickPeriod * 2)
 
 	received = mockGameActor.GetMessages()
 	massUpdated := false
 	for _, msg := range received {
 		if posMsg, ok := msg.(BallPositionMessage); ok && posMsg.Ball.Id == initialBall.Id {
 			expectedMass := initialMass + massAdd
-			expectedRadius := initialRadius + massAdd*2 // Based on current simple formula
+			// Use config for radius increase calculation
+			expectedRadius := initialRadius + massAdd*cfg.PowerUpIncreaseMassSize
 			assert.Equal(t, expectedMass, posMsg.Ball.Mass, "Mass should be increased")
 			assert.Equal(t, expectedRadius, posMsg.Ball.Radius, "Radius should be increased")
 			massUpdated = true
-			initialMass, initialRadius = posMsg.Ball.Mass, posMsg.Ball.Radius // Update
+			initialMass, initialRadius = posMsg.Ball.Mass, posMsg.Ball.Radius
 			break
 		}
 	}
 	assert.True(t, massUpdated, "Position message with updated mass/radius not received")
 
 	// --- Test Phasing ---
-	phasingDuration := 100 * time.Millisecond // Increase duration slightly
-	engine.Send(ballPID, SetPhasingCommand{ExpireIn: phasingDuration}, nil)
-	time.Sleep(utils.Period) // Wait
+	phasingDuration := cfg.BallPhasingTime         // Use config value
+	engine.Send(ballPID, SetPhasingCommand{}, nil) // ExpireIn is now handled by GameActor physics
+	time.Sleep(cfg.GameTickPeriod)
 
-	mockGameActor.ClearMessages() // Use safe method
+	mockGameActor.ClearMessages()
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(utils.Period * 2) // Wait longer
+	time.Sleep(cfg.GameTickPeriod * 2)
 
 	received = mockGameActor.GetMessages()
 	phasingStarted := false
@@ -148,12 +152,11 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 	}
 	assert.True(t, phasingStarted, "Position message with phasing=true not received")
 
-	// Wait for phasing to expire
-	time.Sleep(phasingDuration + utils.Period*2) // Wait longer than duration
+	time.Sleep(phasingDuration + cfg.GameTickPeriod*2) // Wait longer than duration
 
-	mockGameActor.ClearMessages()              // Use safe method
-	engine.Send(ballPID, &internalTick{}, nil) // Force another tick
-	time.Sleep(utils.Period * 2)               // Wait longer
+	mockGameActor.ClearMessages()
+	engine.Send(ballPID, &internalTick{}, nil)
+	time.Sleep(cfg.GameTickPeriod * 2)
 
 	received = mockGameActor.GetMessages()
 	phasingEnded := false
@@ -168,23 +171,22 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 
 	// --- Test Reflect Velocity ---
 	engine.Send(ballPID, ReflectVelocityCommand{Axis: "X"}, nil)
-	time.Sleep(utils.Period) // Wait
+	time.Sleep(cfg.GameTickPeriod)
 
-	mockGameActor.ClearMessages() // Use safe method
+	mockGameActor.ClearMessages()
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(utils.Period * 2) // Wait longer
+	time.Sleep(cfg.GameTickPeriod * 2)
 
 	received = mockGameActor.GetMessages()
 	reflectXDone := false
 	for _, msg := range received {
 		if posMsg, ok := msg.(BallPositionMessage); ok && posMsg.Ball.Id == initialBall.Id {
 			assert.Equal(t, -initialVx, posMsg.Ball.Vx, "Vx should be reflected")
-			assert.Equal(t, initialVy, posMsg.Ball.Vy, "Vy should be unchanged") // Check Vy didn't change
+			assert.Equal(t, initialVy, posMsg.Ball.Vy, "Vy should be unchanged")
 			reflectXDone = true
-			initialVx = posMsg.Ball.Vx // Update for next check
+			initialVx = posMsg.Ball.Vx
 			break
 		}
 	}
 	assert.True(t, reflectXDone, "Position message with reflected X velocity not received")
-
 }

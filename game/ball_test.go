@@ -8,36 +8,42 @@ import (
 )
 
 func TestNewBall(t *testing.T) {
-	canvasSize := utils.CanvasSize
+	cfg := utils.DefaultConfig() // Create default config
+	canvasSize := cfg.CanvasSize
+	ballRadius := cfg.BallRadius
+	paddleWidth := cfg.PaddleWidth
+
 	testCases := []struct {
 		name                                 string
-		x, y, radius, ownerIndex, id         int
+		x, y, ownerIndex, id                 int
+		isPermanent                          bool // Add isPermanent flag
 		expectedX, expectedY, expectedRadius int
 	}{
 		{
 			"TestCase1",
-			10, 10, 0, 1, 1,
-			10, 10, utils.BallSize,
+			10, 10, 1, 1, false, // Provide isPermanent
+			10, 10, ballRadius,
 		},
 		{
-			"TestCase2",
-			10, 20, 30, 2, 2,
-			10, 20, 30,
+			"TestCase2",         // Test custom radius (though NewBall now uses config)
+			10, 20, 2, 2, false, // Provide isPermanent
+			10, 20, ballRadius, // Expect config radius
 		},
 		{
 			"TestCaseZeroPosPlayer0", // Test initial position calculation
-			0, 0, 0, 0, 3,
-			canvasSize - utils.PaddleWeight*2 - utils.BallSize, canvasSize / 2, utils.BallSize,
+			0, 0, 0, 3, true,         // Provide isPermanent (e.g., true for initial player ball)
+			canvasSize - paddleWidth*2 - ballRadius, canvasSize / 2, ballRadius,
 		},
 		{
 			"TestCaseZeroPosPlayer1", // Test initial position calculation
-			0, 0, 0, 1, 4,
-			canvasSize / 2, utils.PaddleWeight*2 + utils.BallSize, utils.BallSize,
+			0, 0, 1, 4, true,         // Provide isPermanent
+			canvasSize / 2, paddleWidth*2 + ballRadius, ballRadius,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ball := NewBall(tc.x, tc.y, tc.radius, canvasSize, tc.ownerIndex, tc.id)
+			// Pass config and isPermanent to NewBall
+			ball := NewBall(cfg, tc.x, tc.y, tc.ownerIndex, tc.id, tc.isPermanent)
 			if ball.X != tc.expectedX {
 				t.Errorf("Expected X to be %d, but got %d", tc.expectedX, ball.X)
 			}
@@ -53,6 +59,9 @@ func TestNewBall(t *testing.T) {
 			if ball.Id != tc.id {
 				t.Errorf("Expected Id to be %d, but got %d", tc.id, ball.Id)
 			}
+			if ball.IsPermanent != tc.isPermanent { // Check isPermanent flag
+				t.Errorf("Expected IsPermanent to be %t, but got %t", tc.isPermanent, ball.IsPermanent)
+			}
 			if ball.Vx == 0 && ball.Vy == 0 {
 				t.Errorf("Expected non-zero velocity components, but got Vx=%d, Vy=%d", ball.Vx, ball.Vy)
 			}
@@ -61,7 +70,8 @@ func TestNewBall(t *testing.T) {
 }
 
 func TestBall_BallInterceptPaddles(t *testing.T) {
-	ball := &Ball{X: 100, Y: 100, Radius: 10} // Center (100,100), R=10
+	cfg := utils.DefaultConfig()
+	ball := &Ball{X: 100, Y: 100, Radius: cfg.BallRadius} // Use config radius
 	testCases := []struct {
 		name       string
 		paddle     *Paddle
@@ -69,21 +79,19 @@ func TestBall_BallInterceptPaddles(t *testing.T) {
 	}{
 		{"Overlap Center", &Paddle{X: 95, Y: 95, Width: 10, Height: 10}, true},
 		{"Overlap TopLeft Corner", &Paddle{X: 90, Y: 90, Width: 15, Height: 15}, true},
-		{"No Overlap Corner", &Paddle{X: 110, Y: 110, Width: 20, Height: 20}, false},
-		{"Overlap Left Edge", &Paddle{X: 88, Y: 95, Width: 10, Height: 10}, true},
-		{"No Overlap Far", &Paddle{X: 120, Y: 120, Width: 20, Height: 20}, false},
-		{"Overlap Top Edge", &Paddle{X: 95, Y: 88, Width: 10, Height: 10}, true},
-		{"Touching Top Edge", &Paddle{X: 95, Y: 80, Width: 10, Height: 10}, false}, // Ball center (100,100), R=10. Paddle Y=[80,90]. Closest Y=90. Dist Y = 100-90=10. Dist^2 = 100. Radius^2 = 100. Touching, not intercepting.
-		// Adjust "Just Outside" cases to be clearly outside OR correct the expectation
-		{"Intercepts Corner 1", &Paddle{X: 85, Y: 85, Width: 10, Height: 10}, true},         // Closest (95,95), dist^2=50 < 100 (Radius^2) -> Intercepts!
-		{"Clearly Outside Corner 2", &Paddle{X: 111, Y: 111, Width: 10, Height: 10}, false}, // Closest (111,111), dist^2=11^2+11^2=242 > 100
+		{"No Overlap Corner", &Paddle{X: 110 + cfg.BallRadius, Y: 110 + cfg.BallRadius, Width: 20, Height: 20}, false},                // Adjust based on radius
+		{"Overlap Left Edge", &Paddle{X: 100 - cfg.BallRadius - 5, Y: 95, Width: 10, Height: 10}, true},                               // Adjust based on radius
+		{"No Overlap Far", &Paddle{X: 120 + cfg.BallRadius, Y: 120 + cfg.BallRadius, Width: 20, Height: 20}, false},                   // Adjust based on radius
+		{"Overlap Top Edge", &Paddle{X: 95, Y: 100 - cfg.BallRadius - 5, Width: 10, Height: 10}, true},                                // Adjust based on radius
+		{"Touching Top Edge", &Paddle{X: 95, Y: 100 - cfg.BallRadius - 10, Width: 10, Height: 10}, false},                             // Adjust based on radius
+		{"Intercepts Corner 1", &Paddle{X: 100 - cfg.BallRadius, Y: 100 - cfg.BallRadius, Width: 10, Height: 10}, true},               // Adjust based on radius
+		{"Clearly Outside Corner 2", &Paddle{X: 100 + cfg.BallRadius + 1, Y: 100 + cfg.BallRadius + 1, Width: 10, Height: 10}, false}, // Adjust based on radius
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			result := ball.BallInterceptPaddles(tc.paddle)
 			if result != tc.intercepts {
-				// Provide more context on failure
 				paddleBounds := fmt.Sprintf("X:[%d,%d], Y:[%d,%d]", tc.paddle.X, tc.paddle.X+tc.paddle.Width, tc.paddle.Y, tc.paddle.Y+tc.paddle.Height)
 				t.Errorf("Ball(X:%d,Y:%d,R:%d) vs Paddle(%s): Expected BallInterceptPaddles to return %t but got %t",
 					ball.X, ball.Y, ball.Radius, paddleBounds, tc.intercepts, result)
@@ -93,46 +101,46 @@ func TestBall_BallInterceptPaddles(t *testing.T) {
 }
 
 func TestBall_InterceptsIndex(t *testing.T) {
+	cfg := utils.DefaultConfig()
 	tests := []struct {
 		name               string
 		ball               *Ball
-		col, row, cellSize int // Use col, row
+		col, row, cellSize int
 		want               bool
 	}{
 		{
 			name: "Intercepts top-left corner",
-			ball: &Ball{X: 25, Y: 25, Radius: 10},
+			ball: &Ball{X: 25, Y: 25, Radius: cfg.BallRadius}, // Use config radius
 			col:  0, row: 0, cellSize: 50,
 			want: true,
 		},
 		{
 			name: "Does not intercept top-left corner",
-			ball: &Ball{X: 25, Y: 25, Radius: 5},
+			ball: &Ball{X: 25, Y: 25, Radius: 5}, // Keep small radius for this case
 			col:  0, row: 0, cellSize: 10,
 			want: false,
 		},
 		{
 			name: "Intercepts center of cell",
-			ball: &Ball{X: 75, Y: 75, Radius: 10},
+			ball: &Ball{X: 75, Y: 75, Radius: cfg.BallRadius}, // Use config radius
 			col:  1, row: 1, cellSize: 50,
 			want: true,
 		},
 		{
 			name: "Intercepts bottom-right corner",
-			ball: &Ball{X: 45, Y: 45, Radius: 10},
+			ball: &Ball{X: 45, Y: 45, Radius: cfg.BallRadius}, // Use config radius
 			col:  0, row: 0, cellSize: 50,
 			want: true,
 		},
 		{
 			name: "Does not intercept bottom-right corner",
-			ball: &Ball{X: 55, Y: 55, Radius: 5},
+			ball: &Ball{X: 55, Y: 55, Radius: 5}, // Keep small radius
 			col:  0, row: 0, cellSize: 50,
 			want: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Pass col, row to the function
 			if got := tt.ball.InterceptsIndex(tt.col, tt.row, tt.cellSize); got != tt.want {
 				t.Errorf("InterceptsIndex() = %v, want %v", got, tt.want)
 			}
@@ -141,9 +149,10 @@ func TestBall_InterceptsIndex(t *testing.T) {
 }
 
 func TestBall_GetCenterIndex(t *testing.T) {
-	canvasSize := utils.CanvasSize    // 576
-	gridSize := utils.GridSize        // 12
-	cellSize := canvasSize / gridSize // 48
+	cfg := utils.DefaultConfig() // Create default config
+	canvasSize := cfg.CanvasSize
+	gridSize := cfg.GridSize
+	cellSize := cfg.CellSize
 
 	testCases := []struct {
 		name        string
@@ -154,55 +163,54 @@ func TestBall_GetCenterIndex(t *testing.T) {
 	}{
 		{
 			name:        "center of cell (0,0)",
-			ballX:       cellSize / 2, // 24
-			ballY:       cellSize / 2, // 24
+			ballX:       cellSize / 2,
+			ballY:       cellSize / 2,
 			expectedCol: 0,
 			expectedRow: 0,
 		},
 		{
 			name:        "bottom right corner of cell (0,0)",
-			ballX:       cellSize - 1, // 47
-			ballY:       cellSize - 1, // 47
+			ballX:       cellSize - 1,
+			ballY:       cellSize - 1,
 			expectedCol: 0,
 			expectedRow: 0,
 		},
 		{
 			name:        "top left corner of cell (1,1)",
-			ballX:       cellSize, // 48
-			ballY:       cellSize, // 48
+			ballX:       cellSize,
+			ballY:       cellSize,
 			expectedCol: 1,
 			expectedRow: 1,
 		},
 		{
 			name:        "specific cell (3, 2)",
-			ballX:       cellSize*3 + cellSize/2, // 168
-			ballY:       cellSize*2 + cellSize/2, // 120
+			ballX:       cellSize*3 + cellSize/2,
+			ballY:       cellSize*2 + cellSize/2,
 			expectedCol: 3,
 			expectedRow: 2,
 		},
 		{
 			name:        "outside left",
 			ballX:       -10,
-			ballY:       120, // Row 2
-			expectedCol: 0,   // Clamped
+			ballY:       120,
+			expectedCol: 0,
 			expectedRow: 2,
 		},
 		{
 			name:        "outside bottom",
-			ballX:       168,             // Col 3
-			ballY:       canvasSize + 10, // 586
+			ballX:       168,
+			ballY:       canvasSize + 10,
 			expectedCol: 3,
-			expectedRow: gridSize - 1, // Clamped (11)
+			expectedRow: gridSize - 1,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Set canvasSize in the ball struct for the method
 			ball := &Ball{X: tc.ballX, Y: tc.ballY, canvasSize: canvasSize}
-			col, row := ball.getCenterIndex()
-			// Add debug print inside the test as well
-			// fmt.Printf("Test: %s, Input: (%d, %d), CellSize: %d, GridSize: %d -> Got: (col=%d, row=%d), Expected: (col=%d, row=%d)\n",
-			// 	tc.name, tc.ballX, tc.ballY, cellSize, gridSize, col, row, tc.expectedCol, tc.expectedRow)
+			// Pass config to getCenterIndex
+			col, row := ball.getCenterIndex(cfg)
 			if row != tc.expectedRow || col != tc.expectedCol {
 				t.Errorf("Test case %s failed: expected col %d, row %d but got col %d, row %d", tc.name, tc.expectedCol, tc.expectedRow, col, row)
 			}

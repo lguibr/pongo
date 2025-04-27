@@ -1,23 +1,39 @@
-name: PonGo-Build
+# File: .github/workflows/build.yml
+name: PonGo-Backend-Build
 
 on:
   push:
     branches: [ "main" ]
+    paths: # Only trigger on changes to Go files, mod/sum, or this workflow
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/build.yml'
   pull_request:
     branches: [ "main" ]
+    paths: # Only trigger on changes to Go files, mod/sum, or this workflow
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/build.yml'
 
 jobs:
-
   build:
+    name: Build Go Backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-      
-      - name: build-project
-        run: |
-          go build
+          cache: true
+          cache-dependency-path: 'go.sum'
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build Go Application
+        run: go build -v ./... # Build all packages verbosely

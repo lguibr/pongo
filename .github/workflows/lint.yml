@@ -1,19 +1,45 @@
-name: PonGo-Lint
+# File: .github/workflows/lint.yml
+name: PonGo-Backend-Lint
 
 on:
   push:
     branches: [ "main" ]
+    paths: # Only trigger on changes to Go files, mod/sum, or this workflow
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/lint.yml'
+      - '.golangci.yml' # Also trigger if lint config changes
   pull_request:
     branches: [ "main" ]
+    paths: # Only trigger on changes to Go files, mod/sum, or this workflow
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/lint.yml'
+      - '.golangci.yml'
 
 jobs:
-
   lint:
+    name: Lint Go Backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+          cache: true
+          cache-dependency-path: 'go.sum'
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          # Optional: version: 'v1.59' # Or latest
+          # Optional: specify config file if not default .golangci.yml
+          # config: path/to/.golangci.yml
+          # Optional: show only new issues if it's a PR
+          # only-new-issues: true
+          args: --verbose # Add verbosity

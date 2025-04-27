@@ -1,3 +1,4 @@
+// File: utils/utils.go
 package utils
 
 import (
@@ -190,13 +191,21 @@ func MinInt(a, b int) int {
 }
 
 // DEV string
+// DirectionFromString converts frontend direction strings ("ArrowLeft", "ArrowRight", "Stop")
+// to internal representations ("left", "right", "").
 func DirectionFromString(direction string) string {
-	if direction == "ArrowLeft" {
+	switch direction {
+	case "ArrowLeft":
 		return "left"
-	} else if direction == "ArrowRight" {
+	case "ArrowRight":
 		return "right"
+	case "Stop": // Explicitly handle "Stop"
+		return "" // Map "Stop" to empty string to halt movement
+	default:
+		// Log unknown directions if needed, but default to stop
+		// fmt.Printf("Warning: Received unknown direction string '%s'\n", direction)
+		return "" // Default to empty string (no movement) for unknown inputs
 	}
-	return ""
 }
 
 // DEV color

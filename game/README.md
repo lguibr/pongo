@@ -1,55 +1,36 @@
 # File: game/README.md
 # Game Logic Module
 
-This module contains the core gameplay logic, state management, and actor implementations for the PonGo game, built using the [Bollywood Actor Library](../bollywood/README.md).
+This module contains the core gameplay logic, state management, and actor implementations for the PonGo game, built using the [Bollywood Actor Library](https://github.com/lguibr/bollywood).
 
-## Core Actors
+## Overview
 
-*   **`GameActor` (`game_actor.go`)**:
-    *   The central coordinator, holding references to game state and child actor PIDs.
-    *   Manages the game lifecycle and main game tick.
-    *   Dispatches incoming messages to handler methods located in `game_actor_handlers.go`.
-    *   Initiates collision detection handled in `game_actor_physics.go`.
-    *   Triggers game state broadcasting handled in `game_actor_broadcast.go`.
+The core of the game logic resides in the `GameActor`, which orchestrates the interactions between players, paddles, balls, and the game grid. It manages the game state, handles connections, detects collisions, calculates scores, and broadcasts updates to connected clients. Game parameters like speed, sizes, and timings are now centralized in `utils/config.go`.
 
-*   **`PaddleActor` (`paddle_actor.go`)**:
-    *   Manages the state and movement logic for a single paddle (`Paddle` struct).
-    *   Receives `PaddleDirectionMessage`.
-    *   Updates position based on direction and an internal ticker.
-    *   Sends `PaddlePositionMessage` updates to the `GameActor`.
+-   **Actors:** `GameActor`, `PaddleActor`, `BallActor`.
+-   **State:** Game state (canvas, grid, players, paddles, balls) is primarily held by `GameActor`. Child actors manage their own local state (position, velocity) and report updates.
+-   **Physics:** Collision detection and response are handled in `GameActor`.
+    -   Wall collisions result in simple reflections and potential scoring. Balls hitting walls of empty player slots are removed, *unless* it's a player's initial, permanent ball.
+    -   Brick collisions result in reflections, brick damage/destruction, scoring, and potential power-up triggers.
+    -   Paddle collisions use dynamic physics: the reflection angle depends on the hit location on the paddle, and the paddle's current velocity influences the ball's resulting speed and direction.
+-   **Ball Spawning:** Each player receives one **permanent** ball upon joining, which is never removed for hitting an empty wall or expiring. Power-ups can spawn additional, temporary balls. Initial balls spawn with a random velocity vector.
+-   **Paddle Movement:** Paddles move based on "ArrowLeft" / "ArrowRight" commands relative to their orientation. Sending a "Stop" command (or releasing keys) halts paddle movement.
+-   **Communication:** Actors communicate via messages defined in `messages.go`. `GameActor` broadcasts the overall `GameState` to clients via WebSocket.
 
-*   **`BallActor` (`ball_actor.go`)**:
-    *   Manages the state and movement logic for a single ball (`Ball` struct).
-    *   Updates position based on velocity and an internal ticker.
-    *   Sends `BallPositionMessage` updates to the `GameActor`.
-    *   Receives commands from the `GameActor` to modify its state.
-    *   Manages its own phasing state.
+## Key Components
 
-## Supporting Files
-
-*   **`game_actor_handlers.go`**: Contains handler functions for messages received by `GameActor` (e.g., player connect/disconnect, position updates, input forwarding).
-*   **`game_actor_physics.go`**: Contains the collision detection logic (`detectCollisions`, `findCollidingCells`) and power-up triggering logic run during the game tick.
-*   **`game_actor_broadcast.go`**: Contains the logic for marshalling the current game state (`GameState` struct) and broadcasting it to connected clients.
-
-## State Structs
-
-*   **`Paddle` (`paddle.go`)**: Data structure holding paddle state.
-*   **`Ball` (`ball.go`)**: Data structure holding ball state.
-*   **`Canvas` (`canvas.go`)**: Represents the game area, including the `Grid`.
-*   **`Grid` (`grid.go`)**: A 2D array of `Cell`s representing the breakable bricks. Includes grid generation logic.
-*   **`Cell` (`cell.go`)**: Represents a single cell in the grid, containing `BrickData`.
-*   **`Player` (`player.go`)**: Data structure holding player-specific info for JSON state representation.
-
-## Message Flow (Simplified)
-
-1.  **Input:** `WebSocket Handler` -> `ForwardedPaddleDirection` (with WsConn) -> `GameActor` -> `handlePaddleDirection` -> `PaddleDirectionMessage` -> `PaddleActor`.
-2.  **Paddle Update:** `PaddleActor` (on tick) -> `Move()` -> `PaddlePositionMessage` -> `GameActor` -> `handlePaddlePositionUpdate`.
-3.  **Ball Update:** `BallActor` (on tick) -> `Move()` -> `BallPositionMessage` -> `GameActor` -> `handleBallPositionUpdate`.
-4.  **Game Logic:** `GameActor` (on tick) -> `detectCollisions()` -> Sends commands (e.g., `ReflectVelocityCommand`) -> `BallActor`.
-5.  **State Broadcast:** `GameActor` (on tick) -> `broadcastGameState()` -> Sends to all connected `PlayerConnection`s -> Clients.
+*   **`game_actor.go`**: The central coordinator. Manages game lifecycle, player connections, state aggregation, collision detection, scoring, and broadcasting. Uses configuration from `utils/config.go`.
+*   **`paddle_actor.go`**: Manages a single paddle's movement logic based on input messages ("left", "right", or "" for stop). Updates its internal state (including `Vx`, `Vy`) and sends `PaddlePositionMessage` to `GameActor`.
+*   **`ball_actor.go`**: Manages a single ball's movement logic. Updates its position based on velocity and sends `BallPositionMessage` to `GameActor`. Receives commands (`SetVelocityCommand`, `ReflectVelocityCommand`, etc.) from `GameActor` to modify its state. Manages phasing timer.
+*   **`game_actor_physics.go`**: Contains the `detectCollisions` logic, including wall, brick, and dynamic paddle collision handling. Handles permanent ball logic for wall hits. Also includes power-up triggering logic based on config.
+*   **`game_actor_handlers.go`**: Contains handlers for specific messages received by `GameActor` (e.g., player connect/disconnect, position updates). Handles spawning permanent vs temporary balls.
+*   **`game_actor_broadcast.go`**: Handles marshalling the `GameState` and sending it to connected clients.
+*   **`paddle.go`, `ball.go`, `cell.go`, `grid.go`, `canvas.go`, `player.go`**: Define the data structures for game entities and provide associated methods. `Paddle` now stops moving when `Direction` is empty. `Ball` now includes an `IsPermanent` flag. `NewBall` initializes with random velocity and `IsPermanent` status. Uses config values for initialization.
+*   **`messages.go`**: Defines the message types used for actor communication. `SpawnBallCommand` includes `IsPermanent`.
 
 ## Related Modules
 
-*   [Bollywood Actor Library](../bollywood/README.md)
+*   [Bollywood Actor Library](https://github.com/lguibr/bollywood) (External Dependency)
 *   [Server](../server/README.md)
+*   [Utilities](../utils/README.md) (Contains `config.go`)
 *   [Main Project](../README.md)

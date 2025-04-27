@@ -1,57 +1,73 @@
-name: PonGo-Test
+# File: .github/workflows/test.yml
+name: PonGo-Backend-Test
 
 on:
   push:
     branches: [ "main" ]
+    paths: # Only trigger on changes to Go files, mod/sum, or this workflow
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/test.yml'
   pull_request:
     branches: [ "main" ]
+    paths: # Only trigger on changes to Go files, mod/sum, or this workflow
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/test.yml'
 
 jobs:
-
   unit-tests:
+    name: Run Go Unit Tests & Update Coverage
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout build environment
-      uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v4
       with:
-          persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal access token.
-          fetch-depth: 0 # otherwise, there would be errors pushing refs to the destination repository.
-      
+          persist-credentials: false # Required for pushing changes
+          fetch-depth: 0 # Required for pushing refs
+
     - name: Set up Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        cache: true
-        check-latest: true
         go-version-file: 'go.mod'
+        cache: true
         cache-dependency-path: 'go.sum'
 
-    - name: Test
-      run: |     
-        go test -v ./... -covermode=count -coverprofile=coverage.out
-        go tool cover -func=coverage.out -o=coverage.out
+    - name: Run Go Tests with Coverage
+      run: |
+        go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+        go tool cover -func=coverage.out -o=coverage.out # Keep this line if badge action needs func output
 
-    - name: Go Coverage Badge
-      uses: tj-actions/coverage-badge-go@v2.1
+    - name: Generate Go Coverage Badge
+      uses: tj-actions/coverage-badge-go@v2 # Use v2 or latest
+      id: coverage-badge
       with:
         filename: coverage.out
+        # Optional: customize badge style, colors etc.
+        # style: flat-square
+        # color: green
 
-    - name: Verify Changed files
-      uses: tj-actions/verify-changed-files@v12
+    - name: Verify Changed files (README.md for badge)
+      uses: tj-actions/verify-changed-files@v19 # Use latest version
       id: verify-changed-files
       with:
         files: README.md
 
-    - name: Commit changes
-      if: steps.verify-changed-files.outputs.files_changed == 'true'
+    - name: Commit Coverage Badge to README
+      if: steps.verify-changed-files.outputs.files_changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' # Only commit on push to main
       run: |
+        echo "Coverage Badge Changed: ${{ steps.coverage-badge.outputs.coverage }}"
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add README.md
-        git commit -m "chore: Updated coverage badge."
+        # Use commit message from badge action output if available and desired
+        git commit -m "chore: Updated coverage badge to ${{ steps.coverage-badge.outputs.coverage }}%"
 
-    - name: Push changes
-      if: steps.verify-changed-files.outputs.files_changed == 'true'
-      uses: ad-m/github-push-action@master
+    - name: Push Coverage Badge Changes
+      if: steps.verify-changed-files.outputs.files_changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' # Only push on push to main
+      uses: ad-m/github-push-action@master # Or specify a version tag
       with:
-        github_token: ${{ github.token }}
-        branch: ${{ github.head_ref }}
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: main # Push directly to main
