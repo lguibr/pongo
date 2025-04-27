@@ -53,6 +53,9 @@ const waitForCloseTimeout = 5000 * time.Millisecond // Increased timeout to 5 se
 const testShutdownTimeout = 8 * time.Second // Increased shutdown timeout
 
 // Explicitly skip tests that rely on MockWebSocket and PlayerConnection interface
+// These tests are difficult to implement correctly without extensive mocking of
+// the *websocket.Conn type or significant refactoring of GameActor's connection handling.
+// Connection/disconnection flow is covered by E2E tests and server handler tests.
 func TestGameActor_PlayerConnect_FirstPlayer(t *testing.T) {
 	t.Skip("Skipping test: Requires complex mocking for *websocket.Conn or use E2E test.")
 }

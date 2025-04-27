@@ -39,7 +39,6 @@ func (b *Ball) GetY() int      { return b.Y }
 func (b *Ball) GetRadius() int { return b.Radius }
 
 // NewBall creates the initial state data structure for a ball.
-// Added isPermanent flag. Uses config for defaults.
 func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *Ball {
 	// Determine initial position if not provided
 	if x == 0 && y == 0 {
@@ -67,52 +66,46 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
 	radius := cfg.BallRadius
 
 	// --- New Velocity Calculation ---
-	// Generate a random angle in radians (avoiding angles too close to horizontal/vertical)
-	angleOffset := math.Pi / 12                                     // ~15 degrees offset from axes
-	angle := angleOffset + rand.Float64()*(math.Pi/2-2*angleOffset) // Angle within the first quadrant section
+	angleOffset := math.Pi / 12
+	angle := angleOffset + rand.Float64()*(math.Pi/2-2*angleOffset)
 
-	// Randomly assign quadrant based on owner index (roughly towards center)
 	switch ownerIndex {
-	case 0: // Right player -> towards left (Quadrant 2 or 3)
+	case 0:
 		angle += math.Pi / 2
 		if rand.Intn(2) == 0 {
 			angle += math.Pi
 		}
-	case 1: // Top player -> towards bottom (Quadrant 3 or 4)
+	case 1:
 		angle += math.Pi
 		if rand.Intn(2) == 0 {
 			angle += math.Pi / 2
 		}
-	case 2: // Left player -> towards right (Quadrant 1 or 4)
+	case 2:
 		if rand.Intn(2) == 0 {
 			angle += 3 * math.Pi / 2
 		}
-	case 3: // Bottom player -> towards top (Quadrant 1 or 2)
+	case 3:
 		angle += 3 * math.Pi / 2
 		if rand.Intn(2) == 0 {
 			angle += math.Pi / 2
 		}
 	}
 
-	// Generate a random speed within the defined range from config
 	speed := float64(cfg.MinBallVelocity + rand.Intn(cfg.MaxBallVelocity-cfg.MinBallVelocity+1))
 
-	// Calculate Vx and Vy based on angle and speed
 	vxFloat := speed * math.Cos(angle)
 	vyFloat := speed * math.Sin(angle)
 	vx := int(vxFloat)
 	vy := int(vyFloat)
 
-	// Ensure velocity components are not zero if speed is non-zero
 	if speed > 0 {
 		if vx == 0 {
-			vx = int(math.Copysign(1.0, vxFloat)) // Set to +/- 1 based on original float sign
+			vx = int(math.Copysign(1.0, vxFloat))
 		}
 		if vy == 0 {
-			vy = int(math.Copysign(1.0, vyFloat)) // Set to +/- 1 based on original float sign
+			vy = int(math.Copysign(1.0, vyFloat))
 		}
 	}
-	// --- End New Velocity Calculation ---
 
 	return &Ball{
 		X:           x,
@@ -125,19 +118,44 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
 		canvasSize:  cfg.CanvasSize, // Store canvasSize
 		Mass:        mass,
 		Phasing:     false,
-		IsPermanent: isPermanent, // Set the flag
+		IsPermanent: isPermanent,
 	}
 }
 
-// Move updates the ball's position based on velocity. Called by BallActor.
+// Move updates the ball's position based on velocity and clamps it within bounds. Called by BallActor.
 func (ball *Ball) Move() {
+	// Update position
 	ball.X += ball.Vx
 	ball.Y += ball.Vy
+
+	// Clamp position to ensure the ball center stays within canvas boundaries,
+	// leaving space for the radius.
+	minCoord := ball.Radius
+	maxCoord := ball.canvasSize - ball.Radius
+
+	if ball.X < minCoord {
+		ball.X = minCoord
+		// Optional: Reflect velocity immediately if clamped (can sometimes help prevent sticking)
+		// if ball.Vx < 0 { ball.Vx = -ball.Vx }
+	} else if ball.X > maxCoord {
+		ball.X = maxCoord
+		// Optional: Reflect velocity immediately if clamped
+		// if ball.Vx > 0 { ball.Vx = -ball.Vx }
+	}
+
+	if ball.Y < minCoord {
+		ball.Y = minCoord
+		// Optional: Reflect velocity immediately if clamped
+		// if ball.Vy < 0 { ball.Vy = -ball.Vy }
+	} else if ball.Y > maxCoord {
+		ball.Y = maxCoord
+		// Optional: Reflect velocity immediately if clamped
+		// if ball.Vy > 0 { ball.Vy = -ball.Vy }
+	}
 }
 
 // getCenterIndex calculates the grid cell indices for the ball's center.
-// Used by GameActor for collision checks. Uses config.
-func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) { // Return col, row
+func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) {
 	if ball.canvasSize <= 0 || cfg.GridSize <= 0 {
 		fmt.Printf("WARN: getCenterIndex called with invalid canvasSize (%d) or GridSize (%d)\n", ball.canvasSize, cfg.GridSize)
 		return 0, 0
@@ -147,7 +165,7 @@ func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) { // Return co
 		fmt.Printf("WARN: getCenterIndex calculated cellSize = 0 (canvasSize=%d, gridSize=%d)\n", ball.canvasSize, cfg.GridSize)
 		return 0, 0
 	}
-	gridSize := ball.canvasSize / cellSize // Recalculate based on actual cell size
+	gridSize := ball.canvasSize / cellSize
 
 	col = ball.X / cellSize
 	row = ball.Y / cellSize
@@ -160,12 +178,20 @@ func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) { // Return co
 
 // --- Velocity/State Modification Methods (Called by BallActor via messages) ---
 
-// ReflectVelocity reverses the velocity along the specified axis.
+// ReflectVelocity reverses the velocity along the specified axis, ensuring it doesn't become zero.
 func (ball *Ball) ReflectVelocity(axis string) {
 	if axis == "X" {
+		originalVx := ball.Vx
 		ball.Vx = -ball.Vx
+		if ball.Vx == 0 && originalVx != 0 {
+			ball.Vx = int(math.Copysign(1.0, float64(-originalVx)))
+		}
 	} else if axis == "Y" {
+		originalVy := ball.Vy
 		ball.Vy = -ball.Vy
+		if ball.Vy == 0 && originalVy != 0 {
+			ball.Vy = int(math.Copysign(1.0, float64(-originalVy)))
+		}
 	}
 }
 
@@ -179,7 +205,6 @@ func (ball *Ball) SetVelocity(vx, vy int) {
 func (ball *Ball) IncreaseVelocity(ratio float64) {
 	newVx := int(math.Floor(float64(ball.Vx) * ratio))
 	newVy := int(math.Floor(float64(ball.Vy) * ratio))
-	// Prevent velocity from becoming zero if it wasn't already
 	if ball.Vx != 0 && newVx == 0 {
 		newVx = int(math.Copysign(1, float64(ball.Vx)))
 	}
@@ -193,10 +218,9 @@ func (ball *Ball) IncreaseVelocity(ratio float64) {
 // IncreaseMass increases the ball's mass and scales its radius slightly. Uses config.
 func (ball *Ball) IncreaseMass(cfg utils.Config, additional int) {
 	ball.Mass += additional
-	// Increase radius proportionally, ensure minimum radius
-	ball.Radius += additional * cfg.PowerUpIncreaseMassSize // Use config for scaling
+	ball.Radius += additional * cfg.PowerUpIncreaseMassSize
 	if ball.Radius <= 0 {
-		ball.Radius = 1 // Ensure radius is always positive
+		ball.Radius = 1
 	}
 }
 
@@ -207,39 +231,32 @@ func (ball *Ball) BallInterceptPaddles(paddle *Paddle) bool {
 	if paddle == nil {
 		return false
 	}
-	// Find the closest point on the paddle rectangle to the ball's center
 	closestX := float64(utils.MaxInt(paddle.X, utils.MinInt(ball.X, paddle.X+paddle.Width)))
 	closestY := float64(utils.MaxInt(paddle.Y, utils.MinInt(ball.Y, paddle.Y+paddle.Height)))
 
-	// Calculate the distance between the ball's center and this closest point
 	distanceX := float64(ball.X) - closestX
 	distanceY := float64(ball.Y) - closestY
 
-	// If the distance is less than the ball's radius, an intersection occurs
 	distanceSquared := (distanceX * distanceX) + (distanceY * distanceY)
 	return distanceSquared < float64(ball.Radius*ball.Radius)
 }
 
 // InterceptsIndex checks if the ball circle intersects with a grid cell rectangle.
-func (ball *Ball) InterceptsIndex(col, row, cellSize int) bool { // Use col, row consistent with getCenterIndex
+func (ball *Ball) InterceptsIndex(col, row, cellSize int) bool {
 	if cellSize <= 0 {
 		return false
 	}
-	// Cell boundaries
 	cellLeft := col * cellSize
 	cellTop := row * cellSize
 	cellRight := cellLeft + cellSize
 	cellBottom := cellTop + cellSize
 
-	// Find the closest point on the cell rectangle to the ball's center
 	closestX := float64(utils.MaxInt(cellLeft, utils.MinInt(ball.X, cellRight)))
 	closestY := float64(utils.MaxInt(cellTop, utils.MinInt(ball.Y, cellBottom)))
 
-	// Calculate the distance between the ball's center and this closest point
 	distanceX := float64(ball.X) - closestX
 	distanceY := float64(ball.Y) - closestY
 
-	// If the distance is less than the ball's radius, an intersection occurs
 	distanceSquared := (distanceX * distanceX) + (distanceY * distanceY)
 	return distanceSquared < float64(ball.Radius*ball.Radius)
 }

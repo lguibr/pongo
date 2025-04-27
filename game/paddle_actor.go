@@ -39,14 +39,14 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		a.ticker = time.NewTicker(a.cfg.GameTickPeriod)
 		go a.runTicker(ctx)
 		if a.gameActorPID != nil {
-			snapshot := *a.state
+			snapshot := *a.state // Send initial state
 			ctx.Engine().Send(a.gameActorPID, PaddlePositionMessage{Paddle: &snapshot}, ctx.Self())
 		}
 
 	case *internalTick:
-		a.state.Move() // Move calculates Vx/Vy based on Direction
+		a.state.Move() // Move calculates Vx/Vy/IsMoving based on Direction
 		if a.gameActorPID != nil {
-			snapshot := *a.state
+			snapshot := *a.state // Send state after move
 			ctx.Engine().Send(a.gameActorPID, PaddlePositionMessage{Paddle: &snapshot}, ctx.Self())
 		}
 
@@ -56,28 +56,36 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		if err == nil {
 			newInternalDirection := utils.DirectionFromString(receivedDirection.Direction)
 
-			// Only update if the direction actually changed
 			if a.state.Direction != newInternalDirection {
 				a.state.Direction = newInternalDirection
-				// If stopping, immediately update Vx/Vy to 0 in internal state
-				// The next internalTick will send this stopped state.
+				a.state.IsMoving = (newInternalDirection != "")
+
 				if newInternalDirection == "" {
 					a.state.Vx = 0
 					a.state.Vy = 0
-					// REMOVED: Immediate send of stopped state
-					// fmt.Printf("PaddleActor %d: Set direction to STOP, Vx/Vy=0\n", a.state.Index) // Debug log
+					if a.gameActorPID != nil {
+						snapshot := *a.state
+						// *** ADD LOGGING ***
+						fmt.Printf("PaddleActor %d: Received STOP. Setting IsMoving=false. Sending update.\n", a.state.Index)
+						ctx.Engine().Send(a.gameActorPID, PaddlePositionMessage{Paddle: &snapshot}, ctx.Self())
+					}
 				} else {
-					// fmt.Printf("PaddleActor %d: Set direction to '%s'\n", a.state.Index, newInternalDirection) // Debug log
+					// fmt.Printf("PaddleActor %d: Set direction to '%s' (IsMoving: %t)\n", a.state.Index, newInternalDirection, a.state.IsMoving)
 				}
 			}
 		} else {
 			fmt.Printf("PaddleActor %d failed to unmarshal direction: %v\n", a.state.Index, err)
-			// Ensure stop on error
 			if a.state.Direction != "" {
 				a.state.Direction = ""
 				a.state.Vx = 0
 				a.state.Vy = 0
-				// REMOVED: Immediate send of stopped state on error
+				a.state.IsMoving = false
+				if a.gameActorPID != nil {
+					snapshot := *a.state
+					// *** ADD LOGGING ***
+					fmt.Printf("PaddleActor %d: Error unmarshalling. Setting IsMoving=false. Sending update.\n", a.state.Index)
+					ctx.Engine().Send(a.gameActorPID, PaddlePositionMessage{Paddle: &snapshot}, ctx.Self())
+				}
 			}
 		}
 
@@ -92,7 +100,7 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		}
 
 	case bollywood.Stopped:
-		// fmt.Printf("PaddleActor %d stopped.\n", a.state.Index) // Reduce noise
+		// fmt.Printf("PaddleActor %d stopped.\n", a.state.Index)
 
 	default:
 		fmt.Printf("PaddleActor %d received unknown message: %T\n", a.state.Index, msg)

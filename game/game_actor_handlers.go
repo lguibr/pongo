@@ -252,7 +252,6 @@ func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websock
 	a.mu.RUnlock() // Unlock before sending message
 
 	if pid != nil {
-		// Forward the raw JSON bytes
 		a.engine.Send(pid, PaddleDirectionMessage{Direction: directionData}, ctx.Self())
 	}
 }
@@ -267,16 +266,22 @@ func (a *GameActor) handlePaddlePositionUpdate(ctx bollywood.Context, incomingPa
 	defer a.mu.Unlock()
 
 	idx := incomingPaddleState.Index
-	// Check if player slot is valid and connected
+	// *** ADD LOGGING ***
+	actorPIDStr := "nil"
+	if a.selfPID != nil {
+		actorPIDStr = a.selfPID.String()
+	}
+	fmt.Printf("GameActor %s: Received PaddlePositionMessage for P%d (IsMoving: %t, Vx: %d, Vy: %d)\n",
+		actorPIDStr, idx, incomingPaddleState.IsMoving, incomingPaddleState.Vx, incomingPaddleState.Vy)
+
 	if idx >= 0 && idx < utils.MaxPlayers && a.players[idx] != nil && a.players[idx].IsConnected {
-		// Check if paddle state exists for this player
 		if currentGamePaddleState := a.paddles[idx]; currentGamePaddleState != nil {
-			// Update GameActor's state with the received state from PaddleActor
 			currentGamePaddleState.X = incomingPaddleState.X
 			currentGamePaddleState.Y = incomingPaddleState.Y
 			currentGamePaddleState.Direction = incomingPaddleState.Direction
 			currentGamePaddleState.Vx = incomingPaddleState.Vx
 			currentGamePaddleState.Vy = incomingPaddleState.Vy
+			currentGamePaddleState.IsMoving = incomingPaddleState.IsMoving // Copy IsMoving flag
 			if currentGamePaddleState.canvasSize == 0 {
 				if incomingPaddleState.canvasSize != 0 {
 					currentGamePaddleState.canvasSize = incomingPaddleState.canvasSize
@@ -284,12 +289,15 @@ func (a *GameActor) handlePaddlePositionUpdate(ctx bollywood.Context, incomingPa
 					currentGamePaddleState.canvasSize = a.canvas.CanvasSize
 				}
 			}
+			// *** ADD LOGGING ***
+			// fmt.Printf("GameActor %s: Updated internal state for P%d (IsMoving: %t)\n", actorPIDStr, idx, currentGamePaddleState.IsMoving)
 		} else {
-			// Paddle state didn't exist, create it
+			fmt.Printf("WARN: GameActor received paddle update for player %d but paddle state was nil. Creating.\n", idx)
 			if incomingPaddleState.canvasSize == 0 && a.canvas != nil {
 				incomingPaddleState.canvasSize = a.canvas.CanvasSize
 			}
-			a.paddles[idx] = incomingPaddleState
+			paddleCopy := *incomingPaddleState
+			a.paddles[idx] = &paddleCopy
 		}
 	}
 }
@@ -302,8 +310,8 @@ func (a *GameActor) handleBallPositionUpdate(ctx bollywood.Context, ballState *B
 	a.mu.Lock() // Lock for write access
 	defer a.mu.Unlock()
 
-	if _, ok := a.ballActors[ballState.Id]; ok {
-		if existingBall, exists := a.balls[ballState.Id]; exists {
+	if _, actorExists := a.ballActors[ballState.Id]; actorExists {
+		if existingBall, stateExists := a.balls[ballState.Id]; stateExists {
 			existingBall.X = ballState.X
 			existingBall.Y = ballState.Y
 			existingBall.Vx = ballState.Vx
@@ -321,6 +329,8 @@ func (a *GameActor) handleBallPositionUpdate(ctx bollywood.Context, ballState *B
 		} else {
 			fmt.Printf("WARN: BallActor %d exists but no corresponding state in GameActor map.\n", ballState.Id)
 		}
+	} else {
+		delete(a.balls, ballState.Id)
 	}
 }
 
@@ -383,7 +393,7 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 			actualExpireIn = 500 * time.Millisecond
 		}
 
-		fmt.Printf("GameActor %s: Scheduling expiry for temporary ball %d in %v.\n", actorPIDStr, ballID, actualExpireIn)
+		// fmt.Printf("GameActor %s: Scheduling expiry for temporary ball %d in %v.\n", actorPIDStr, ballID, actualExpireIn) // Reduce noise
 		time.AfterFunc(actualExpireIn, func() {
 			currentSelfPID := a.selfPID
 			currentEngine := a.engine
@@ -394,7 +404,7 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 			}
 		})
 	} else if isPermanent {
-		fmt.Printf("GameActor %s: Spawned permanent ball %d for player %d.\n", actorPIDStr, ballID, ownerIndex)
+		// fmt.Printf("GameActor %s: Spawned permanent ball %d for player %d.\n", actorPIDStr, ballID, ownerIndex) // Reduce noise
 	}
 }
 
@@ -416,7 +426,7 @@ func (a *GameActor) handleDestroyExpiredBall(ctx bollywood.Context, ballID int) 
 	}
 
 	if actorExists && stateExists && pidToStop != nil {
-		fmt.Printf("GameActor %s: Handling DestroyExpiredBall for BallID %d, stopping actor %s\n", actorPIDStr, ballID, pidToStop)
+		// fmt.Printf("GameActor %s: Handling DestroyExpiredBall for BallID %d, stopping actor %s\n", actorPIDStr, ballID, pidToStop) // Reduce noise
 		delete(a.balls, ballID)
 		delete(a.ballActors, ballID)
 		a.mu.Unlock()

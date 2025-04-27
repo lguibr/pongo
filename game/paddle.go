@@ -36,6 +36,7 @@ type Paddle struct {
 	Velocity   int    `json:"-"`         // Base velocity from config, not marshalled
 	Vx         int    `json:"vx"`        // Current horizontal velocity (for physics)
 	Vy         int    `json:"vy"`        // Current vertical velocity (for physics)
+	IsMoving   bool   `json:"isMoving"`  // Flag indicating if the paddle has active movement input
 	canvasSize int    // Store canvas size for boundary checks
 }
 
@@ -53,6 +54,7 @@ func NewPaddle(cfg utils.Config, index int) *Paddle {
 		Direction:  "",                 // Start stopped
 		Vx:         0,
 		Vy:         0,
+		IsMoving:   false, // Start not moving
 	}
 
 	// Set dimensions and initial position based on index
@@ -88,10 +90,12 @@ func NewPaddle(cfg utils.Config, index int) *Paddle {
 
 // Move updates the paddle's position based on its direction and velocity.
 // Handles stopping when direction is empty. Called by PaddleActor.
+// Also updates Vx, Vy, and IsMoving based on the current direction.
 func (paddle *Paddle) Move() {
 	// Reset velocity before applying movement
 	paddle.Vx = 0
 	paddle.Vy = 0
+	paddle.IsMoving = false // Assume stopped unless direction dictates otherwise
 
 	switch paddle.Index {
 	case 0, 2: // Vertical paddles (Right, Left)
@@ -99,11 +103,13 @@ func (paddle *Paddle) Move() {
 		case "left": // Move Up
 			paddle.Vy = -paddle.Velocity
 			paddle.Y = utils.MaxInt(0, paddle.Y-paddle.Velocity)
+			paddle.IsMoving = true
 		case "right": // Move Down
 			paddle.Vy = paddle.Velocity
 			paddle.Y = utils.MinInt(paddle.canvasSize-paddle.Height, paddle.Y+paddle.Velocity)
+			paddle.IsMoving = true
 		case "": // Stop
-			// Vx, Vy already 0
+			// Vx, Vy already 0, IsMoving already false
 		default:
 			// Unknown direction, stop
 			paddle.Direction = ""
@@ -113,11 +119,13 @@ func (paddle *Paddle) Move() {
 		case "left": // Move Left
 			paddle.Vx = -paddle.Velocity
 			paddle.X = utils.MaxInt(0, paddle.X-paddle.Velocity)
+			paddle.IsMoving = true
 		case "right": // Move Right
 			paddle.Vx = paddle.Velocity
 			paddle.X = utils.MinInt(paddle.canvasSize-paddle.Width, paddle.X+paddle.Velocity)
+			paddle.IsMoving = true
 		case "": // Stop
-			// Vx, Vy already 0
+			// Vx, Vy already 0, IsMoving already false
 		default:
 			// Unknown direction, stop
 			paddle.Direction = ""

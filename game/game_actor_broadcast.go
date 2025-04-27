@@ -15,7 +15,7 @@ import (
 type GameState struct {
 	Canvas  *Canvas                   `json:"canvas"`  // Pointer is fine, frontend expects potentially null
 	Players [utils.MaxPlayers]*Player `json:"players"` // Use constant from utils
-	Paddles [utils.MaxPlayers]*Paddle `json:"paddles"` // Use constant from utils
+	Paddles [utils.MaxPlayers]*Paddle `json:"paddles"` // Use constant from utils - Paddle struct now includes IsMoving
 	Balls   []*Ball                   `json:"balls"`   // Slice of non-nil balls
 }
 
@@ -50,14 +50,22 @@ func (a *GameActor) broadcastGameState() {
 		}
 	}
 
-	// Copy paddle info
+	// Copy paddle info (including IsMoving)
 	for i, p := range a.paddles {
 		if p != nil && a.players[i] != nil && a.players[i].IsConnected {
-			paddleCopy := *p
+			paddleCopy := *p // Create a copy of the paddle state
 			if paddleCopy.canvasSize == 0 && a.canvas != nil {
-				paddleCopy.canvasSize = a.canvas.CanvasSize
+				paddleCopy.canvasSize = a.canvas.CanvasSize // Ensure canvasSize is set if needed
 			}
-			state.Paddles[i] = &paddleCopy
+			state.Paddles[i] = &paddleCopy // Assign the copy
+
+			// *** ADD LOGGING ***
+			// Log only for player 0 for clarity during test debugging
+			if i == 0 {
+				fmt.Printf("GameActor %s: Broadcasting state for P%d (IsMoving: %t, Vx: %d, Vy: %d)\n",
+					actorPIDStr, i, paddleCopy.IsMoving, paddleCopy.Vx, paddleCopy.Vy)
+			}
+
 		} else {
 			state.Paddles[i] = nil
 		}
@@ -82,14 +90,11 @@ func (a *GameActor) broadcastGameState() {
 	}
 	targets := []writeTarget{}
 	for conn, index := range a.connToIndex {
-		// Use constant from utils
 		if index >= 0 && index < utils.MaxPlayers && a.players[index] != nil && a.players[index].IsConnected && a.players[index].Ws == conn {
 			targets = append(targets, writeTarget{ws: conn, index: index, addr: conn.RemoteAddr().String()})
-		} else {
-			fmt.Printf("WARN: Stale entry in connToIndex during broadcast? Conn: %s, Index: %d\n", conn.RemoteAddr(), index)
 		}
 	}
-	a.mu.RUnlock() // Unlock before potentially blocking operations
+	a.mu.RUnlock()
 
 	if len(targets) == 0 {
 		return
@@ -97,15 +102,14 @@ func (a *GameActor) broadcastGameState() {
 
 	// --- Write to connections using websocket.JSON.Send ---
 	for _, target := range targets {
-		err := websocket.JSON.Send(target.ws, state) // Send the state struct directly
+		err := websocket.JSON.Send(target.ws, state)
 
 		if err != nil {
-			fmt.Printf("GameActor %s: websocket.JSON.Send error for player %d (%s): %v\n", actorPIDStr, target.index, target.addr, err)
-
 			isClosedErr := strings.Contains(err.Error(), "use of closed network connection") ||
 				strings.Contains(err.Error(), "broken pipe") ||
 				strings.Contains(err.Error(), "connection reset by peer") ||
-				strings.Contains(err.Error(), "connection timed out")
+				strings.Contains(err.Error(), "connection timed out") ||
+				strings.Contains(err.Error(), "EOF")
 
 			logPrefix := fmt.Sprintf("GameActor %s: ", actorPIDStr)
 			errMsg := fmt.Sprintf("Error writing state to player %d (%s): %v.", target.index, target.addr, err)
@@ -120,12 +124,6 @@ func (a *GameActor) broadcastGameState() {
 				a.engine.Send(a.selfPID, PlayerDisconnect{PlayerIndex: target.index, WsConn: target.ws}, nil)
 			} else {
 				fmt.Printf("ERROR: Cannot send disconnect message for player %d, selfPID/engine is nil\n", target.index)
-				a.mu.Lock()
-				if pInfo := a.players[target.index]; pInfo != nil && pInfo.Ws == target.ws {
-					pInfo.IsConnected = false
-					delete(a.connToIndex, target.ws)
-				}
-				a.mu.Unlock()
 			}
 		}
 	}
@@ -134,11 +132,10 @@ func (a *GameActor) broadcastGameState() {
 // updateGameStateJSON updates the atomically stored JSON representation of the game state.
 func (a *GameActor) updateGameStateJSON() {
 	a.mu.RLock() // Read lock needed
-	// Logic is similar to broadcastGameState, create a snapshot
 	state := GameState{
 		Canvas:  a.canvas,
-		Players: [utils.MaxPlayers]*Player{}, // Use constant from utils
-		Paddles: [utils.MaxPlayers]*Paddle{}, // Use constant from utils
+		Players: [utils.MaxPlayers]*Player{},
+		Paddles: [utils.MaxPlayers]*Paddle{},
 		Balls:   make([]*Ball, 0, len(a.balls)),
 	}
 	for i, pi := range a.players {
