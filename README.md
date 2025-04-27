@@ -181,19 +181,21 @@ Key message types facilitate interaction: `PlayerConnectRequest`, `PlayerDisconn
 *(This describes the sequence of events and messages within the actor system)*
 
 1.  **Initialization:** Engine starts, spawns `GameActor`. `GameActor` starts its ticker.
-2.  **Player Connection:** Client connects -> Server handler sends `PlayerConnectRequest` to `GameActor`.
-3.  **GameActor Handles Connection:** Assigns index, creates `playerInfo`, spawns `PaddleActor` and `BallActor`, broadcasts state.
-4.  **Server Assigns Index:** Server's `readLoop` polls until it finds the assigned index for its connection (indirectly via game state or internal map - needs clarification based on actual `AssignPlayerIndex` usage).
-5.  **Player Input:** Client sends direction JSON -> Server `readLoop` forwards raw JSON in `ForwardedPaddleDirection` to `GameActor`.
-6.  **GameActor Relays Input:** Forwards the raw JSON in `PaddleDirectionMessage` to the specific `PaddleActor`.
+2.  **Player Connection:** Client connects -> Server's `HandleSubscribe` accepts `websocket.Conn` -> Sends `PlayerConnectRequest{WsConn: ws}` to `GameActor`.
+3.  **GameActor Handles Connection:** Assigns index, creates `playerInfo` (storing `WsConn`), adds to `connToIndex` map, spawns `PaddleActor` and `BallActor`, broadcasts state.
+4.  **Server Starts Reader:** Server's `HandleSubscribe` starts `readLoop(ws)`.
+5.  **Player Input:** Client sends direction JSON -> Server `readLoop` reads -> Sends `ForwardedPaddleDirection{WsConn: ws, Direction: data}` to `GameActor`.
+6.  **GameActor Relays Input:** `handlePaddleDirection` finds player index via `connToIndex[ws]` -> Sends `PaddleDirectionMessage` to the specific `PaddleActor`.
 7.  **PaddleActor Processes Input:** Unmarshals JSON, updates internal `state.Direction`.
 8.  **PaddleActor Moves:** `internalTick` -> `state.Move()` -> Sends `PaddlePositionMessage` to `GameActor`.
 9.  **BallActor Moves:** `internalTick` -> `state.Move()` -> Sends `BallPositionMessage` to `GameActor`.
 10. **GameActor Updates Internal State:** Receives position messages, updates its `paddles` and `balls` maps/arrays.
 11. **GameActor Main Loop:** `GameTick` -> `detectCollisions()` -> Sends commands (`ReflectVelocityCommand`, etc.) to `BallActor`s -> Updates scores -> Potentially triggers power-ups (`SpawnBallCommand` to self, others to `BallActor`) -> Removes lost balls -> `broadcastGameState()` -> `updateGameStateJSON()`.
 12. **BallActor Handles Commands:** Updates its `state` based on received commands (e.g., `state.ReflectVelocity()`).
-13. **GameActor Broadcasts:** Marshals `GameState` to JSON -> Sends JSON via `Write` method of each active `playerInfo.Ws`. Handles write errors by triggering disconnect.
-14. **Player Disconnection:** Triggered by read error/EOF or write error -> `Server.CloseConnection` cleans up server state -> `readLoop` defer sends `PlayerDisconnect` to `GameActor` -> `GameActor` stops associated actors, cleans up its state, broadcasts update.
+13. **GameActor Broadcasts:** Marshals `GameState` to JSON -> Iterates through its active connections (`connToIndex` or `players` array) -> Sends JSON via `Write` method of each `playerInfo.Ws`. Handles write errors by sending `PlayerDisconnect{WsConn: ws}` to self.
+14. **Player Disconnection (Read Error):** Server `readLoop` gets error/EOF -> Sends `PlayerDisconnect{WsConn: ws}` to `GameActor`.
+15. **Player Disconnection (Write Error):** `GameActor` broadcast fails -> Sends `PlayerDisconnect{WsConn: ws}` to self.
+16. **GameActor Handles Disconnect:** `handlePlayerDisconnect` finds index via `connToIndex[ws]` -> Stops associated actors -> Closes `ws` -> Cleans up internal state (`players`, `paddles`, `connToIndex`, etc.) -> Broadcasts update.
 
 ## 9. Game Entities & State Details
 

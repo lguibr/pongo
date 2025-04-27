@@ -5,4 +5,4 @@ data/
 .gopath/
 .gotmp
 vendor
-vendor
+frontend/

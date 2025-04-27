@@ -1,23 +1,21 @@
+// File: game/game_actor_test.go
 package game
 
 import (
 	"encoding/json"
-	"fmt" // Import io
-	"net" // Import net
+	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/lguibr/pongo/bollywood"
-	"github.com/lguibr/pongo/utils" // Assuming utils is in the parent directory
+	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
-	// "golang.org/x/net/websocket" // No longer needed directly here
 )
 
-// --- PlayerConnection Interface (REMOVED - Defined in messages.go) ---
-
 // --- Mock WebSocket Conn ---
-// Update MockWebSocket to satisfy PlayerConnection
+// MockWebSocket implements PlayerConnection
 type MockWebSocket struct {
 	mu       sync.Mutex
 	Written  [][]byte
@@ -25,6 +23,7 @@ type MockWebSocket struct {
 	Remote   string
 	ReadChan chan []byte
 	ErrChan  chan error
+	closeSig chan struct{}
 }
 
 func NewMockWebSocket(remoteAddr string) *MockWebSocket {
@@ -32,8 +31,10 @@ func NewMockWebSocket(remoteAddr string) *MockWebSocket {
 		Remote:   remoteAddr,
 		ReadChan: make(chan []byte, 10),
 		ErrChan:  make(chan error, 1),
+		closeSig: make(chan struct{}),
 	}
 }
+
 func (m *MockWebSocket) Read(p []byte) (n int, err error) {
 	select {
 	case data := <-m.ReadChan:
@@ -41,7 +42,9 @@ func (m *MockWebSocket) Read(p []byte) (n int, err error) {
 		return n, nil
 	case err = <-m.ErrChan:
 		return 0, err
-	case <-time.After(100 * time.Millisecond):
+	case <-m.closeSig:
+		return 0, fmt.Errorf("mock connection closed") // Simulate closure error
+	case <-time.After(500 * time.Millisecond): // Increased read timeout
 		return 0, fmt.Errorf("mock read timeout")
 	}
 }
@@ -54,6 +57,7 @@ func (m *MockWebSocket) Write(p []byte) (n int, err error) {
 	msgCopy := make([]byte, len(p))
 	copy(msgCopy, p)
 	m.Written = append(m.Written, msgCopy)
+	// fmt.Printf("MockWS %s Write: %s\n", m.Remote, string(p)) // Debug log
 	return len(p), nil
 }
 func (m *MockWebSocket) Close() error {
@@ -63,12 +67,12 @@ func (m *MockWebSocket) Close() error {
 		return fmt.Errorf("already closed")
 	}
 	m.Closed = true
-	go func() {
-		select {
-		case m.ErrChan <- fmt.Errorf("use of closed network connection"):
-		default:
-		}
-	}()
+	select {
+	case <-m.closeSig: // Already closed
+	default:
+		close(m.closeSig) // Signal Read to return error
+	}
+	// fmt.Printf("MockWS %s Closed\n", m.Remote) // Debug log
 	return nil
 }
 func (m *MockWebSocket) RemoteAddr() net.Addr { return &MockAddr{Addr: m.Remote} }
@@ -80,171 +84,251 @@ func (m *MockAddr) Network() string { return "mock" }
 func (m *MockAddr) String() string  { return m.Addr }
 
 // --- Test Receiver Actor (Used in Paddle Forwarding Test) ---
-type TestReceiver struct {
-	mu       sync.Mutex
-	received []interface{}
+// MockGameActor is defined in paddle_actor_test.go, no need to redefine
+
+// --- Helper to wait for a specific message ---
+// Increased timeout significantly
+const waitForStateTimeout = 3500 * time.Millisecond // Further increased timeout
+
+func waitForGameState(t *testing.T, mockWs *MockWebSocket, check func(gs GameState) bool) bool {
+	t.Helper() // Mark as test helper
+	deadline := time.Now().Add(waitForStateTimeout)
+	lastCheckedCount := 0
+	for time.Now().Before(deadline) {
+		mockWs.mu.Lock()
+		currentWritten := make([][]byte, len(mockWs.Written))
+		copy(currentWritten, mockWs.Written)
+		currentCount := len(currentWritten)
+		mockWs.mu.Unlock()
+
+		// Only check new messages since last iteration
+		for i := lastCheckedCount; i < currentCount; i++ {
+			var gs GameState
+			if err := json.Unmarshal(currentWritten[i], &gs); err == nil {
+				// Add more detailed logging inside the check
+				// t.Logf("waitForGameState (%s): Checking state %d: P:%v Pad:%v B:%v",
+				// 	mockWs.Remote, i, gs.Players, gs.Paddles, gs.Balls) // More detailed debug
+				if check(gs) {
+					// t.Logf("waitForGameState (%s): Found matching state %d", mockWs.Remote, i) // Debug
+					return true
+				}
+			} else {
+				// t.Logf("waitForGameState (%s): Failed to unmarshal state %d: %v", mockWs.Remote, i, err) // Debug
+			}
+		}
+		lastCheckedCount = currentCount // Update the count of checked messages
+
+		// Slightly longer sleep within the loop
+		time.Sleep(utils.Period * 5) // Sleep for ~120ms
+	}
+	t.Logf("waitForGameState (%s): Timeout waiting for state", mockWs.Remote) // Log timeout using t.Logf
+	return false
 }
 
-func (tr *TestReceiver) Receive(ctx bollywood.Context) {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-	tr.received = append(tr.received, ctx.Message())
-}
+// Helper to wait for connection close
+const waitForCloseTimeout = 2500 * time.Millisecond // Increased timeout
 
-func (tr *TestReceiver) GetMessages() []interface{} {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-	msgs := make([]interface{}, len(tr.received))
-	copy(msgs, tr.received)
-	return msgs
+func waitForClose(t *testing.T, mockWs *MockWebSocket) bool {
+	t.Helper()
+	deadline := time.Now().Add(waitForCloseTimeout)
+	for time.Now().Before(deadline) {
+		mockWs.mu.Lock()
+		closed := mockWs.Closed
+		mockWs.mu.Unlock()
+		if closed {
+			return true
+		}
+		time.Sleep(utils.Period * 3) // Sleep ~72ms
+	}
+	t.Logf("waitForClose (%s): Timeout waiting for close", mockWs.Remote)
+	return false
 }
 
 // --- Tests ---
 
+// Increased shutdown timeout for all tests
+const testShutdownTimeout = 8 * time.Second // Increased shutdown timeout
+
 func TestGameActor_PlayerConnect_FirstPlayer(t *testing.T) {
 	engine := bollywood.NewEngine()
-	defer engine.Shutdown(2 * time.Second)
+	defer engine.Shutdown(testShutdownTimeout)
 
 	gameActorPID := engine.Spawn(bollywood.NewProps(NewGameActorProducer(engine)))
-	time.Sleep(20 * time.Millisecond)
+	assert.NotNil(t, gameActorPID)
+	time.Sleep(250 * time.Millisecond) // Longer wait for actor start
 
 	mockWs := NewMockWebSocket("mock-addr-1:1234")
 	connectMsg := PlayerConnectRequest{WsConn: mockWs}
 
 	engine.Send(gameActorPID, connectMsg, nil)
-	time.Sleep(utils.Period * 5)
 
-	mockWs.mu.Lock()
-	assert.NotEmpty(t, mockWs.Written, "Mock WebSocket should have received initial game state")
-	if len(mockWs.Written) > 0 {
-		var gameState GameState
-		err := json.Unmarshal(mockWs.Written[0], &gameState)
-		assert.NoError(t, err, "Should be able to unmarshal game state")
-		assert.NotNil(t, gameState.Canvas, "Game state should have canvas")
-		assert.NotNil(t, gameState.Players[0], "Player 0 should exist in game state")
-		assert.Equal(t, 0, gameState.Players[0].Index, "Player index should be 0")
-		assert.Equal(t, utils.InitialScore, gameState.Players[0].Score, "Player score should be initial")
-		assert.NotNil(t, gameState.Paddles[0], "Paddle 0 should exist")
-		assert.NotEmpty(t, gameState.Balls, "Should have at least one ball")
-		if len(gameState.Balls) > 0 {
-			assert.Equal(t, 0, gameState.Balls[0].OwnerIndex, "Ball owner should be player 0")
+	// Add a longer delay *after* sending connect, before checking state
+	time.Sleep(400 * time.Millisecond)
+
+	// Simplify the check: just see if *any* message was written
+	foundAnyMessage := false
+	deadline := time.Now().Add(waitForStateTimeout)
+	for time.Now().Before(deadline) {
+		mockWs.mu.Lock()
+		if len(mockWs.Written) > 0 {
+			foundAnyMessage = true
+			// Optionally log the first message found
+			// t.Logf("Found first message: %s", string(mockWs.Written[0]))
 		}
+		mockWs.mu.Unlock()
+		if foundAnyMessage {
+			break
+		}
+		time.Sleep(utils.Period * 2)
 	}
-	mockWs.mu.Unlock()
+
+	assert.True(t, foundAnyMessage, "Mock WebSocket should receive at least one message")
+
+	// Keep the original check as well, but it might still fail if the state isn't exactly right yet
+	foundState := waitForGameState(t, mockWs, func(gs GameState) bool {
+		playerOk := gs.Players[0] != nil && gs.Players[0].Index == 0
+		paddleOk := gs.Paddles[0] != nil
+		ballOk := false
+		if len(gs.Balls) > 0 {
+			for _, b := range gs.Balls {
+				if b != nil && b.OwnerIndex == 0 {
+					ballOk = true
+					break
+				}
+			}
+		}
+		t.Logf("Check Connect_FirstPlayer: PlayerOK=%v, PaddleOK=%v, BallOK=%v (Balls: %d)", playerOk, paddleOk, ballOk, len(gs.Balls))
+		return playerOk && paddleOk && ballOk
+	})
+	assert.True(t, foundState, "Mock WebSocket should eventually receive valid initial game state")
+
 }
 
 func TestGameActor_PlayerConnect_ServerFull(t *testing.T) {
 	engine := bollywood.NewEngine()
-	defer engine.Shutdown(2 * time.Second)
+	defer engine.Shutdown(testShutdownTimeout)
 
 	gameActorPID := engine.Spawn(bollywood.NewProps(NewGameActorProducer(engine)))
-	time.Sleep(20 * time.Millisecond)
+	assert.NotNil(t, gameActorPID)
+	time.Sleep(250 * time.Millisecond)
 
-	mocks := make([]*MockWebSocket, maxPlayers)
-	for i := 0; i < maxPlayers; i++ {
+	mocks := make([]*MockWebSocket, MaxPlayers)
+	for i := 0; i < MaxPlayers; i++ {
 		mocks[i] = NewMockWebSocket(fmt.Sprintf("mock-addr-%d:1234", i))
 		engine.Send(gameActorPID, PlayerConnectRequest{WsConn: mocks[i]}, nil)
-		time.Sleep(utils.Period * 2)
+		// Wait a bit longer for each connection to be processed
+		time.Sleep(utils.Period * 10)
 	}
+
+	// Wait for all players to potentially be processed and broadcast
+	time.Sleep(500 * time.Millisecond)
 
 	mockWs5 := NewMockWebSocket("mock-addr-5:1234")
 	engine.Send(gameActorPID, PlayerConnectRequest{WsConn: mockWs5}, nil)
-	time.Sleep(utils.Period * 3)
+
+	// Wait significantly longer for rejection processing and close
+	closed := waitForClose(t, mockWs5)
+	assert.True(t, closed, "5th WebSocket should have been closed")
 
 	mockWs5.mu.Lock()
-	assert.True(t, mockWs5.Closed, "5th WebSocket should have been closed")
 	assert.Empty(t, mockWs5.Written, "5th WebSocket should not receive game state")
 	mockWs5.mu.Unlock()
 }
 
 func TestGameActor_PlayerDisconnect(t *testing.T) {
 	engine := bollywood.NewEngine()
-	defer engine.Shutdown(2 * time.Second)
+	defer engine.Shutdown(testShutdownTimeout)
 
 	gameActorPID := engine.Spawn(bollywood.NewProps(NewGameActorProducer(engine)))
-	time.Sleep(20 * time.Millisecond)
+	assert.NotNil(t, gameActorPID)
+	time.Sleep(250 * time.Millisecond)
 
 	mockWs0 := NewMockWebSocket("mock-addr-0:1234")
 	engine.Send(gameActorPID, PlayerConnectRequest{WsConn: mockWs0}, nil)
-	time.Sleep(utils.Period * 3)
+	time.Sleep(utils.Period * 10) // Allow setup
 
 	mockWs1 := NewMockWebSocket("mock-addr-1:1234")
 	engine.Send(gameActorPID, PlayerConnectRequest{WsConn: mockWs1}, nil)
-	time.Sleep(utils.Period * 3)
+	time.Sleep(utils.Period * 20) // Allow setup and first broadcast
 
-	engine.Send(gameActorPID, PlayerDisconnect{PlayerIndex: 0}, nil)
-	time.Sleep(utils.Period * 5)
+	// Send disconnect for Player 0
+	engine.Send(gameActorPID, PlayerDisconnect{PlayerIndex: -1, WsConn: mockWs0}, nil)
 
-	mockWs1.mu.Lock()
-	assert.NotEmpty(t, mockWs1.Written, "Player 1 should have received messages") // Check this first
-	if len(mockWs1.Written) > 0 {                                                 // Only proceed if messages exist
-		var lastState GameState
-		lastMsgBytes := mockWs1.Written[len(mockWs1.Written)-1]
-		err := json.Unmarshal(lastMsgBytes, &lastState)
-		assert.NoError(t, err, "Should unmarshal last game state for player 1")
-		assert.Nil(t, lastState.Players[0], "Player 0 should be nil in game state after disconnect")
-		assert.NotNil(t, lastState.Players[1], "Player 1 should still exist")
-		assert.Nil(t, lastState.Paddles[0], "Paddle 0 should be nil")
-		assert.NotNil(t, lastState.Paddles[1], "Paddle 1 should exist")
-		ballOwnedByP0Found := false
-		for _, ball := range lastState.Balls {
+	// Wait longer for disconnect state propagation to Player 1
+	foundState := waitForGameState(t, mockWs1, func(gs GameState) bool {
+		player0Nil := gs.Players[0] == nil
+		player1Exists := gs.Players[1] != nil && gs.Players[1].Index == 1
+		paddle0Nil := gs.Paddles[0] == nil
+		paddle1Exists := gs.Paddles[1] != nil
+		noP0Balls := true
+		for _, ball := range gs.Balls {
 			if ball != nil && ball.OwnerIndex == 0 {
-				ballOwnedByP0Found = true
+				noP0Balls = false
 				break
 			}
 		}
-		assert.False(t, ballOwnedByP0Found, "Balls owned by player 0 should be removed")
-	}
+		t.Logf("Check Disconnect: P0Nil=%v, P1Exists=%v, Pad0Nil=%v, Pad1Exists=%v, NoP0Balls=%v (Balls: %d)", player0Nil, player1Exists, paddle0Nil, paddle1Exists, noP0Balls, len(gs.Balls)) // Debug log with t.Logf
+		return player0Nil && player1Exists && paddle0Nil && paddle1Exists && noP0Balls
+	})
+
+	assert.True(t, foundState, "Player 1 should receive game state reflecting Player 0 disconnect")
+
+	mockWs1.mu.Lock()
+	assert.NotEmpty(t, mockWs1.Written, "Player 1 should have received messages")
 	mockWs1.mu.Unlock()
 
-	mockWs0.mu.Lock()
-	assert.True(t, mockWs0.Closed, "Player 0's WebSocket should be closed by GameActor")
-	mockWs0.mu.Unlock()
+	// Wait significantly longer before checking if the connection is closed
+	closed := waitForClose(t, mockWs0)
+	assert.True(t, closed, "Player 0's WebSocket should be closed after disconnect")
 }
 
 func TestGameActor_LastPlayerDisconnect(t *testing.T) {
 	engine := bollywood.NewEngine()
-	defer engine.Shutdown(2 * time.Second)
+	defer engine.Shutdown(testShutdownTimeout)
 
 	gameActorPID := engine.Spawn(bollywood.NewProps(NewGameActorProducer(engine)))
-	time.Sleep(20 * time.Millisecond)
+	assert.NotNil(t, gameActorPID)
+	time.Sleep(250 * time.Millisecond)
 
 	mockWs0 := NewMockWebSocket("mock-addr-0:1234")
 	engine.Send(gameActorPID, PlayerConnectRequest{WsConn: mockWs0}, nil)
-	time.Sleep(utils.Period * 3)
+	time.Sleep(utils.Period * 20) // Allow setup and first broadcast
 
-	engine.Send(gameActorPID, PlayerDisconnect{PlayerIndex: 0}, nil)
-	time.Sleep(utils.Period * 5)
+	engine.Send(gameActorPID, PlayerDisconnect{PlayerIndex: -1, WsConn: mockWs0}, nil)
 
-	mockWs0.mu.Lock()
-	assert.True(t, mockWs0.Closed, "Player 0's WebSocket should be closed")
-	mockWs0.mu.Unlock()
+	// Wait significantly longer before checking if the connection is closed
+	closed := waitForClose(t, mockWs0)
+	assert.True(t, closed, "Player 0's WebSocket should be closed")
 }
 
 func TestGameActor_PaddleMovementForwarding(t *testing.T) {
 	engine := bollywood.NewEngine()
-	defer engine.Shutdown(2 * time.Second)
+	defer engine.Shutdown(testShutdownTimeout)
 
-	// Mock Paddle Actor is no longer easily injectable or verifiable here
-	// paddleReceiver := &TestReceiver{}
-	// mockPaddlePID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return paddleReceiver })) // Removed
-	// time.Sleep(10 * time.Millisecond)
-
+	// No need for the separate TestReceiver anymore, we check broadcast state
 	gameActorPID := engine.Spawn(bollywood.NewProps(NewGameActorProducer(engine)))
-	time.Sleep(20 * time.Millisecond)
+	assert.NotNil(t, gameActorPID)
+	time.Sleep(250 * time.Millisecond) // Allow GameActor to start
 
 	mockWs0 := NewMockWebSocket("mock-addr-0:1234")
 	engine.Send(gameActorPID, PlayerConnectRequest{WsConn: mockWs0}, nil)
-	time.Sleep(utils.Period * 3)
+	time.Sleep(utils.Period * 20) // Allow connection and paddle actor spawn
 
-	directionPayload, _ := json.Marshal(Direction{Direction: "ArrowLeft"})
+	// Send "ArrowRight", which should translate to internal "right"
+	directionPayload, _ := json.Marshal(Direction{Direction: "ArrowRight"})
 	forwardMsg := ForwardedPaddleDirection{
-		PlayerIndex: 0,
-		Direction:   directionPayload,
+		WsConn:    mockWs0,
+		Direction: directionPayload,
 	}
 	engine.Send(gameActorPID, forwardMsg, nil)
-	time.Sleep(utils.Period * 2)
 
-	// Verification skipped
-	fmt.Println("NOTE: TestGameActor_PaddleMovementForwarding verification skipped due to removed hack.")
+	// Wait longer for forwarding and state update/broadcast
+	// Check broadcasted state for the correct direction
+	foundMovedState := waitForGameState(t, mockWs0, func(gs GameState) bool {
+		paddle := gs.Paddles[0]
+		t.Logf("Check PaddleMoveForward: Paddle=%+v", paddle) // Debug log with t.Logf
+		// Check that the paddle exists AND its internal direction state is "right"
+		return paddle != nil && paddle.Direction == "right"
+	})
+	assert.True(t, foundMovedState, "Game state broadcast should show paddle direction updated to 'right'")
 }

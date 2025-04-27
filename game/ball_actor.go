@@ -1,3 +1,4 @@
+// File: game/ball_actor.go
 package game
 
 import (
@@ -26,8 +27,8 @@ func NewBallActorProducer(initialState Ball, gameActorPID *bollywood.PID) bollyw
 		stateCopy := initialState // Make a copy for the actor
 		return &BallActor{
 			state:        &stateCopy,
-			stopTickerCh: make(chan struct{}),
-			gameActorPID: gameActorPID, // Store GameActor PID
+			stopTickerCh: make(chan struct{}), // Initialize the channel
+			gameActorPID: gameActorPID,        // Store GameActor PID
 		}
 	}
 }
@@ -45,7 +46,7 @@ func (a *BallActor) Receive(ctx bollywood.Context) {
 	case bollywood.Started:
 		fmt.Printf("BallActor %d (owner %d) started.\n", a.state.Id, a.state.OwnerIndex)
 		a.ticker = time.NewTicker(utils.Period)
-		go a.runTicker(ctx)
+		go a.runTicker(ctx) // Start ticker goroutine
 		if a.gameActorPID != nil {
 			snapshot := *a.state
 			ctx.Engine().Send(a.gameActorPID, BallPositionMessage{Ball: &snapshot}, ctx.Self())
@@ -71,6 +72,9 @@ func (a *BallActor) Receive(ctx bollywood.Context) {
 			engine := ctx.Engine()
 			selfPID := ctx.Self()
 			if engine != nil && selfPID != nil {
+				// Check if actor is still running before sending
+				// (This requires access to the process state, which isn't directly available here.
+				// The engine handles dropping messages to stopped actors, so this is generally safe.)
 				engine.Send(selfPID, stopPhasingCommand{}, nil)
 			} else {
 				fmt.Printf("ERROR: BallActor %d phasing timer fired but engine/selfPID invalid.\n", a.state.Id)
@@ -85,6 +89,7 @@ func (a *BallActor) Receive(ctx bollywood.Context) {
 		a.state.IncreaseMass(msg.Additional)
 	case DestroyBallCommand:
 		fmt.Printf("BallActor %d received DestroyBallCommand. Stopping.\n", a.state.Id)
+		// Let the Stopping message handle the actual cleanup
 	case bollywood.Stopping:
 		fmt.Printf("BallActor %d stopping...\n", a.state.Id)
 		if a.ticker != nil {
@@ -94,7 +99,7 @@ func (a *BallActor) Receive(ctx bollywood.Context) {
 		select {
 		case <-a.stopTickerCh: // Already closed
 		default:
-			close(a.stopTickerCh)
+			close(a.stopTickerCh) // Signal ticker loop to stop
 		}
 		if a.phasingTimer != nil {
 			a.phasingTimer.Stop()
@@ -132,7 +137,7 @@ func (a *BallActor) runTicker(ctx bollywood.Context) {
 			// Check stop signal again before sending
 			select {
 			case <-a.stopTickerCh:
-				return
+				return // Stop immediately if signaled
 			default:
 				// Send tick message to self
 				engine.Send(selfPID, tickMsg, nil)

@@ -1,3 +1,4 @@
+// File: game/paddle_actor.go
 package game
 
 import (
@@ -23,7 +24,7 @@ func NewPaddleActorProducer(initialState Paddle, gameActorPID *bollywood.PID) bo
 		actorState := initialState
 		return &PaddleActor{
 			state:        &actorState,
-			stopTickerCh: make(chan struct{}),
+			stopTickerCh: make(chan struct{}), // Initialize the channel
 			gameActorPID: gameActorPID,
 		}
 	}
@@ -35,7 +36,7 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 	case bollywood.Started:
 		fmt.Printf("PaddleActor %d started.\n", a.state.Index)
 		a.ticker = time.NewTicker(utils.Period)
-		go a.runTicker(ctx)
+		go a.runTicker(ctx) // Start ticker goroutine
 		if a.gameActorPID != nil {
 			snapshot := *a.state
 			ctx.Engine().Send(a.gameActorPID, PaddlePositionMessage{Paddle: &snapshot}, ctx.Self())
@@ -55,16 +56,20 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		err := json.Unmarshal(msg.Direction, &receivedDirection)
 		if err == nil {
 			newInternalDirection := utils.DirectionFromString(receivedDirection.Direction)
-			if newInternalDirection != "" {
+			// Only update if the direction is valid ("left" or "right")
+			// Allow setting to "" to stop movement explicitly if needed, but current frontend only sends arrows.
+			// Let's assume empty string means stop for now.
+			if newInternalDirection == "left" || newInternalDirection == "right" {
 				if a.state.Direction != newInternalDirection {
 					a.state.Direction = newInternalDirection
 				}
 			} else {
+				// If an invalid direction like "ArrowUp" is somehow sent, stop movement.
 				a.state.Direction = ""
 			}
 		} else {
 			fmt.Printf("PaddleActor %d failed to unmarshal direction: %v\n", a.state.Index, err)
-			a.state.Direction = ""
+			a.state.Direction = "" // Stop movement on invalid JSON
 		}
 
 	case bollywood.Stopping:
@@ -76,7 +81,7 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		select {
 		case <-a.stopTickerCh: // Already closed
 		default:
-			close(a.stopTickerCh)
+			close(a.stopTickerCh) // Signal ticker loop to stop
 		}
 
 	case bollywood.Stopped:
@@ -110,7 +115,7 @@ func (a *PaddleActor) runTicker(ctx bollywood.Context) {
 			// Check stop signal again before sending
 			select {
 			case <-a.stopTickerCh:
-				return
+				return // Stop immediately if signaled
 			default:
 				// Send tick message to self
 				engine.Send(selfPID, tickMsg, nil)

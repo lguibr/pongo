@@ -1,3 +1,4 @@
+// File: game/messages.go
 package game
 
 import (
@@ -22,14 +23,22 @@ type PlayerConnectRequest struct {
 }
 
 // PlayerDisconnect signals a player has disconnected.
+// Can be triggered by write error (index known) or read error (conn known).
 type PlayerDisconnect struct {
-	PlayerIndex int
+	PlayerIndex int              // -1 if triggered by readLoop/unknown index
+	WsConn      PlayerConnection // Connection that disconnected (used if index is -1)
 }
 
 // ForwardedPaddleDirection carries direction input from a connection handler.
 type ForwardedPaddleDirection struct {
-	PlayerIndex int
-	Direction   []byte // Raw JSON bytes {"direction": "Arrow..."}
+	// PlayerIndex int // Removed - GameActor finds index via WsConn
+	WsConn    PlayerConnection // The connection sending the direction
+	Direction []byte           // Raw JSON bytes {"direction": "Arrow..."}
+}
+
+// DestroyExpiredBall is sent by the ball expiry timer to the GameActor.
+type DestroyExpiredBall struct {
+	BallID int
 }
 
 // --- Messages FROM GameActor ---
@@ -40,14 +49,16 @@ type GameStateUpdate struct {
 }
 
 // AssignPlayerIndex tells a connection handler which player index it got.
-type AssignPlayerIndex struct {
-	Index int
-}
+// DEPRECATED - Server no longer tracks index directly.
+// type AssignPlayerIndex struct {
+// 	Index int
+// }
 
 // RejectConnection tells a handler the connection was rejected (e.g., server full).
-type RejectConnection struct {
-	Reason string
-}
+// DEPRECATED - GameActor closes connection directly.
+// type RejectConnection struct {
+// 	Reason string
+// }
 
 // --- Messages Between GameActor and Child Actors ---
 
@@ -96,7 +107,8 @@ type GameTick struct{}
 type internalTick struct{}
 
 // CheckCollisions triggers collision detection (potentially internal to GameActor).
-type CheckCollisions struct{}
+// DEPRECATED - Handled within GameTick
+// type CheckCollisions struct{}
 
 // SpawnBallCommand tells GameActor to spawn a new ball (e.g., from powerup)
 type SpawnBallCommand struct {

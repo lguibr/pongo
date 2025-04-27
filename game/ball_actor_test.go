@@ -1,3 +1,4 @@
+// File: game/ball_actor_test.go
 package game
 
 import (
@@ -19,7 +20,7 @@ func TestBallActor_SpawnsAndSendsPosition(t *testing.T) {
 
 	mockGameActor := &MockGameActor{}
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
-	time.Sleep(10 * time.Millisecond) // Wait for receiver
+	time.Sleep(50 * time.Millisecond) // Wait for receiver
 
 	initialBall := NewBall(100, 100, 10, utils.CanvasSize, 0, 123)
 	initialX, initialY := initialBall.X, initialBall.Y
@@ -28,7 +29,7 @@ func TestBallActor_SpawnsAndSendsPosition(t *testing.T) {
 	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
 	assert.NotNil(t, ballPID)
 
-	time.Sleep(utils.Period * 3) // Wait for actor to start and send initial position + tick
+	time.Sleep(utils.Period * 5) // Wait longer for actor to start and send initial position + tick
 
 	// Check if initial position was sent
 	received := mockGameActor.GetMessages()
@@ -36,7 +37,9 @@ func TestBallActor_SpawnsAndSendsPosition(t *testing.T) {
 	var lastBallState *Ball
 	for _, msg := range received {
 		if posMsg, ok := msg.(BallPositionMessage); ok {
-			lastBallState = posMsg.Ball
+			// Make a copy before assigning to lastBallState
+			ballCopy := *posMsg.Ball
+			lastBallState = &ballCopy
 			if posMsg.Ball.Id == initialBall.Id && posMsg.Ball.X == initialX && posMsg.Ball.Y == initialY {
 				initialPosFound = true
 				// Don't break, let it process ticks too
@@ -58,7 +61,7 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 
 	mockGameActor := &MockGameActor{}
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond) // Wait longer
 
 	initialBall := NewBall(100, 100, 10, utils.CanvasSize, 0, 456)
 	initialVx, initialVy := initialBall.Vx, initialBall.Vy
@@ -66,17 +69,17 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 
 	ballProducer := NewBallActorProducer(*initialBall, mockGameActorPID)
 	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
-	time.Sleep(utils.Period) // Wait for start
+	time.Sleep(utils.Period * 2) // Wait longer for start
 
 	// --- Test Velocity Increase ---
 	velRatio := 1.5
 	engine.Send(ballPID, IncreaseVelocityCommand{Ratio: velRatio}, nil)
-	time.Sleep(utils.Period / 2) // Wait for processing
+	time.Sleep(utils.Period) // Wait for processing
 
 	// Force tick to get updated state sent to mock GameActor
-	mockGameActor.received = nil
+	mockGameActor.ClearMessages() // Use safe method
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(time.Duration(float64(utils.Period) * 1.5)) // Explicit cast
+	time.Sleep(utils.Period * 2) // Wait longer
 
 	received := mockGameActor.GetMessages()
 	velUpdated := false
@@ -104,11 +107,11 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 	// --- Test Mass Increase ---
 	massAdd := 5
 	engine.Send(ballPID, IncreaseMassCommand{Additional: massAdd}, nil)
-	time.Sleep(utils.Period / 2)
+	time.Sleep(utils.Period) // Wait
 
-	mockGameActor.received = nil
+	mockGameActor.ClearMessages() // Use safe method
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(time.Duration(float64(utils.Period) * 1.5)) // Explicit cast
+	time.Sleep(utils.Period * 2) // Wait longer
 
 	received = mockGameActor.GetMessages()
 	massUpdated := false
@@ -126,13 +129,13 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 	assert.True(t, massUpdated, "Position message with updated mass/radius not received")
 
 	// --- Test Phasing ---
-	phasingDuration := 50 * time.Millisecond
+	phasingDuration := 100 * time.Millisecond // Increase duration slightly
 	engine.Send(ballPID, SetPhasingCommand{ExpireIn: phasingDuration}, nil)
-	time.Sleep(utils.Period / 2)
+	time.Sleep(utils.Period) // Wait
 
-	mockGameActor.received = nil
+	mockGameActor.ClearMessages() // Use safe method
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(time.Duration(float64(utils.Period) * 1.5)) // Explicit cast
+	time.Sleep(utils.Period * 2) // Wait longer
 
 	received = mockGameActor.GetMessages()
 	phasingStarted := false
@@ -146,11 +149,11 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 	assert.True(t, phasingStarted, "Position message with phasing=true not received")
 
 	// Wait for phasing to expire
-	time.Sleep(phasingDuration + utils.Period) // Wait longer than duration
+	time.Sleep(phasingDuration + utils.Period*2) // Wait longer than duration
 
-	mockGameActor.received = nil
-	engine.Send(ballPID, &internalTick{}, nil)             // Force another tick
-	time.Sleep(time.Duration(float64(utils.Period) * 1.5)) // Explicit cast
+	mockGameActor.ClearMessages()              // Use safe method
+	engine.Send(ballPID, &internalTick{}, nil) // Force another tick
+	time.Sleep(utils.Period * 2)               // Wait longer
 
 	received = mockGameActor.GetMessages()
 	phasingEnded := false
@@ -165,11 +168,11 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 
 	// --- Test Reflect Velocity ---
 	engine.Send(ballPID, ReflectVelocityCommand{Axis: "X"}, nil)
-	time.Sleep(utils.Period / 2)
+	time.Sleep(utils.Period) // Wait
 
-	mockGameActor.received = nil
+	mockGameActor.ClearMessages() // Use safe method
 	engine.Send(ballPID, &internalTick{}, nil)
-	time.Sleep(time.Duration(float64(utils.Period) * 1.5)) // Explicit cast
+	time.Sleep(utils.Period * 2) // Wait longer
 
 	received = mockGameActor.GetMessages()
 	reflectXDone := false

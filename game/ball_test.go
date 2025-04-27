@@ -73,9 +73,9 @@ func TestBall_BallInterceptPaddles(t *testing.T) {
 		{"Overlap Left Edge", &Paddle{X: 88, Y: 95, Width: 10, Height: 10}, true},
 		{"No Overlap Far", &Paddle{X: 120, Y: 120, Width: 20, Height: 20}, false},
 		{"Overlap Top Edge", &Paddle{X: 95, Y: 88, Width: 10, Height: 10}, true},
-		{"Touching Top Edge", &Paddle{X: 95, Y: 80, Width: 10, Height: 10}, false},
-		// Adjust "Just Outside" cases to be clearly outside
-		{"Clearly Outside Corner 1", &Paddle{X: 85, Y: 85, Width: 10, Height: 10}, false},   // Closest (90,90), dist^2=200 > 100
+		{"Touching Top Edge", &Paddle{X: 95, Y: 80, Width: 10, Height: 10}, false}, // Ball center (100,100), R=10. Paddle Y=[80,90]. Closest Y=90. Dist Y = 100-90=10. Dist^2 = 100. Radius^2 = 100. Touching, not intercepting.
+		// Adjust "Just Outside" cases to be clearly outside OR correct the expectation
+		{"Intercepts Corner 1", &Paddle{X: 85, Y: 85, Width: 10, Height: 10}, true},         // Closest (95,95), dist^2=50 < 100 (Radius^2) -> Intercepts!
 		{"Clearly Outside Corner 2", &Paddle{X: 111, Y: 111, Width: 10, Height: 10}, false}, // Closest (111,111), dist^2=11^2+11^2=242 > 100
 	}
 
@@ -83,7 +83,10 @@ func TestBall_BallInterceptPaddles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result := ball.BallInterceptPaddles(tc.paddle)
 			if result != tc.intercepts {
-				t.Errorf("Expected BallInterceptPaddles to return %t but got %t", tc.intercepts, result)
+				// Provide more context on failure
+				paddleBounds := fmt.Sprintf("X:[%d,%d], Y:[%d,%d]", tc.paddle.X, tc.paddle.X+tc.paddle.Width, tc.paddle.Y, tc.paddle.Y+tc.paddle.Height)
+				t.Errorf("Ball(X:%d,Y:%d,R:%d) vs Paddle(%s): Expected BallInterceptPaddles to return %t but got %t",
+					ball.X, ball.Y, ball.Radius, paddleBounds, tc.intercepts, result)
 			}
 		})
 	}
@@ -198,8 +201,8 @@ func TestBall_GetCenterIndex(t *testing.T) {
 			ball := &Ball{X: tc.ballX, Y: tc.ballY, canvasSize: canvasSize}
 			col, row := ball.getCenterIndex()
 			// Add debug print inside the test as well
-			fmt.Printf("Test: %s, Input: (%d, %d), CellSize: %d, GridSize: %d -> Got: (col=%d, row=%d), Expected: (col=%d, row=%d)\n",
-				tc.name, tc.ballX, tc.ballY, cellSize, gridSize, col, row, tc.expectedCol, tc.expectedRow)
+			// fmt.Printf("Test: %s, Input: (%d, %d), CellSize: %d, GridSize: %d -> Got: (col=%d, row=%d), Expected: (col=%d, row=%d)\n",
+			// 	tc.name, tc.ballX, tc.ballY, cellSize, gridSize, col, row, tc.expectedCol, tc.expectedRow)
 			if row != tc.expectedRow || col != tc.expectedCol {
 				t.Errorf("Test case %s failed: expected col %d, row %d but got col %d, row %d", tc.name, tc.expectedCol, tc.expectedRow, col, row)
 			}

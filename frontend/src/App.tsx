@@ -1,10 +1,10 @@
 // File: frontend/src/App.tsx
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import styled, { createGlobalStyle } from 'styled-components';
+import useWebSocket, { ReadyState } from 'react-use-websocket'; // Import from the library
 import GameCanvas from './components/GameCanvas';
-import { useWebSocket } from './hooks/useWebSocket';
 import { WEBSOCKET_URL } from './config';
-import { DirectionMessage } from './types/game';
+import { DirectionMessage, GameState } from './types/game';
 
 const GlobalStyle = createGlobalStyle`
   * {
@@ -56,24 +56,80 @@ const Logo = styled.img`
     margin-right: 15px;
 `;
 
+const Instructions = styled.p`
+  margin-top: 15px;
+  color: #aaa;
+  font-size: 0.9em;
+`;
+
 
 function App() {
-  const { gameState, status, sendMessage } = useWebSocket(WEBSOCKET_URL);
+  const [gameState, setGameState] = useState<GameState | null>(null);
 
+  // Use the react-use-websocket hook
+  const { sendMessage, lastMessage, readyState } = useWebSocket(WEBSOCKET_URL, {
+    onOpen: () => console.log('WS: Connection Opened'),
+    onClose: () => {
+      console.log('WS: Connection Closed');
+      setGameState(null); // Clear state on close
+    },
+    onError: (event) => console.error('WS: Error:', event),
+    shouldReconnect: (closeEvent) => true, // Automatically reconnect
+    reconnectInterval: 3000, // Reconnect attempt interval
+    // Filter out non-JSON messages or messages not conforming to GameState
+    filter: (message) => {
+      try {
+        const data = JSON.parse(message.data);
+        return (data && typeof data === 'object' && data.canvas && data.players && data.paddles && data.balls);
+      } catch (e) {
+        return false; // Ignore non-JSON messages
+      }
+    },
+  });
+
+  // Process incoming messages
+  useEffect(() => {
+    if (lastMessage !== null) {
+      try {
+        const data = JSON.parse(lastMessage.data);
+        setGameState(data as GameState);
+      } catch (e) {
+        console.error("WS: Failed to parse last message:", e);
+      }
+    }
+  }, [lastMessage]);
+
+  // Map ReadyState to our status string type
+  const mapReadyStateToStatus = (state: ReadyState): 'connecting' | 'open' | 'closing' | 'closed' | 'error' => {
+    switch (state) {
+      case ReadyState.CONNECTING: return 'connecting';
+      case ReadyState.OPEN: return 'open';
+      case ReadyState.CLOSING: return 'closing';
+      case ReadyState.CLOSED: return 'closed';
+      case ReadyState.UNINSTANTIATED: return 'connecting'; // Treat as connecting initially
+      default: return 'closed'; // Default to closed
+    }
+  };
+
+  const connectionStatus = mapReadyStateToStatus(readyState);
+
+  // Memoize the sendMessage function provided by the hook
+  const sendDirection = useCallback((direction: DirectionMessage['direction']) => {
+    if (connectionStatus === 'open') {
+      const message: DirectionMessage = { direction };
+      sendMessage(JSON.stringify(message));
+    }
+  }, [sendMessage, connectionStatus]);
+
+  // Handle keyboard input
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (status !== 'open') return;
-
-      let direction: DirectionMessage['direction'] | null = null;
+      if (connectionStatus !== 'open') return;
 
       if (event.key === 'ArrowLeft') {
-        direction = 'ArrowLeft';
+        sendDirection('ArrowLeft');
       } else if (event.key === 'ArrowRight') {
-        direction = 'ArrowRight';
-      }
-
-      if (direction) {
-        sendMessage({ direction });
+        sendDirection('ArrowRight');
       }
     };
 
@@ -81,7 +137,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sendMessage, status]);
+  }, [sendDirection, connectionStatus]); // Depend on the memoized send function and status
 
   return (
     <>
@@ -91,9 +147,9 @@ function App() {
           <Logo src="/bitmap.png" alt="PonGo Logo" />
           <h1>PonGo</h1>
         </Header>
-        <GameCanvas gameState={gameState} wsStatus={status} />
-        {/* Instructions could also be floated or placed elsewhere */}
-        {/* <p>Use Left/Right Arrow Keys to move the paddle.</p> */}
+        {/* Pass state and mapped status down */}
+        <GameCanvas gameState={gameState} wsStatus={connectionStatus} />
+        <Instructions>Use Left/Right Arrow Keys to move the paddle.</Instructions>
       </AppContainer>
     </>
   );

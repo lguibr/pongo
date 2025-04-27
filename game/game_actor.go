@@ -1,33 +1,38 @@
+// File: game/game_actor.go
 package game
 
 import (
-	"encoding/json"
 	"fmt"
-	"math"
-	"math/rand" // Import net
+	"reflect" // Import reflect for logging message type
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/lguibr/pongo/bollywood"
 	"github.com/lguibr/pongo/utils"
-	// "golang.org/x/net/websocket" // No longer needed for type assertion
 )
 
-const maxPlayers = 4
+// MaxPlayers is the maximum number of players allowed in the game.
+const MaxPlayers = 4 // Exported constant
 
 // GameActor manages the overall game state and coordinates child actors.
+// It acts as the central authority for game logic, state, and communication.
 type GameActor struct {
 	canvas        *Canvas
-	players       [maxPlayers]*playerInfo // Info about connected players
-	paddles       [maxPlayers]*Paddle     // Live state of paddles (updated by messages)
-	paddleActors  [maxPlayers]*bollywood.PID
-	balls         map[int]*Ball // Live state of balls (updated by messages) - Keyed by Ball ID
+	players       [MaxPlayers]*playerInfo    // Use exported constant
+	paddles       [MaxPlayers]*Paddle        // Use exported constant
+	paddleActors  [MaxPlayers]*bollywood.PID // Use exported constant
+	balls         map[int]*Ball              // Live state of balls (updated by messages) - Keyed by Ball ID
 	ballActors    map[int]*bollywood.PID
 	engine        *bollywood.Engine // Reference to the engine
 	ticker        *time.Ticker
 	stopTickerCh  chan struct{}
 	gameStateJSON atomic.Value   // Stores marshalled JSON for HTTP endpoint
 	selfPID       *bollywood.PID // Store self PID for internal use
+	mu            sync.RWMutex   // Protects shared maps/slices (players, paddles, balls, actors, connToIndex)
+
+	// Map to find player index from connection (connection -> index)
+	connToIndex map[PlayerConnection]int
 }
 
 // playerInfo holds state associated with a connected player/websocket.
@@ -37,7 +42,7 @@ type playerInfo struct {
 	Score       int
 	Color       [3]int
 	Ws          PlayerConnection // Use the interface type
-	IsConnected bool
+	IsConnected bool             // Tracks if the connection is considered active by GameActor
 }
 
 // NewGameActorProducer creates a producer for the GameActor.
@@ -48,547 +53,274 @@ func NewGameActorProducer(engine *bollywood.Engine) bollywood.Producer {
 
 		ga := &GameActor{
 			canvas:       canvas,
-			players:      [maxPlayers]*playerInfo{},
-			paddles:      [maxPlayers]*Paddle{},
-			paddleActors: [maxPlayers]*bollywood.PID{},
+			players:      [MaxPlayers]*playerInfo{},    // Use exported constant
+			paddles:      [MaxPlayers]*Paddle{},        // Use exported constant
+			paddleActors: [MaxPlayers]*bollywood.PID{}, // Use exported constant
 			balls:        make(map[int]*Ball),
 			ballActors:   make(map[int]*bollywood.PID),
 			engine:       engine,
 			stopTickerCh: make(chan struct{}),
+			connToIndex:  make(map[PlayerConnection]int), // Initialize the new map
+			// mu is zero-value initialized, which is fine for sync.RWMutex
 		}
 		ga.updateGameStateJSON() // Initialize JSON state
 		return ga
 	}
 }
 
+// Receive is the main message handler for the GameActor. It dispatches messages
+// to specific handler methods based on the message type.
 func (a *GameActor) Receive(ctx bollywood.Context) {
+	actorPIDStr := "nil" // Default string if selfPID is nil
 	if a.selfPID == nil {
+		// Try to set selfPID immediately if it's the first message
 		a.selfPID = ctx.Self()
+		if a.selfPID != nil {
+			actorPIDStr = a.selfPID.String()
+			// fmt.Printf("GameActor %s: Self PID set on first Receive.\n", actorPIDStr) // Reduce noise
+		} else {
+			fmt.Println("GameActor ???: Failed to set self PID on first Receive.")
+			// Cannot proceed reliably without a PID
+			return
+		}
+	} else {
+		actorPIDStr = a.selfPID.String() // Use existing PID for logging
 	}
 
-	switch msg := ctx.Message().(type) {
+	// --- Log entry into Receive ---
+	msg := ctx.Message()
+	fmt.Printf("GameActor %s: Receive entered. Message Type: %s\n", actorPIDStr, reflect.TypeOf(msg))
+	// --- End Log ---
+
+	switch m := msg.(type) { // Use 'm' to avoid shadowing 'msg' variable used above
 	case bollywood.Started:
-		fmt.Println("GameActor started.")
-		a.selfPID = ctx.Self()
+		fmt.Printf("GameActor %s: Processing Started message.\n", actorPIDStr)
+		// Ensure selfPID is set if it wasn't already (should be redundant now)
+		if a.selfPID == nil {
+			a.selfPID = ctx.Self()
+			if a.selfPID != nil {
+				actorPIDStr = a.selfPID.String()
+				fmt.Printf("GameActor %s: Self PID set during Started.\n", actorPIDStr)
+			} else {
+				fmt.Printf("GameActor ???: Failed to set self PID during Started.\n")
+				return // Cannot start ticker without PID
+			}
+		}
 		a.ticker = time.NewTicker(utils.Period)
 		go a.runTickerLoop()
 
 	case *GameTick:
-		a.detectCollisions(ctx) // Pass context
-		a.broadcastGameState()
-		a.updateGameStateJSON()
+		// fmt.Printf("GameActor %s: Processing GameTick.\n", actorPIDStr) // Reduce noise unless debugging ticks specifically
+		// Lock needed for collision detection which modifies state
+		a.mu.Lock()
+		// fmt.Printf("GameActor %s: Lock acquired for collisions.\n", actorPIDStr) // Reduce noise
+		a.detectCollisions(ctx)
+		// fmt.Printf("GameActor %s: Lock released after collisions.\n", actorPIDStr) // Reduce noise
+		a.mu.Unlock()
+
+		// fmt.Printf("GameActor %s: Calling broadcastGameState after GameTick.\n", actorPIDStr) // Reduce noise
+		a.broadcastGameState()  // Broadcast reads state (uses RLock internally)
+		a.updateGameStateJSON() // Update JSON reads state (uses RLock internally)
 
 	case PlayerConnectRequest:
-		a.handlePlayerConnect(ctx, msg.WsConn)
+		fmt.Printf("GameActor %s: Processing PlayerConnectRequest.\n", actorPIDStr)
+		a.handlePlayerConnect(ctx, m.WsConn)
 
 	case PlayerDisconnect:
-		a.handlePlayerDisconnect(ctx, msg.PlayerIndex)
+		fmt.Printf("GameActor %s: Processing PlayerDisconnect.\n", actorPIDStr)
+		a.handlePlayerDisconnect(ctx, m.PlayerIndex, m.WsConn)
 
 	case ForwardedPaddleDirection:
-		a.handlePaddleDirection(ctx, msg.PlayerIndex, msg.Direction)
+		// fmt.Printf("GameActor %s: Processing ForwardedPaddleDirection.\n", actorPIDStr) // Reduce noise
+		a.handlePaddleDirection(ctx, m.WsConn, m.Direction)
 
 	case PaddlePositionMessage:
-		a.handlePaddlePositionUpdate(ctx, msg.Paddle)
+		// fmt.Printf("GameActor %s: Processing PaddlePositionMessage.\n", actorPIDStr) // Reduce noise
+		a.handlePaddlePositionUpdate(ctx, m.Paddle)
 
 	case BallPositionMessage:
-		a.handleBallPositionUpdate(ctx, msg.Ball)
+		// fmt.Printf("GameActor %s: Processing BallPositionMessage.\n", actorPIDStr) // Reduce noise
+		a.handleBallPositionUpdate(ctx, m.Ball)
 
 	case SpawnBallCommand:
-		a.spawnBall(ctx, msg.OwnerIndex, msg.X, msg.Y, msg.ExpireIn)
+		fmt.Printf("GameActor %s: Processing SpawnBallCommand.\n", actorPIDStr)
+		a.spawnBall(ctx, m.OwnerIndex, m.X, m.Y, m.ExpireIn)
+
+	case DestroyExpiredBall:
+		fmt.Printf("GameActor %s: Processing DestroyExpiredBall.\n", actorPIDStr)
+		a.handleDestroyExpiredBall(ctx, m.BallID)
 
 	case bollywood.Stopping:
-		fmt.Println("GameActor stopping...")
+		fmt.Printf("GameActor %s: Processing Stopping message.\n", actorPIDStr)
+		fmt.Printf("GameActor %s: Stopping ticker...\n", actorPIDStr)
 		if a.ticker != nil {
 			a.ticker.Stop()
 			select {
 			case <-a.stopTickerCh:
+				fmt.Printf("GameActor %s: stopTickerCh already closed.\n", actorPIDStr)
 			default:
-				close(a.stopTickerCh)
+				close(a.stopTickerCh) // Ensure ticker loop stops
+				fmt.Printf("GameActor %s: stopTickerCh closed.\n", actorPIDStr)
 			}
+		} else {
+			fmt.Printf("GameActor %s: Ticker was nil during Stopping.\n", actorPIDStr)
 		}
-		for i := 0; i < maxPlayers; i++ {
-			if a.paddleActors[i] != nil {
-				a.engine.Stop(a.paddleActors[i])
-			}
-		}
-		for _, pid := range a.ballActors {
-			if pid != nil {
-				a.engine.Stop(pid)
-			}
-		}
-		for _, pInfo := range a.players {
-			if pInfo != nil && pInfo.Ws != nil {
-				_ = pInfo.Ws.Close()
-			}
-		}
+		fmt.Printf("GameActor %s: Starting cleanup...\n", actorPIDStr)
+		a.cleanupChildActorsAndConnections()
+		fmt.Printf("GameActor %s: Cleanup finished.\n", actorPIDStr)
 
 	case bollywood.Stopped:
-		fmt.Println("GameActor stopped.")
+		// This message is sent *after* the actor's goroutine has exited.
+		// We might not see this log if the test times out before the goroutine fully exits.
+		fmt.Printf("GameActor %s: Processing Stopped message (goroutine should be exiting).\n", actorPIDStr)
 
 	default:
-		fmt.Printf("GameActor received unknown message type: %T\n", msg)
+		fmt.Printf("GameActor %s: Processing unknown message type: %T\n", actorPIDStr, m)
 	}
+	// fmt.Printf("GameActor %s: Receive finished for Message Type: %s\n", actorPIDStr, reflect.TypeOf(msg)) // Optional: log exit
 }
 
-// --- Actor Logic Methods ---
-
+// runTickerLoop sends GameTick messages to the actor's own mailbox at regular intervals.
 func (a *GameActor) runTickerLoop() {
-	fmt.Println("GameActor ticker loop started.")
-	defer fmt.Println("GameActor ticker loop stopped.")
-	if a.selfPID == nil {
-		fmt.Println("ERROR: GameActor ticker loop cannot start, self PID not set.")
+	// Wait briefly for selfPID to be set in Receive
+	time.Sleep(15 * time.Millisecond) // Slightly longer wait
+	actorPID := a.selfPID
+	if actorPID == nil {
+		fmt.Println("ERROR: GameActor ticker loop cannot start, self PID not set after wait.")
 		return
 	}
+	actorPIDStr := actorPID.String()
+	fmt.Printf("GameActor %s: Ticker loop started.\n", actorPIDStr)
+	defer fmt.Printf("GameActor %s: Ticker loop stopped.\n", actorPIDStr)
+
+	tickCount := 0
+	tickMsg := &GameTick{} // Create message once
+
 	for {
 		select {
-		case <-a.ticker.C:
-			a.engine.Send(a.selfPID, &GameTick{}, nil)
-		case <-a.stopTickerCh:
+		case <-a.stopTickerCh: // Check if stopped first
+			fmt.Printf("GameActor %s: Ticker loop detected stop signal. Exiting.\n", actorPIDStr)
 			return
-		}
-	}
-}
-
-func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws PlayerConnection) {
-	playerIndex := -1
-	for i, p := range a.players {
-		if p == nil {
-			playerIndex = i
-			break
-		}
-	}
-
-	remoteAddr := "unknown"
-	if ws != nil {
-		remoteAddr = ws.RemoteAddr().String()
-	}
-
-	if playerIndex == -1 {
-		fmt.Println("GameActor: Server full, rejecting connection from:", remoteAddr)
-		if ws != nil {
-			_ = ws.Close()
-		}
-		return
-	}
-
-	fmt.Printf("GameActor: Assigning player index %d to %s\n", playerIndex, remoteAddr)
-
-	isFirstPlayer := true
-	for _, p := range a.players {
-		if p != nil {
-			isFirstPlayer = false
-			break
-		}
-	}
-	if isFirstPlayer {
-		fmt.Println("GameActor: First player joining, initializing grid.")
-		a.canvas.Grid.Fill(0, 0, 0, 0)
-	}
-
-	player := &playerInfo{
-		Index:       playerIndex,
-		ID:          fmt.Sprintf("player%d", playerIndex),
-		Score:       utils.InitialScore,
-		Color:       utils.NewRandomColor(),
-		Ws:          ws,
-		IsConnected: true,
-	}
-	a.players[playerIndex] = player
-
-	paddleData := NewPaddle(a.canvas.CanvasSize, playerIndex)
-	a.paddles[playerIndex] = paddleData
-	paddleProducer := NewPaddleActorProducer(*paddleData, ctx.Self())
-	paddlePID := a.engine.Spawn(bollywood.NewProps(paddleProducer))
-	a.paddleActors[playerIndex] = paddlePID
-	fmt.Printf("GameActor: Spawned PaddleActor %s for player %d\n", paddlePID, playerIndex)
-
-	a.spawnBall(ctx, playerIndex, 0, 0, 0)
-
-	a.broadcastGameState()
-}
-
-func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, playerIndex int) {
-	if playerIndex < 0 || playerIndex >= maxPlayers || a.players[playerIndex] == nil {
-		fmt.Printf("GameActor: Received disconnect for invalid or already disconnected player index %d\n", playerIndex)
-		return
-	}
-
-	fmt.Printf("GameActor: Handling disconnect for player %d\n", playerIndex)
-
-	if a.paddleActors[playerIndex] != nil {
-		fmt.Printf("GameActor: Stopping PaddleActor %s for player %d\n", a.paddleActors[playerIndex], playerIndex)
-		a.engine.Stop(a.paddleActors[playerIndex])
-		a.paddleActors[playerIndex] = nil
-	}
-
-	ballsToStop := []*bollywood.PID{}
-	ballsToRemoveFromState := []int{}
-	for ballID, ball := range a.balls {
-		if ball != nil && ball.OwnerIndex == playerIndex {
-			if pid, ok := a.ballActors[ballID]; ok && pid != nil {
-				ballsToStop = append(ballsToStop, pid)
+		case tickTime, ok := <-a.ticker.C:
+			if !ok {
+				fmt.Printf("GameActor %s: Ticker channel closed. Exiting loop.\n", actorPIDStr)
+				return // Exit if ticker channel is closed
 			}
-			ballsToRemoveFromState = append(ballsToRemoveFromState, ballID)
+			_ = tickTime // Use tickTime if needed for logging
+			tickCount++
+			// Check again before sending, in case stop happened between ticks
+			select {
+			case <-a.stopTickerCh:
+				fmt.Printf("GameActor %s: Ticker loop detected stop signal after tick %d. Exiting.\n", actorPIDStr, tickCount)
+				return
+			default:
+				// Send the tick message using the standard engine Send method
+				// Use the captured actorPID which is guaranteed non-nil here
+				// fmt.Printf("GameActor %s: Attempting to send GameTick %d\n", actorPIDStr, tickCount) // Reduce noise
+				a.engine.Send(actorPID, tickMsg, nil)
+				// fmt.Printf("GameActor %s: Sent GameTick %d\n", actorPIDStr, tickCount) // Log *after* send attempt
+			}
+		}
+	}
+}
+
+// cleanupChildActorsAndConnections handles stopping child actors and closing connections during shutdown.
+func (a *GameActor) cleanupChildActorsAndConnections() {
+	pidStr := "unknown"
+	if a.selfPID != nil {
+		pidStr = a.selfPID.String()
+	}
+	fmt.Printf("GameActor %s: Acquiring lock for cleanup...\n", pidStr)
+	// Collect PIDs and connections to stop/close while holding lock
+	a.mu.Lock()
+	fmt.Printf("GameActor %s: Lock acquired for cleanup.\n", pidStr)
+	paddlesToStop := make([]*bollywood.PID, 0, MaxPlayers) // Use exported constant
+	ballsToStop := make([]*bollywood.PID, 0, len(a.ballActors))
+	connectionsToClose := []PlayerConnection{}
+
+	for i := 0; i < MaxPlayers; i++ { // Use exported constant
+		if pid := a.paddleActors[i]; pid != nil {
+			paddlesToStop = append(paddlesToStop, pid)
+			a.paddleActors[i] = nil // Clear PID immediately
+		}
+		// Also collect connections associated with active players
+		if pInfo := a.players[i]; pInfo != nil && pInfo.Ws != nil {
+			// Check if it's still in the connToIndex map before adding
+			if _, exists := a.connToIndex[pInfo.Ws]; exists {
+				connectionsToClose = append(connectionsToClose, pInfo.Ws)
+				delete(a.connToIndex, pInfo.Ws) // Remove mapping
+			} else {
+				// Log if connection exists in playerInfo but not connToIndex during cleanup
+				fmt.Printf("GameActor %s Cleanup WARN: Connection for player %d not found in connToIndex.\n", pidStr, i)
+			}
+			pInfo.Ws = nil // Clear reference
+			pInfo.IsConnected = false
+		}
+		a.players[i] = nil // Clear player info
+	}
+
+	for ballID, pid := range a.ballActors {
+		if pid != nil {
+			ballsToStop = append(ballsToStop, pid)
+		}
+		delete(a.ballActors, ballID) // Clear PID reference
+		delete(a.balls, ballID)      // Clear ball state
+	}
+
+	// Clear any remaining entries in connToIndex (should be empty now)
+	if len(a.connToIndex) > 0 {
+		fmt.Printf("GameActor %s Cleanup WARN: connToIndex not empty after player cleanup (%d entries remain).\n", pidStr, len(a.connToIndex))
+		a.connToIndex = make(map[PlayerConnection]int)
+	}
+
+	a.mu.Unlock() // Release lock before stopping children/closing connections
+	fmt.Printf("GameActor %s: Lock released for cleanup.\n", pidStr)
+
+	fmt.Printf("GameActor %s Cleanup: Stopping %d paddles, %d balls. Closing %d connections.\n",
+		pidStr, len(paddlesToStop), len(ballsToStop), len(connectionsToClose))
+
+	// Stop child actors
+	for _, pid := range paddlesToStop {
+		if pid != nil {
+			// fmt.Printf("GameActor %s Cleanup: Stopping paddle actor %s\n", pidStr, pid) // Reduce noise
+			a.engine.Stop(pid)
 		}
 	}
 	for _, pid := range ballsToStop {
-		fmt.Printf("GameActor: Stopping BallActor %s for disconnected player %d\n", pid, playerIndex)
-		a.engine.Stop(pid)
-	}
-	for _, ballID := range ballsToRemoveFromState {
-		delete(a.balls, ballID)
-		delete(a.ballActors, ballID)
-	}
-
-	if a.players[playerIndex].Ws != nil {
-		fmt.Printf("GameActor: Closing WebSocket for player %d\n", playerIndex)
-		_ = a.players[playerIndex].Ws.Close()
-	}
-
-	a.players[playerIndex] = nil
-	a.paddles[playerIndex] = nil
-
-	fmt.Printf("GameActor: Player %d disconnected and cleaned up.\n", playerIndex)
-
-	playersLeft := false
-	for _, p := range a.players {
-		if p != nil {
-			playersLeft = true
-			break
+		if pid != nil {
+			// fmt.Printf("GameActor %s Cleanup: Stopping ball actor %s\n", pidStr, pid) // Reduce noise
+			a.engine.Stop(pid)
 		}
 	}
-	if !playersLeft {
-		fmt.Println("GameActor: Last player disconnected. Game inactive.")
-	}
 
-	a.broadcastGameState()
-}
-
-func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, playerIndex int, directionData []byte) {
-	if playerIndex < 0 || playerIndex >= maxPlayers || a.paddleActors[playerIndex] == nil {
-		return
-	}
-	a.engine.Send(a.paddleActors[playerIndex], PaddleDirectionMessage{Direction: directionData}, ctx.Self())
-}
-
-func (a *GameActor) handlePaddlePositionUpdate(ctx bollywood.Context, paddleState *Paddle) {
-	if paddleState == nil {
-		return
-	}
-	idx := paddleState.Index
-	if idx >= 0 && idx < maxPlayers {
-		a.paddles[idx] = paddleState
-	}
-}
-
-func (a *GameActor) handleBallPositionUpdate(ctx bollywood.Context, ballState *Ball) {
-	if ballState == nil {
-		return
-	}
-	a.balls[ballState.Id] = ballState
-}
-
-func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expireIn time.Duration) {
-	ballID := time.Now().Nanosecond()
-	ballData := NewBall(x, y, 0, a.canvas.CanvasSize, ownerIndex, ballID)
-	a.balls[ballID] = ballData
-
-	selfPID := a.selfPID
-	if selfPID == nil && ctx != nil {
-		selfPID = ctx.Self()
-	}
-	if selfPID == nil {
-		fmt.Println("ERROR: GameActor cannot spawn ball, self PID is nil.")
-		delete(a.balls, ballID)
-		return
-	}
-
-	ballProducer := NewBallActorProducer(*ballData, selfPID)
-	ballPID := a.engine.Spawn(bollywood.NewProps(ballProducer))
-	if ballPID == nil {
-		fmt.Printf("ERROR: GameActor failed to spawn BallActor for player %d\n", ownerIndex)
-		delete(a.balls, ballID)
-		return
-	}
-	a.ballActors[ballID] = ballPID
-	fmt.Printf("GameActor: Spawned BallActor %s (ID: %d) for player %d\n", ballPID, ballID, ownerIndex)
-
-	if expireIn > 0 {
-		time.AfterFunc(expireIn, func() {
-			if selfPID != nil {
-				// TODO: Improve safety - send message to self instead of direct stop/delete
-				a.engine.Stop(ballPID)
-				// delete(a.balls, ballID) // Deletion should happen upon actor stop confirmation
-				// delete(a.ballActors, ballID)
-				fmt.Printf("GameActor: Timer expired, requested stop for BallActor %s (ID: %d)\n", ballPID, ballID)
-			}
-		})
-	}
-}
-
-func (a *GameActor) broadcastGameState() {
-	state := GameState{
-		Canvas:  a.canvas,
-		Players: [maxPlayers]*Player{},
-		Paddles: a.paddles,
-		Balls:   make([]*Ball, 0, len(a.balls)),
-	}
-	for i, pi := range a.players {
-		if pi != nil {
-			state.Players[i] = &Player{
-				Index: pi.Index,
-				Id:    pi.ID,
-				Color: pi.Color,
-				Score: pi.Score,
-			}
-		} else {
-			state.Players[i] = nil
+	// Close connections
+	for _, ws := range connectionsToClose {
+		if ws != nil {
+			// fmt.Printf("GameActor %s Cleanup: Closing connection %s\n", pidStr, ws.RemoteAddr()) // Reduce noise
+			_ = ws.Close() // Attempt to close
 		}
 	}
-	// Filter out nil balls just in case
-	validBalls := make([]*Ball, 0, len(a.balls))
-	for _, b := range a.balls {
-		if b != nil {
-			validBalls = append(validBalls, b)
-		}
-	}
-	state.Balls = validBalls
-
-	stateJSON, err := json.Marshal(state)
-	if err != nil {
-		fmt.Println("GameActor: Error marshalling game state:", err)
-		return
-	}
-
-	for _, pInfo := range a.players {
-		if pInfo != nil && pInfo.IsConnected && pInfo.Ws != nil {
-			// Use the Write method from the PlayerConnection interface
-			_, err := pInfo.Ws.Write(stateJSON) // Write directly using the interface
-			if err != nil {
-				fmt.Printf("GameActor: Error writing state to player %d (%s): %v. Marking as disconnected.\n", pInfo.Index, pInfo.Ws.RemoteAddr(), err)
-				pInfo.IsConnected = false
-				if a.selfPID != nil {
-					// Send disconnect message to self for cleanup
-					a.engine.Send(a.selfPID, PlayerDisconnect{PlayerIndex: pInfo.Index}, nil)
-				}
-			}
-		}
-	}
+	fmt.Printf("GameActor %s: Cleanup actions finished.\n", pidStr)
 }
 
-func (a *GameActor) updateGameStateJSON() {
-	state := GameState{
-		Canvas:  a.canvas,
-		Players: [maxPlayers]*Player{},
-		Paddles: a.paddles,
-		Balls:   make([]*Ball, 0, len(a.balls)),
-	}
-	for i, pi := range a.players {
-		if pi != nil {
-			state.Players[i] = &Player{Index: pi.Index, Id: pi.ID, Color: pi.Color, Score: pi.Score}
-		} else {
-			state.Players[i] = nil
-		}
-	}
-	validBalls := make([]*Ball, 0, len(a.balls))
-	for _, b := range a.balls {
-		if b != nil {
-			validBalls = append(validBalls, b)
-		}
-	}
-	state.Balls = validBalls
-
-	stateJSON, err := json.Marshal(state)
-	if err != nil {
-		fmt.Println("GameActor: Error marshalling game state for HTTP:", err)
-		a.gameStateJSON.Store([]byte("{}"))
-		return
-	}
-	a.gameStateJSON.Store(stateJSON)
-}
-
+// GetGameStateJSON retrieves the latest marshalled game state for HTTP handlers.
+// NOTE: This is still a placeholder as direct access isn't ideal.
+// A better approach might involve the engine providing a way to query state,
+// or the GameActor periodically writing to a shared resource.
 func (a *GameActor) GetGameStateJSON() []byte {
 	val := a.gameStateJSON.Load()
 	if val == nil {
-		return []byte("{}")
-	}
-	return val.([]byte)
-}
-
-// --- Collision Detection Logic ---
-
-func (a *GameActor) detectCollisions(ctx bollywood.Context) { // Pass context
-	cellSize := a.canvas.CellSize
-	canvasSize := a.canvas.CanvasSize
-
-	ballsToRemove := []int{}
-
-	for ballID, ball := range a.balls {
-		if ball == nil {
-			continue
-		}
-		ballActorPID := a.ballActors[ballID]
-		if ballActorPID == nil {
-			continue
-		}
-
-		// 1. Wall Collisions
-		hitWall := -1
-		if ball.X+ball.Radius > canvasSize {
-			hitWall = 0
-		} else if ball.Y-ball.Radius < 0 {
-			hitWall = 1
-		} else if ball.X-ball.Radius < 0 {
-			hitWall = 2
-		} else if ball.Y+ball.Radius > canvasSize {
-			hitWall = 3
-		}
-
-		if hitWall != -1 {
-			if hitWall == 0 || hitWall == 2 {
-				a.engine.Send(ballActorPID, ReflectVelocityCommand{Axis: "X"}, nil)
-			} else {
-				a.engine.Send(ballActorPID, ReflectVelocityCommand{Axis: "Y"}, nil)
-			}
-			a.engine.Send(ballActorPID, SetPhasingCommand{ExpireIn: 100 * time.Millisecond}, nil)
-
-			scorerIndex := ball.OwnerIndex
-			concederIndex := hitWall
-
-			if concederIndex != scorerIndex && a.players[concederIndex] != nil {
-				fmt.Printf("GameActor: Player %d scores against Player %d\n", scorerIndex, concederIndex)
-				if a.players[scorerIndex] != nil {
-					a.players[scorerIndex].Score++
-				}
-				a.players[concederIndex].Score--
-			} else if concederIndex == scorerIndex {
-				fmt.Printf("GameActor: Player %d hit their own wall.\n", scorerIndex)
-			} else {
-				fmt.Printf("GameActor: Ball %d hit empty wall %d. Removing.\n", ballID, hitWall)
-				ballsToRemove = append(ballsToRemove, ballID)
-			}
-		}
-
-		// 2. Paddle Collisions
-		for paddleIndex, paddle := range a.paddles {
-			if paddle == nil {
-				continue
-			}
-			if ball.BallInterceptPaddles(paddle) {
-				fmt.Printf("GameActor: Ball %d collided with Paddle %d\n", ballID, paddleIndex)
-				if paddleIndex%2 == 0 {
-					a.engine.Send(ballActorPID, ReflectVelocityCommand{Axis: "X"}, nil)
-				} else {
-					a.engine.Send(ballActorPID, ReflectVelocityCommand{Axis: "Y"}, nil)
-				}
-				ball.OwnerIndex = paddleIndex
-				a.engine.Send(ballActorPID, SetPhasingCommand{ExpireIn: 100 * time.Millisecond}, nil)
-				break
-			}
-		}
-
-		// 3. Brick Collisions (only if not phasing)
-		if !ball.Phasing {
-			collidedCells := a.findCollidingCells(ball, cellSize)
-			for _, cellPos := range collidedCells {
-				col, row := cellPos[0], cellPos[1]
-				if col < 0 || col >= a.canvas.GridSize || row < 0 || row >= a.canvas.GridSize {
-					continue
-				}
-				cell := &a.canvas.Grid[col][row]
-				if cell.Data.Type == utils.Cells.Brick {
-					fmt.Printf("GameActor: Ball %d hit brick at [%d, %d]\n", ballID, col, row)
-					brickLevel := cell.Data.Level
-					cell.Data.Life--
-
-					dx := float64(ball.X - (col*cellSize + cellSize/2))
-					dy := float64(ball.Y - (row*cellSize + cellSize/2))
-					if math.Abs(dx) > math.Abs(dy) {
-						a.engine.Send(ballActorPID, ReflectVelocityCommand{Axis: "X"}, nil)
-					} else {
-						a.engine.Send(ballActorPID, ReflectVelocityCommand{Axis: "Y"}, nil)
-					}
-
-					if cell.Data.Life <= 0 {
-						fmt.Printf("GameActor: Brick broken at [%d, %d]\n", col, row)
-						cell.Data.Type = utils.Cells.Empty
-						cell.Data.Level = 0
-
-						scorerIndex := ball.OwnerIndex
-						if a.players[scorerIndex] != nil {
-							a.players[scorerIndex].Score += brickLevel
-							fmt.Printf("GameActor: Player %d score +%d for breaking brick.\n", scorerIndex, brickLevel)
-						}
-
-						if rand.Intn(4) == 0 {
-							a.triggerRandomPowerUp(ctx, ball) // Pass context
-						}
-					}
-					a.engine.Send(ballActorPID, SetPhasingCommand{ExpireIn: 100 * time.Millisecond}, nil)
-					break
-				}
-			}
-		}
-	} // End ball loop
-
-	// Remove balls that went out of bounds
-	for _, ballID := range ballsToRemove {
-		if pid, ok := a.ballActors[ballID]; ok && pid != nil {
-			fmt.Printf("GameActor: Ball %d went out of bounds, stopping actor %s\n", ballID, pid)
-			a.engine.Stop(pid)
-		}
-		delete(a.balls, ballID)
-		delete(a.ballActors, ballID)
-	}
-}
-
-func (a *GameActor) findCollidingCells(ball *Ball, cellSize int) [][2]int {
-	collided := [][2]int{}
-	gridSize := a.canvas.GridSize
-	minCol := (ball.X - ball.Radius) / cellSize
-	maxCol := (ball.X + ball.Radius) / cellSize
-	minRow := (ball.Y - ball.Radius) / cellSize
-	maxRow := (ball.Y + ball.Radius) / cellSize
-
-	minCol = utils.MaxInt(0, minCol)
-	maxCol = utils.MinInt(gridSize-1, maxCol)
-	minRow = utils.MaxInt(0, minRow)
-	maxRow = utils.MinInt(gridSize-1, maxRow)
-
-	for c := minCol; c <= maxCol; c++ {
-		for r := minRow; r <= maxRow; r++ {
-			if ball.InterceptsIndex(c, r, cellSize) {
-				collided = append(collided, [2]int{c, r})
-			}
+		// Attempt to generate current state if nil (e.g., called before first tick)
+		a.updateGameStateJSON()
+		val = a.gameStateJSON.Load()
+		if val == nil {
+			return []byte(`{"error": "failed to initialize game state"}`)
 		}
 	}
-	return collided
-}
-
-func (a *GameActor) triggerRandomPowerUp(ctx bollywood.Context, ball *Ball) { // Accept context
-	powerUpType := rand.Intn(3)
-	ballActorPID := a.ballActors[ball.Id]
-	if ballActorPID == nil {
-		return
+	jsonBytes, ok := val.([]byte)
+	if !ok {
+		fmt.Println("ERROR: GameActor gameStateJSON is not []byte")
+		return []byte(`{"error": "invalid internal state type"}`)
 	}
-
-	switch powerUpType {
-	case 0:
-		fmt.Printf("GameActor: Triggering SpawnBall power-up from ball %d\n", ball.Id)
-		a.spawnBall(ctx, ball.OwnerIndex, ball.X, ball.Y, time.Duration(rand.Intn(5)+5)*time.Second) // Pass context
-	case 1:
-		fmt.Printf("GameActor: Triggering IncreaseMass power-up for ball %d\n", ball.Id)
-		a.engine.Send(ballActorPID, IncreaseMassCommand{Additional: 1}, nil)
-	case 2:
-		fmt.Printf("GameActor: Triggering IncreaseVelocity power-up for ball %d\n", ball.Id)
-		a.engine.Send(ballActorPID, IncreaseVelocityCommand{Ratio: 1.1}, nil)
-	}
-}
-
-// GameState struct for JSON marshalling (used in broadcast/updateJSON)
-type GameState struct {
-	Canvas  *Canvas    `json:"canvas"`
-	Players [4]*Player `json:"players"` // Use Player struct for JSON
-	Paddles [4]*Paddle `json:"paddles"`
-	Balls   []*Ball    `json:"balls"`
+	return jsonBytes
 }
