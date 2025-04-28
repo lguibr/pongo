@@ -14,7 +14,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-const servicePort = "8080"
+const servicePort = "8080" // Hardcoded port for Cloud Run
 
 // --- ADDED: Function to check origin (ALLOWS ALL - USE CAUTIOUSLY) ---
 func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
@@ -41,7 +41,6 @@ func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
 		// If Origin header is not present, default check might allow based on Host.
 		// We can explicitly create a default Origin based on the Host if needed,
 		// but often just returning nil error here is sufficient if Origin header is missing.
-		// Let's try returning nil first. If issues persist, construct origin from Host.
 		fmt.Println("Origin header not present, allowing connection.")
 		// Example if needed:
 		// config.Origin = &url.URL{Scheme: "http", Host: req.Host} // Or https based on req scheme
@@ -57,52 +56,67 @@ func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
 // --- END ADD ---
 
 func main() {
-	fmt.Println(">>> RUNNING CODE VERSION: [Lucas-Apr28-v1.1.1-OriginFixAttempt] <<<")
+	// --- ADD A UNIQUE MARKER TO CONFIRM THIS VERSION IS RUNNING ---
+	fmt.Println(">>> RUNNING CODE VERSION: [Lucas-Apr28-v1.1.3-OriginFixAttempt] <<<")
+	// --- END MARKER ---
 
-	// ... (rest of your setup code: config, engine, roomManager, server) ...
+	// 0. Load Configuration
 	cfg := utils.DefaultConfig()
 	fmt.Println("Configuration loaded (using defaults).")
 	fmt.Printf("Canvas Size: %d, Grid Size: %d, Tick Period: %v\n", cfg.CanvasSize, cfg.GridSize, cfg.GameTickPeriod)
 
+	// 1. Initialize Bollywood Engine
 	engine := bollywood.NewEngine()
 	fmt.Println("Bollywood Engine created.")
 
-	roomManagerProps := bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg))
+	// 2. Spawn the RoomManagerActor, passing the config
+	roomManagerProps := bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)) // Pass cfg
 	roomManagerPID := engine.Spawn(roomManagerProps)
 	if roomManagerPID == nil {
 		panic("Failed to spawn RoomManagerActor")
 	}
 	fmt.Printf("RoomManagerActor spawned with PID: %s\n", roomManagerPID)
 
+	// Allow RoomManagerActor to start
 	time.Sleep(50 * time.Millisecond)
 
-	websocketServer := server.New(engine, roomManagerPID)
-	fmt.Println(">>> DEBUG: server.New() completed.")
-	fmt.Println("WebSocket Server created.")
+	// 3. Create the HTTP/WebSocket Server
+	websocketServer := server.New(engine, roomManagerPID) // Pass RoomManager PID
+	fmt.Println(">>> DEBUG: server.New() completed.")     // Debug log
+	fmt.Println("WebSocket Server created.")              // Original log
 
 	// 4. Setup Handlers
-	http.HandleFunc("/", server.HandleHealthCheck())
-	http.HandleFunc("/health-check/", server.HandleHealthCheck())
-	http.HandleFunc("/rooms/", websocketServer.HandleGetRooms())
+	http.HandleFunc("/", server.HandleHealthCheck())              // Simple health check at root
+	http.HandleFunc("/health-check/", server.HandleHealthCheck()) // Explicit health check endpoint
+	http.HandleFunc("/rooms/", websocketServer.HandleGetRooms())  // Get room list
 
-	// --- MODIFIED: Use websocket.Server with custom Config ---
-	wsServer := websocket.Server{
-		Handler: websocket.Handler(websocketServer.HandleSubscribe()),
-		// Handshake: checkOrigin, // Use the custom origin check function
-		// Let's try configuring the Config directly within the handler setup
-	}
-	// http.Handle("/subscribe", wsServer) // Use the configured server
-
-	// --- Alternative/Simpler Modification: Configure Handler directly ---
+	// --- MODIFIED: Use http.HandleFunc with custom origin check ---
 	subscribeHandler := websocket.Handler(websocketServer.HandleSubscribe())
 	http.HandleFunc("/subscribe", func(w http.ResponseWriter, req *http.Request) {
-		// Create a custom Config for this connection attempt
-		config, err := websocket.NewConfig(fmt.Sprintf("wss://%s/subscribe", req.Host), fmt.Sprintf("https://%s", req.Host)) // Use wss/https based on expected deployment
+		// Determine scheme based on request or Cloud Run headers if needed
+		// Cloud Run terminates TLS, so the request Go sees might be HTTP,
+		// but we need to construct the config URLs based on the external access (HTTPS).
+		// X-Forwarded-Proto is usually reliable.
+		scheme := "wss" // Assume HTTPS for Cloud Run external access
+		originScheme := "https"
+		if req.Header.Get("X-Forwarded-Proto") == "http" {
+			// This case should be rare for Cloud Run default URLs but handles potential non-HTTPS setups
+			scheme = "ws"
+			originScheme = "http"
+		}
+
+		// Construct URLs carefully using the Host header
+		requestUrl := fmt.Sprintf("%s://%s/subscribe", scheme, req.Host)
+		// Origin URL should generally not include the path
+		originUrl := fmt.Sprintf("%s://%s", originScheme, req.Host)
+
+		config, err := websocket.NewConfig(requestUrl, originUrl)
 		if err != nil {
-			fmt.Printf("Error creating websocket config: %v\n", err)
+			fmt.Printf("Error creating websocket config (URL: %s, Origin: %s): %v\n", requestUrl, originUrl, err)
 			http.Error(w, "Internal Server Error", 500)
 			return
 		}
+
 		// Perform the custom origin check
 		err = checkOrigin(config, req) // Call our custom check
 		if err != nil {
@@ -110,24 +124,26 @@ func main() {
 			http.Error(w, "Forbidden", 403)
 			return
 		}
-		// If origin check passes, serve the actual handler
+
+		// If origin check passes, serve the actual handler using the original Handler interface
 		fmt.Println("Origin check passed, serving WebSocket handler.")
-		subscribeHandler.ServeHTTP(w, req)
+		subscribeHandler.ServeHTTP(w, req) // Use the original handler
 	})
 	// --- END MODIFICATION ---
 
-	fmt.Println(">>> DEBUG: HTTP Handlers registered.")
+	fmt.Println(">>> DEBUG: HTTP Handlers registered.") // Debug log
 
 	// 5. Determine Port and Start Server
-	listenAddr := ":" + servicePort
-	fmt.Printf(">>> DEBUG: Attempting to listen on address: [%s] <<<\n", listenAddr)
-	fmt.Printf("Server starting explicitly on address %s\n", listenAddr)
+	listenAddr := ":" + servicePort                                                  // Use the hardcoded port
+	fmt.Printf(">>> DEBUG: Attempting to listen on address: [%s] <<<\n", listenAddr) // Debug log
+	fmt.Printf("Server starting explicitly on address %s\n", listenAddr)             // Original log
 	err := http.ListenAndServe(listenAddr, nil)
 	if err != nil {
-		fmt.Printf(">>> DEBUG: http.ListenAndServe on %s failed: %v <<<\n", listenAddr, err)
+		fmt.Printf(">>> DEBUG: http.ListenAndServe on %s failed: %v <<<\n", listenAddr, err) // Debug log
+		// Handle shutdown gracefully
 		fmt.Println("Server stopped:", err)
 		fmt.Println("Shutting down engine...")
-		engine.Shutdown(5 * time.Second)
+		engine.Shutdown(5 * time.Second) // Allow actors time to stop
 		fmt.Println("Engine shutdown complete.")
 	}
 }
