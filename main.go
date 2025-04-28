@@ -15,7 +15,7 @@ import (
 )
 
 // Default port if PORT env var isn't set
-const defaultPort = "3001"
+const defaultPort = "8080"
 
 func main() {
 	// 0. Load Configuration
