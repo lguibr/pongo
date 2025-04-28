@@ -1,0 +1,694 @@
+
+[1;33m--- Cleaning Caches ---[0m
+
+[1;33m--- Tidying and Vendoring Modules ---[0m
+go: downloading github.com/lguibr/bollywood v0.1.1
+go: downloading github.com/stretchr/testify v1.9.0
+go: downloading golang.org/x/net v0.14.0
+go: downloading github.com/lguibr/asciiring v0.0.0-20230807134012-b571572dd6ee
+go: downloading github.com/pmezard/go-difflib v1.0.0
+go: downloading github.com/davecgh/go-spew v1.1.1
+go: downloading gopkg.in/yaml.v3 v3.0.1
+go: downloading github.com/google/uuid v1.6.0
+go: downloading gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405
+
+[1;33m--- Building Project ---[0m
+internal/coverage/rtcov
+internal/race
+internal/itoa
+math/bits
+internal/goarch
+internal/godebugs
+internal/goos
+internal/unsafeheader
+internal/goexperiment
+unicode/utf8
+cmp
+unicode
+sync/atomic
+internal/cpu
+internal/abi
+runtime/internal/math
+runtime/internal/sys
+crypto/internal/alias
+crypto/subtle
+internal/chacha8rand
+math
+crypto/internal/boring/sig
+slices
+encoding
+unicode/utf16
+internal/nettrace
+github.com/lguibr/asciiring/types
+container/list
+vendor/golang.org/x/crypto/cryptobyte/asn1
+vendor/golang.org/x/crypto/internal/alias
+log/internal
+internal/bytealg
+runtime/internal/atomic
+runtime
+sync
+internal/reflectlite
+internal/testlog
+internal/sysinfo
+internal/singleflight
+internal/bisect
+internal/godebug
+errors
+sort
+internal/intern
+math/rand
+internal/safefilepath
+internal/oserror
+path
+vendor/golang.org/x/net/dns/dnsmessage
+io
+strconv
+crypto/internal/nistec/fiat
+syscall
+hash
+crypto/internal/randutil
+bytes
+strings
+hash/crc32
+runtime/cgo
+crypto
+crypto/rc4
+net/netip
+reflect
+net/http/internal/ascii
+bufio
+vendor/golang.org/x/text/transform
+internal/syscall/execenv
+internal/syscall/unix
+time
+internal/fmtsort
+encoding/binary
+crypto/md5
+crypto/internal/edwards25519/field
+encoding/base64
+crypto/cipher
+vendor/golang.org/x/crypto/internal/poly1305
+io/fs
+context
+crypto/x509/internal/macos
+internal/poll
+encoding/pem
+crypto/internal/boring
+crypto/des
+vendor/golang.org/x/crypto/chacha20
+crypto/internal/edwards25519
+embed
+crypto/hmac
+crypto/sha1
+crypto/sha512
+crypto/sha256
+crypto/aes
+crypto/internal/nistec
+vendor/golang.org/x/crypto/hkdf
+vendor/golang.org/x/crypto/chacha20poly1305
+os
+crypto/ecdh
+io/ioutil
+vendor/golang.org/x/net/route
+path/filepath
+fmt
+runtime/trace
+flag
+database/sql/driver
+encoding/hex
+log
+net/url
+runtime/debug
+compress/flate
+encoding/json
+vendor/golang.org/x/text/unicode/norm
+math/big
+vendor/golang.org/x/net/http2/hpack
+mime
+mime/quotedprintable
+net/http/internal
+vendor/golang.org/x/text/unicode/bidi
+testing
+compress/gzip
+vendor/golang.org/x/text/secure/bidirule
+github.com/lguibr/pongo/utils
+crypto/dsa
+crypto/rand
+crypto/elliptic
+crypto/internal/boring/bbig
+encoding/asn1
+crypto/internal/bigmod
+vendor/golang.org/x/net/idna
+crypto/ed25519
+crypto/rsa
+crypto/x509/pkix
+vendor/golang.org/x/crypto/cryptobyte
+crypto/ecdsa
+net
+vendor/golang.org/x/net/http/httpproxy
+github.com/google/uuid
+net/textproto
+crypto/x509
+vendor/golang.org/x/net/http/httpguts
+mime/multipart
+github.com/lguibr/bollywood
+crypto/tls
+net/http/httptrace
+net/http
+golang.org/x/net/websocket
+github.com/lguibr/pongo/game
+github.com/lguibr/pongo/server
+github.com/lguibr/pongo
+
+[1;33m--- Running Unit Tests with Race Detector and Coverage ---[0m
+	github.com/lguibr/pongo		coverage: 0.0% of statements
+=== RUN   TestBallActor_SpawnsAndMoves
+Ball moved from (100,100) to (99,101)
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+Stopping 2 actors...
+Engine shutdown complete.
+--- PASS: TestBallActor_SpawnsAndMoves (0.22s)
+=== RUN   TestBallActor_ReceivesCommands
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+Stopping 2 actors...
+Engine shutdown complete.
+--- PASS: TestBallActor_ReceivesCommands (0.34s)
+=== RUN   TestNewBall
+=== RUN   TestNewBall/TestCase1
+=== RUN   TestNewBall/TestCase2
+=== RUN   TestNewBall/TestCaseZeroPosPlayer0
+=== RUN   TestNewBall/TestCaseZeroPosPlayer1
+--- PASS: TestNewBall (0.00s)
+    --- PASS: TestNewBall/TestCase1 (0.00s)
+    --- PASS: TestNewBall/TestCase2 (0.00s)
+    --- PASS: TestNewBall/TestCaseZeroPosPlayer0 (0.00s)
+    --- PASS: TestNewBall/TestCaseZeroPosPlayer1 (0.00s)
+=== RUN   TestBall_BallInterceptPaddles
+=== RUN   TestBall_BallInterceptPaddles/Overlap_Center
+=== RUN   TestBall_BallInterceptPaddles/Overlap_TopLeft_Corner
+=== RUN   TestBall_BallInterceptPaddles/No_Overlap_Corner
+=== RUN   TestBall_BallInterceptPaddles/Overlap_Left_Edge
+=== RUN   TestBall_BallInterceptPaddles/No_Overlap_Far
+=== RUN   TestBall_BallInterceptPaddles/Overlap_Top_Edge
+=== RUN   TestBall_BallInterceptPaddles/Touching_Top_Edge
+=== RUN   TestBall_BallInterceptPaddles/Intercepts_Corner_1
+=== RUN   TestBall_BallInterceptPaddles/Clearly_Outside_Corner_2
+--- PASS: TestBall_BallInterceptPaddles (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/Overlap_Center (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/Overlap_TopLeft_Corner (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/No_Overlap_Corner (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/Overlap_Left_Edge (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/No_Overlap_Far (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/Overlap_Top_Edge (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/Touching_Top_Edge (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/Intercepts_Corner_1 (0.00s)
+    --- PASS: TestBall_BallInterceptPaddles/Clearly_Outside_Corner_2 (0.00s)
+=== RUN   TestBall_InterceptsIndex
+=== RUN   TestBall_InterceptsIndex/Intercepts_top-left_corner
+=== RUN   TestBall_InterceptsIndex/Does_not_intercept_top-left_corner
+=== RUN   TestBall_InterceptsIndex/Intercepts_center_of_cell
+=== RUN   TestBall_InterceptsIndex/Intercepts_bottom-right_corner
+=== RUN   TestBall_InterceptsIndex/Does_not_intercept_bottom-right_corner
+--- PASS: TestBall_InterceptsIndex (0.00s)
+    --- PASS: TestBall_InterceptsIndex/Intercepts_top-left_corner (0.00s)
+    --- PASS: TestBall_InterceptsIndex/Does_not_intercept_top-left_corner (0.00s)
+    --- PASS: TestBall_InterceptsIndex/Intercepts_center_of_cell (0.00s)
+    --- PASS: TestBall_InterceptsIndex/Intercepts_bottom-right_corner (0.00s)
+    --- PASS: TestBall_InterceptsIndex/Does_not_intercept_bottom-right_corner (0.00s)
+=== RUN   TestBall_GetCenterIndex
+=== RUN   TestBall_GetCenterIndex/center_of_cell_(0,0)
+=== RUN   TestBall_GetCenterIndex/bottom_right_corner_of_cell_(0,0)
+=== RUN   TestBall_GetCenterIndex/top_left_corner_of_cell_(1,1)
+=== RUN   TestBall_GetCenterIndex/specific_cell_(3,_2)
+=== RUN   TestBall_GetCenterIndex/outside_left
+=== RUN   TestBall_GetCenterIndex/outside_bottom
+--- PASS: TestBall_GetCenterIndex (0.00s)
+    --- PASS: TestBall_GetCenterIndex/center_of_cell_(0,0) (0.00s)
+    --- PASS: TestBall_GetCenterIndex/bottom_right_corner_of_cell_(0,0) (0.00s)
+    --- PASS: TestBall_GetCenterIndex/top_left_corner_of_cell_(1,1) (0.00s)
+    --- PASS: TestBall_GetCenterIndex/specific_cell_(3,_2) (0.00s)
+    --- PASS: TestBall_GetCenterIndex/outside_left (0.00s)
+    --- PASS: TestBall_GetCenterIndex/outside_bottom (0.00s)
+=== RUN   TestNewCanvas
+--- PASS: TestNewCanvas (0.00s)
+=== RUN   TestNewBrickData
+--- PASS: TestNewBrickData (0.00s)
+=== RUN   TestBrickData_Compare
+--- PASS: TestBrickData_Compare (0.00s)
+=== RUN   TestCell_Compare
+--- PASS: TestCell_Compare (0.00s)
+=== RUN   TestNewCell
+--- PASS: TestNewCell (0.00s)
+=== RUN   TestGameActor_PlayerConnect_FirstPlayer
+    game_actor_test.go:58: Skipping test: GameActor connection now initiated by RoomManager via AssignPlayerToRoom. Requires mocking RoomManager or use E2E test.
+--- SKIP: TestGameActor_PlayerConnect_FirstPlayer (0.00s)
+=== RUN   TestGameActor_PlayerConnect_ServerFull
+    game_actor_test.go:62: Skipping test: Room full logic now handled by RoomManager. Requires mocking RoomManager or use E2E test.
+--- SKIP: TestGameActor_PlayerConnect_ServerFull (0.00s)
+=== RUN   TestGameActor_PlayerDisconnect
+    game_actor_test.go:66: Skipping test: Disconnect logic modified (persistent ball, empty notification). Requires mocking RoomManager interaction or use E2E test.
+--- SKIP: TestGameActor_PlayerDisconnect (0.00s)
+=== RUN   TestGameActor_LastPlayerDisconnect
+    game_actor_test.go:70: Skipping test: Last player disconnect now notifies RoomManager. Requires mocking RoomManager interaction or use E2E test.
+--- SKIP: TestGameActor_LastPlayerDisconnect (0.00s)
+=== RUN   TestGameActor_PaddleMovementForwarding
+    game_actor_test.go:74: Skipping test: Input forwarding path changed (Client -> Handler -> RoomManager -> GameActor). Requires mocking RoomManager or use E2E test.
+--- SKIP: TestGameActor_PaddleMovementForwarding (0.00s)
+=== RUN   TestGrid_FillGridWithQuarterGrids
+=== RUN   TestGrid_FillGridWithQuarterGrids/FillWithQuarters
+--- PASS: TestGrid_FillGridWithQuarterGrids (0.00s)
+    --- PASS: TestGrid_FillGridWithQuarterGrids/FillWithQuarters (0.00s)
+=== RUN   TestGrid_Fill
+=== RUN   TestGrid_Fill/FillGrid
+--- PASS: TestGrid_Fill (0.03s)
+    --- PASS: TestGrid_Fill/FillGrid (0.03s)
+=== RUN   TestGrid_NewGrid
+--- PASS: TestGrid_NewGrid (0.00s)
+=== RUN   TestCreateQuarterGridSeed
+=== RUN   TestCreateQuarterGridSeed/QuarterGridSeed
+=== RUN   TestCreateQuarterGridSeed/QuarterGridSeed#01
+=== RUN   TestCreateQuarterGridSeed/QuarterGridSeed#02
+--- PASS: TestCreateQuarterGridSeed (0.14s)
+    --- PASS: TestCreateQuarterGridSeed/QuarterGridSeed (0.02s)
+    --- PASS: TestCreateQuarterGridSeed/QuarterGridSeed#01 (0.04s)
+    --- PASS: TestCreateQuarterGridSeed/QuarterGridSeed#02 (0.08s)
+=== RUN   TestGrid_RandomWalker
+=== RUN   TestGrid_RandomWalker/RandomWalker
+=== RUN   TestGrid_RandomWalker/RandomWalker#01
+=== RUN   TestGrid_RandomWalker/RandomWalker#02
+--- PASS: TestGrid_RandomWalker (0.00s)
+    --- PASS: TestGrid_RandomWalker/RandomWalker (0.00s)
+    --- PASS: TestGrid_RandomWalker/RandomWalker#01 (0.00s)
+    --- PASS: TestGrid_RandomWalker/RandomWalker#02 (0.00s)
+=== RUN   TestGrid_LineIntersectedCellIndices
+=== RUN   TestGrid_LineIntersectedCellIndices/LineIntersect
+=== RUN   TestGrid_LineIntersectedCellIndices/LineIntersect#01
+=== RUN   TestGrid_LineIntersectedCellIndices/LineIntersect#02
+=== RUN   TestGrid_LineIntersectedCellIndices/LineIntersect#03
+--- PASS: TestGrid_LineIntersectedCellIndices (0.00s)
+    --- PASS: TestGrid_LineIntersectedCellIndices/LineIntersect (0.00s)
+    --- PASS: TestGrid_LineIntersectedCellIndices/LineIntersect#01 (0.00s)
+    --- PASS: TestGrid_LineIntersectedCellIndices/LineIntersect#02 (0.00s)
+    --- PASS: TestGrid_LineIntersectedCellIndices/LineIntersect#03 (0.00s)
+=== RUN   TestGrid_Rotate
+=== RUN   TestGrid_Rotate/Rotate
+=== RUN   TestGrid_Rotate/Rotate#01
+=== RUN   TestGrid_Rotate/Rotate#02
+--- PASS: TestGrid_Rotate (0.00s)
+    --- PASS: TestGrid_Rotate/Rotate (0.00s)
+    --- PASS: TestGrid_Rotate/Rotate#01 (0.00s)
+    --- PASS: TestGrid_Rotate/Rotate#02 (0.00s)
+=== RUN   TestGrid_Compare
+=== RUN   TestGrid_Compare/Grids_are_the_same
+=== RUN   TestGrid_Compare/Grids_have_different_size
+=== RUN   TestGrid_Compare/Grids_have_different_column_size
+=== RUN   TestGrid_Compare/Grids_have_different_row_size
+=== RUN   TestGrid_Compare/Grids_have_different_data
+=== RUN   TestGrid_Compare/Grids_is_empty
+=== RUN   TestGrid_Compare/One_grid_is_nil,_the_other_is_empty
+=== RUN   TestGrid_Compare/Both_grids_are_nil
+=== RUN   TestGrid_Compare/One_element_grid_and_nil_grid
+--- PASS: TestGrid_Compare (0.00s)
+    --- PASS: TestGrid_Compare/Grids_are_the_same (0.00s)
+    --- PASS: TestGrid_Compare/Grids_have_different_size (0.00s)
+    --- PASS: TestGrid_Compare/Grids_have_different_column_size (0.00s)
+    --- PASS: TestGrid_Compare/Grids_have_different_row_size (0.00s)
+    --- PASS: TestGrid_Compare/Grids_have_different_data (0.00s)
+    --- PASS: TestGrid_Compare/Grids_is_empty (0.00s)
+    --- PASS: TestGrid_Compare/One_grid_is_nil,_the_other_is_empty (0.00s)
+    --- PASS: TestGrid_Compare/Both_grids_are_nil (0.00s)
+    --- PASS: TestGrid_Compare/One_element_grid_and_nil_grid (0.00s)
+=== RUN   TestPaddleActor_ReceivesDirectionAndMoves
+PaddleActor actor-2 (Index 0): Received direction 'ArrowRight', internal: 'right'
+PaddleActor actor-2 (Index 0): Direction changed from '' to 'right'
+PaddleActor actor-2 (Index 0): Received direction 'Stop', internal: ''
+PaddleActor actor-2 (Index 0): Direction changed from 'right' to ''
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+Stopping 2 actors...
+Engine shutdown complete.
+--- PASS: TestPaddleActor_ReceivesDirectionAndMoves (0.26s)
+=== RUN   TestPaddle_Move
+=== RUN   TestPaddle_Move/H_Left
+=== RUN   TestPaddle_Move/H_Right
+=== RUN   TestPaddle_Move/H_None
+=== RUN   TestPaddle_Move/H_Up
+=== RUN   TestPaddle_Move/H_Down
+=== RUN   TestPaddle_Move/H_Invalid
+=== RUN   TestPaddle_Move/V_Right(Down)
+=== RUN   TestPaddle_Move/V_Left(Up)
+=== RUN   TestPaddle_Move/V_None
+=== RUN   TestPaddle_Move/V0_Left(Up)
+=== RUN   TestPaddle_Move/V0_Right(Down)
+=== RUN   TestPaddle_Move/H1_Left
+=== RUN   TestPaddle_Move/H1_Right
+=== RUN   TestPaddle_Move/V0_Invalid
+=== RUN   TestPaddle_Move/H1_Invalid
+=== RUN   TestPaddle_Move/Boundaries
+--- PASS: TestPaddle_Move (0.00s)
+    --- PASS: TestPaddle_Move/H_Left (0.00s)
+    --- PASS: TestPaddle_Move/H_Right (0.00s)
+    --- PASS: TestPaddle_Move/H_None (0.00s)
+    --- PASS: TestPaddle_Move/H_Up (0.00s)
+    --- PASS: TestPaddle_Move/H_Down (0.00s)
+    --- PASS: TestPaddle_Move/H_Invalid (0.00s)
+    --- PASS: TestPaddle_Move/V_Right(Down) (0.00s)
+    --- PASS: TestPaddle_Move/V_Left(Up) (0.00s)
+    --- PASS: TestPaddle_Move/V_None (0.00s)
+    --- PASS: TestPaddle_Move/V0_Left(Up) (0.00s)
+    --- PASS: TestPaddle_Move/V0_Right(Down) (0.00s)
+    --- PASS: TestPaddle_Move/H1_Left (0.00s)
+    --- PASS: TestPaddle_Move/H1_Right (0.00s)
+    --- PASS: TestPaddle_Move/V0_Invalid (0.00s)
+    --- PASS: TestPaddle_Move/H1_Invalid (0.00s)
+    --- PASS: TestPaddle_Move/Boundaries (0.00s)
+=== RUN   TestNewPlayer
+--- PASS: TestNewPlayer (0.00s)
+=== RUN   TestRoomManager_StartsEmpty
+RoomManagerActor actor-1: Started.
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+Stopping 1 actors...
+RoomManagerActor actor-1: Stopping. Shutting down all rooms.
+RoomManagerActor actor-1: Stopped.
+Engine shutdown complete.
+--- PASS: TestRoomManager_StartsEmpty (0.15s)
+=== RUN   TestRoomManager_CreatesFirstRoom
+    room_manager_test.go:131: Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.
+--- SKIP: TestRoomManager_CreatesFirstRoom (0.00s)
+=== RUN   TestRoomManager_FillsRoomAndCreatesSecond
+    room_manager_test.go:135: Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.
+--- SKIP: TestRoomManager_FillsRoomAndCreatesSecond (0.00s)
+=== RUN   TestRoomManager_RemovesEmptyRoom
+    room_manager_test.go:139: Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.
+--- SKIP: TestRoomManager_RemovesEmptyRoom (0.00s)
+=== RUN   TestRoomManager_HandlesPendingDisconnect
+    room_manager_test.go:143: Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.
+--- SKIP: TestRoomManager_HandlesPendingDisconnect (0.00s)
+PASS
+coverage: 23.4% of statements
+ok  	github.com/lguibr/pongo/game	2.811s	coverage: 23.4% of statements
+=== RUN   TestHandleSubscribe_SendsFindRequest
+HandleSubscribe: New connection attempt from http://127.0.0.1:57161
+HandleSubscribe: Spawned ConnectionHandlerActor actor-2 for http://127.0.0.1:57161. Waiting for completion...
+ConnectionHandlerActor http://127.0.0.1:57161: Read loop started.
+ConnectionHandlerActor http://127.0.0.1:57161: Read error: EOF. Exiting read loop.
+ConnectionHandlerActor http://127.0.0.1:57161: Read loop finished.
+ConnectionHandlerActor http://127.0.0.1:57161: Received notification: read loop exited. Cleaning up.
+ConnectionHandlerActor http://127.0.0.1:57161: Initiating cleanup (Reason: read loop exited).
+ConnectionHandlerActor http://127.0.0.1:57161: Read loop confirmed exited.
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+ConnectionHandlerActor http://127.0.0.1:57161: Sending PlayerDisconnect to mock-game-actor-pid.
+Stopping 2 actors...
+ConnectionHandlerActor http://127.0.0.1:57161: Not sending PlayerDisconnect to mock-game-actor-pid (Reason: connection handler actor stopping, Assigned: false, ConnNil: true).
+HandleSubscribe: Handler finished for http://127.0.0.1:57161
+Engine shutdown complete.
+--- PASS: TestHandleSubscribe_SendsFindRequest (0.21s)
+=== RUN   TestReadLoop_ForwardsDirectionToManager
+    handlers_test.go:155: Skipping test: Input forwarding now goes directly to GameActor, not RoomManager.
+--- SKIP: TestReadLoop_ForwardsDirectionToManager (0.00s)
+=== RUN   TestReadLoop_SendsDisconnectToManagerOnError
+    handlers_test.go:159: Skipping test: Disconnect now goes directly to GameActor, not RoomManager.
+--- SKIP: TestReadLoop_SendsDisconnectToManagerOnError (0.00s)
+=== RUN   TestReadLoop_SendsDisconnectToManagerOnClose
+    handlers_test.go:163: Skipping test: Disconnect now goes directly to GameActor, not RoomManager.
+--- SKIP: TestReadLoop_SendsDisconnectToManagerOnClose (0.00s)
+=== RUN   TestHandleGetRooms_QueriesManagerAndReturnsList
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+Stopping 1 actors...
+Engine shutdown complete.
+--- PASS: TestHandleGetRooms_QueriesManagerAndReturnsList (0.15s)
+=== RUN   TestHandleGetRooms_HandlesManagerTimeout
+Timeout waiting for RoomManager response in HandleGetRooms
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+Stopping 1 actors...
+Engine shutdown complete.
+--- PASS: TestHandleGetRooms_HandlesManagerTimeout (2.15s)
+=== RUN   TestHandleHealthCheck
+--- PASS: TestHandleHealthCheck (0.00s)
+=== RUN   TestHandleHealthCheck_RootPath
+--- PASS: TestHandleHealthCheck_RootPath (0.00s)
+=== RUN   TestHandleHealthCheck_WrongMethod
+--- PASS: TestHandleHealthCheck_WrongMethod (0.00s)
+PASS
+coverage: 66.9% of statements
+ok  	github.com/lguibr/pongo/server	3.989s	coverage: 66.9% of statements
+=== RUN   TestNewMatrixesOfRotation
+--- PASS: TestNewMatrixesOfRotation (0.00s)
+=== RUN   TestTransformVector
+--- PASS: TestTransformVector (0.00s)
+=== RUN   TestTransformVector2
+=== RUN   TestTransformVector2/Identity_transform
+=== RUN   TestTransformVector2/90_degrees_rotation
+=== RUN   TestTransformVector2/180_degrees_rotation
+=== RUN   TestTransformVector2/270_degrees_rotation
+=== RUN   TestTransformVector2/Diagonal_scaling
+--- PASS: TestTransformVector2 (0.00s)
+    --- PASS: TestTransformVector2/Identity_transform (0.00s)
+    --- PASS: TestTransformVector2/90_degrees_rotation (0.00s)
+    --- PASS: TestTransformVector2/180_degrees_rotation (0.00s)
+    --- PASS: TestTransformVector2/270_degrees_rotation (0.00s)
+    --- PASS: TestTransformVector2/Diagonal_scaling (0.00s)
+=== RUN   TestRotateVector
+=== RUN   TestRotateVector/RotateVector
+=== RUN   TestRotateVector/RotateVector#01
+=== RUN   TestRotateVector/RotateVector#02
+=== RUN   TestRotateVector/RotateVector#03
+--- PASS: TestRotateVector (0.00s)
+    --- PASS: TestRotateVector/RotateVector (0.00s)
+    --- PASS: TestRotateVector/RotateVector#01 (0.00s)
+    --- PASS: TestRotateVector/RotateVector#02 (0.00s)
+    --- PASS: TestRotateVector/RotateVector#03 (0.00s)
+=== RUN   TestRotateVector2
+=== RUN   TestRotateVector2/0_degrees_rotation
+=== RUN   TestRotateVector2/90_degrees_rotation
+=== RUN   TestRotateVector2/180_degrees_rotation
+=== RUN   TestRotateVector2/270_degrees_rotation
+--- PASS: TestRotateVector2 (0.00s)
+    --- PASS: TestRotateVector2/0_degrees_rotation (0.00s)
+    --- PASS: TestRotateVector2/90_degrees_rotation (0.00s)
+    --- PASS: TestRotateVector2/180_degrees_rotation (0.00s)
+    --- PASS: TestRotateVector2/270_degrees_rotation (0.00s)
+=== RUN   TestTransformMatrix
+--- PASS: TestTransformMatrix (0.00s)
+=== RUN   TestSubtractVectors
+=== RUN   TestSubtractVectors/Subtracting_same_vectors
+=== RUN   TestSubtractVectors/Subtracting_different_vectors
+=== RUN   TestSubtractVectors/Subtracting_negative_vectors
+--- PASS: TestSubtractVectors (0.00s)
+    --- PASS: TestSubtractVectors/Subtracting_same_vectors (0.00s)
+    --- PASS: TestSubtractVectors/Subtracting_different_vectors (0.00s)
+    --- PASS: TestSubtractVectors/Subtracting_negative_vectors (0.00s)
+=== RUN   TestSumVectors
+=== RUN   TestSumVectors/Summing_same_vectors
+=== RUN   TestSumVectors/Summing_different_vectors
+=== RUN   TestSumVectors/Summing_negative_vectors
+--- PASS: TestSumVectors (0.00s)
+    --- PASS: TestSumVectors/Summing_same_vectors (0.00s)
+    --- PASS: TestSumVectors/Summing_different_vectors (0.00s)
+    --- PASS: TestSumVectors/Summing_negative_vectors (0.00s)
+=== RUN   TestMultiplyVectorByScalar
+=== RUN   TestMultiplyVectorByScalar/MultiplyScalar
+=== RUN   TestMultiplyVectorByScalar/MultiplyScalar#01
+=== RUN   TestMultiplyVectorByScalar/MultiplyScalar#02
+=== RUN   TestMultiplyVectorByScalar/MultiplyScalar#03
+--- PASS: TestMultiplyVectorByScalar (0.00s)
+    --- PASS: TestMultiplyVectorByScalar/MultiplyScalar (0.00s)
+    --- PASS: TestMultiplyVectorByScalar/MultiplyScalar#01 (0.00s)
+    --- PASS: TestMultiplyVectorByScalar/MultiplyScalar#02 (0.00s)
+    --- PASS: TestMultiplyVectorByScalar/MultiplyScalar#03 (0.00s)
+=== RUN   TestDotProduct
+=== RUN   TestDotProduct/DotProduct
+=== RUN   TestDotProduct/DotProduct#01
+=== RUN   TestDotProduct/DotProduct#02
+=== RUN   TestDotProduct/DotProduct#03
+=== RUN   TestDotProduct/DotProduct#04
+=== RUN   TestDotProduct/DotProduct#05
+=== RUN   TestDotProduct/DotProduct#06
+=== RUN   TestDotProduct/DotProduct#07
+--- PASS: TestDotProduct (0.00s)
+    --- PASS: TestDotProduct/DotProduct (0.00s)
+    --- PASS: TestDotProduct/DotProduct#01 (0.00s)
+    --- PASS: TestDotProduct/DotProduct#02 (0.00s)
+    --- PASS: TestDotProduct/DotProduct#03 (0.00s)
+    --- PASS: TestDotProduct/DotProduct#04 (0.00s)
+    --- PASS: TestDotProduct/DotProduct#05 (0.00s)
+    --- PASS: TestDotProduct/DotProduct#06 (0.00s)
+    --- PASS: TestDotProduct/DotProduct#07 (0.00s)
+=== RUN   TestEqual
+=== RUN   TestEqual/Equal
+=== RUN   TestEqual/Equal#01
+=== RUN   TestEqual/Equal#02
+=== RUN   TestEqual/Equal#03
+--- PASS: TestEqual (0.00s)
+    --- PASS: TestEqual/Equal (0.00s)
+    --- PASS: TestEqual/Equal#01 (0.00s)
+    --- PASS: TestEqual/Equal#02 (0.00s)
+    --- PASS: TestEqual/Equal#03 (0.00s)
+=== RUN   TestCrossProduct
+=== RUN   TestCrossProduct/CrossProduct
+=== RUN   TestCrossProduct/CrossProduct#01
+=== RUN   TestCrossProduct/CrossProduct#02
+=== RUN   TestCrossProduct/CrossProduct#03
+=== RUN   TestCrossProduct/CrossProduct#04
+--- PASS: TestCrossProduct (0.00s)
+    --- PASS: TestCrossProduct/CrossProduct (0.00s)
+    --- PASS: TestCrossProduct/CrossProduct#01 (0.00s)
+    --- PASS: TestCrossProduct/CrossProduct#02 (0.00s)
+    --- PASS: TestCrossProduct/CrossProduct#03 (0.00s)
+    --- PASS: TestCrossProduct/CrossProduct#04 (0.00s)
+=== RUN   TestSwapVectorCoordinates
+=== RUN   TestSwapVectorCoordinates/SwapCoords
+=== RUN   TestSwapVectorCoordinates/SwapCoords#01
+=== RUN   TestSwapVectorCoordinates/SwapCoords#02
+=== RUN   TestSwapVectorCoordinates/SwapCoords#03
+--- PASS: TestSwapVectorCoordinates (0.00s)
+    --- PASS: TestSwapVectorCoordinates/SwapCoords (0.00s)
+    --- PASS: TestSwapVectorCoordinates/SwapCoords#01 (0.00s)
+    --- PASS: TestSwapVectorCoordinates/SwapCoords#02 (0.00s)
+    --- PASS: TestSwapVectorCoordinates/SwapCoords#03 (0.00s)
+=== RUN   TestNewRandomColor
+--- PASS: TestNewRandomColor (0.00s)
+=== RUN   TestNewPositiveRandomVector
+--- PASS: TestNewPositiveRandomVector (0.00s)
+=== RUN   TestNewRandomVector
+--- PASS: TestNewRandomVector (0.00s)
+=== RUN   TestNewRandomPositiveVectors
+=== RUN   TestNewRandomPositiveVectors/3_positive_random_vectors_of_size_10
+=== RUN   TestNewRandomPositiveVectors/5_positive_random_vectors_of_size_20
+=== RUN   TestNewRandomPositiveVectors/2_positive_random_vectors_of_size_5
+=== RUN   TestNewRandomPositiveVectors/100_positive_random_vectors_of_size_500
+=== RUN   TestNewRandomPositiveVectors/100_positive_random_vectors_of_size_0_should_panics
+=== RUN   TestNewRandomPositiveVectors/0_positive_random_vectors_of_size_0_should_panics
+--- PASS: TestNewRandomPositiveVectors (0.00s)
+    --- PASS: TestNewRandomPositiveVectors/3_positive_random_vectors_of_size_10 (0.00s)
+    --- PASS: TestNewRandomPositiveVectors/5_positive_random_vectors_of_size_20 (0.00s)
+    --- PASS: TestNewRandomPositiveVectors/2_positive_random_vectors_of_size_5 (0.00s)
+    --- PASS: TestNewRandomPositiveVectors/100_positive_random_vectors_of_size_500 (0.00s)
+    --- PASS: TestNewRandomPositiveVectors/100_positive_random_vectors_of_size_0_should_panics (0.00s)
+    --- PASS: TestNewRandomPositiveVectors/0_positive_random_vectors_of_size_0_should_panics (0.00s)
+=== RUN   TestRandomNumber
+=== RUN   TestRandomNumber/RandomNumber
+=== RUN   TestRandomNumber/RandomNumber#01
+=== RUN   TestRandomNumber/RandomNumber#02
+--- PASS: TestRandomNumber (0.00s)
+    --- PASS: TestRandomNumber/RandomNumber (0.00s)
+    --- PASS: TestRandomNumber/RandomNumber#01 (0.00s)
+    --- PASS: TestRandomNumber/RandomNumber#02 (0.00s)
+=== RUN   TestRandomNumberN
+=== RUN   TestRandomNumberN/RandomNumberN
+=== RUN   TestRandomNumberN/RandomNumberN#01
+=== RUN   TestRandomNumberN/RandomNumberN#02
+--- PASS: TestRandomNumberN (0.00s)
+    --- PASS: TestRandomNumberN/RandomNumberN (0.00s)
+    --- PASS: TestRandomNumberN/RandomNumberN#01 (0.00s)
+    --- PASS: TestRandomNumberN/RandomNumberN#02 (0.00s)
+=== RUN   TestAbs
+=== RUN   TestAbs/Positive_value
+=== RUN   TestAbs/Negative_value
+=== RUN   TestAbs/Zero_value
+--- PASS: TestAbs (0.00s)
+    --- PASS: TestAbs/Positive_value (0.00s)
+    --- PASS: TestAbs/Negative_value (0.00s)
+    --- PASS: TestAbs/Zero_value (0.00s)
+=== RUN   TestDirectionFromString
+=== RUN   TestDirectionFromString/DirectionFromString_ArrowLeft
+=== RUN   TestDirectionFromString/DirectionFromString_ArrowRight
+=== RUN   TestDirectionFromString/DirectionFromString_ArrowUp
+=== RUN   TestDirectionFromString/DirectionFromString_
+--- PASS: TestDirectionFromString (0.00s)
+    --- PASS: TestDirectionFromString/DirectionFromString_ArrowLeft (0.00s)
+    --- PASS: TestDirectionFromString/DirectionFromString_ArrowRight (0.00s)
+    --- PASS: TestDirectionFromString/DirectionFromString_ArrowUp (0.00s)
+    --- PASS: TestDirectionFromString/DirectionFromString_ (0.00s)
+=== RUN   TestAssertPanics
+=== RUN   TestAssertPanics/Panicking_function
+=== RUN   TestAssertPanics/Non-panicking_function
+Hello, world
+--- PASS: TestAssertPanics (0.00s)
+    --- PASS: TestAssertPanics/Panicking_function (0.00s)
+    --- PASS: TestAssertPanics/Non-panicking_function (0.00s)
+PASS
+coverage: 66.1% of statements
+ok  	github.com/lguibr/pongo/utils	1.809s	coverage: 66.1% of statements
+[0;32mSuccess: Unit tests passed.[0m
+
+[1;33m--- Running E2E & Stress Tests ---[0m
+=== RUN   TestE2E_SinglePlayerConnectMoveStopDisconnect
+RoomManagerActor actor-1: Started.
+HandleSubscribe: New connection attempt from http://localhost/
+HandleSubscribe: Spawned ConnectionHandlerActor actor-2 for http://localhost/. Waiting for completion...
+E2E Test: Waiting for initial game state...
+ConnectionHandlerActor http://localhost/: Read loop started.
+GameActor actor-3: Started. Broadcaster: actor-4.
+GameActor actor-3: Assigning player index 0 to http://localhost/
+GameActor actor-3: First player joining this room, initializing grid.
+GameActor actor-3: Sending initial state broadcast for player 0.
+GameActor actor-3: Player 0 setup complete.
+E2E Test: Received initial state with Player 0 (Score: 0, PaddleY: 216)
+E2E Test: Sending 'ArrowRight' input...
+ConnectionHandlerActor http://localhost/: Received InternalReadLoopMsg
+PaddleActor actor-5 (Index 0): Received direction 'ArrowRight', internal: 'right'
+PaddleActor actor-5 (Index 0): Direction changed from '' to 'right'
+E2E Test: Waiting for updated game state after move...
+E2E Test (Move Check): Received state - Paddle Y: 232, IsMoving: true
+E2E Test: SUCCESS - Detected paddle moved down (Y: 216 -> 232) and IsMoving=true
+E2E Test: Sending 'Stop' input...
+ConnectionHandlerActor http://localhost/: Received InternalReadLoopMsg
+PaddleActor actor-5 (Index 0): Received direction 'Stop', internal: ''
+PaddleActor actor-5 (Index 0): Direction changed from 'right' to ''
+E2E Test: Waiting for updated game state after stop...
+E2E Test (Stop Check): Received state - Paddle Y: 256, IsMoving: true
+E2E Test (Stop Check): Received state - Paddle Y: 260, IsMoving: false
+E2E Test: SUCCESS - Received updated state with Player 0 paddle stopped (Y: 260, IsMoving: false)
+E2E Test: Closing client connection...
+ConnectionHandlerActor http://localhost/: Read error: EOF. Exiting read loop.
+ConnectionHandlerActor http://localhost/: Read loop finished.
+ConnectionHandlerActor http://localhost/: Received notification: read loop exited. Cleaning up.
+ConnectionHandlerActor http://localhost/: Initiating cleanup (Reason: read loop exited).
+ConnectionHandlerActor http://localhost/: Read loop confirmed exited.
+ConnectionHandlerActor http://localhost/: Sending PlayerDisconnect to actor-3.
+ConnectionHandlerActor http://localhost/: Not sending PlayerDisconnect to actor-3 (Reason: connection handler actor stopping, Assigned: false, ConnNil: true).
+HandleSubscribe: Handler finished for http://localhost/
+GameActor actor-3: Handling disconnect for player 0 (http://localhost/)
+GameActor actor-3: Player 0 owned last ball(s). Keeping ball 721755700.
+GameActor actor-3: Making kept ball 721755700 ownerless and permanent.
+GameActor actor-3: Player 0 disconnected and cleaned up.
+GameActor actor-3: Last player disconnected. Room is empty. Notifying RoomManager actor-1.
+RoomManagerActor actor-1: Room actor-3 reported empty. Removing and stopping.
+GameActor actor-3: Stopping.
+PERF_METRIC GameActor actor-3: Avg Tick Duration: 305.179µs (37 ticks)
+GameActor actor-3: Stopped.
+GameActor actor-3: Broadcast Ticker stopped.
+GameActor actor-3: Physics Ticker stopped.
+E2E Test: Finished.
+Engine shutdown initiated...
+Pending Ask futures cancelled.
+Stopping 1 actors...
+RoomManagerActor actor-1: Stopping. Shutting down all rooms.
+RoomManagerActor actor-1: Stopped.
+Engine shutdown complete.
+--- PASS: TestE2E_SinglePlayerConnectMoveStopDisconnect (1.59s)
+PASS
+ok  	github.com/lguibr/pongo/test	2.795s
+[0;32mSuccess: Standard E2E tests passed.[0m
+
+[1;33m--- Running Stress Test (Output to stress_metrics.log) ---[0m
+[0;32mSuccess: Stress test completed.[0m
+
+[1;33m--- Analyzing Stress Test Metrics from stress_metrics.log ---[0m
+Overall Average Tick Duration from Stress Test: 5.37 ms
+[0;32mSuccess: Performance metrics within threshold (10ms).[0m
+Raw stress test metrics saved to: stress_metrics.log
+
+[1;33m--- Generating Coverage Report (HTML) ---[0m
+[0;32mSuccess: Coverage report generated: coverage.html[0m
+
+[1;33m--- Build and Test Complete ---[0m
+[0;32mSuccess: All steps finished.[0m

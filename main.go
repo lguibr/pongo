@@ -4,7 +4,8 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"os" // Import the os package
+
+	// "os" // No longer needed for port
 	"time"
 
 	"github.com/lguibr/bollywood"
@@ -14,8 +15,8 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// Default port if PORT env var isn't set
-const defaultPort = "8080"
+// Default port IS 8080 for Cloud Run
+const servicePort = "8080" // Hardcode to 8080
 
 func main() {
 	// 0. Load Configuration
@@ -49,15 +50,16 @@ func main() {
 	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe())) // WebSocket connections
 
 	// 5. Determine Port and Start Server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = defaultPort
-		fmt.Printf("PORT environment variable not set, defaulting to %s\n", port)
-	}
+	// port := os.Getenv("PORT") // ----> REMOVE Check for PORT env var
+	// if port == "" {
+	// 	port = defaultPort
+	// 	fmt.Printf("PORT environment variable not set, defaulting to %s\n", port)
+	// }
+	// listenAddr := ":" + port // ----> Use hardcoded port
 
-	listenAddr := ":" + port
-	fmt.Printf("Server starting on address %s\n", listenAddr) // Use listenAddr which includes ":"
-	err := http.ListenAndServe(listenAddr, nil)               // Use listenAddr
+	listenAddr := ":" + servicePort                                      // Use the hardcoded port
+	fmt.Printf("Server starting explicitly on address %s\n", listenAddr) // Update log message
+	err := http.ListenAndServe(listenAddr, nil)
 	if err != nil {
 		// Handle shutdown gracefully
 		fmt.Println("Server stopped:", err)

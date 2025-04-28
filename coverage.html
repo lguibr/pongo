@@ -1,0 +1,3928 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>game: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/lguibr/pongo/game/ball.go (67.9%)</option>
+				
+				<option value="file1">github.com/lguibr/pongo/game/ball_actor.go (67.7%)</option>
+				
+				<option value="file2">github.com/lguibr/pongo/game/broadcaster_actor.go (0.0%)</option>
+				
+				<option value="file3">github.com/lguibr/pongo/game/canvas.go (19.1%)</option>
+				
+				<option value="file4">github.com/lguibr/pongo/game/cell.go (69.2%)</option>
+				
+				<option value="file5">github.com/lguibr/pongo/game/game.go (0.0%)</option>
+				
+				<option value="file6">github.com/lguibr/pongo/game/game_actor.go (0.0%)</option>
+				
+				<option value="file7">github.com/lguibr/pongo/game/game_actor_broadcast.go (0.0%)</option>
+				
+				<option value="file8">github.com/lguibr/pongo/game/game_actor_handlers.go (0.0%)</option>
+				
+				<option value="file9">github.com/lguibr/pongo/game/game_actor_physics.go (0.0%)</option>
+				
+				<option value="file10">github.com/lguibr/pongo/game/grid.go (93.0%)</option>
+				
+				<option value="file11">github.com/lguibr/pongo/game/paddle.go (60.0%)</option>
+				
+				<option value="file12">github.com/lguibr/pongo/game/paddle_actor.go (71.4%)</option>
+				
+				<option value="file13">github.com/lguibr/pongo/game/player.go (50.0%)</option>
+				
+				<option value="file14">github.com/lguibr/pongo/game/room_manager.go (19.3%)</option>
+				
+				<option value="file15">github.com/lguibr/pongo/main.go (0.0%)</option>
+				
+				<option value="file16">github.com/lguibr/pongo/server/connection_handler.go (72.2%)</option>
+				
+				<option value="file17">github.com/lguibr/pongo/server/handlers.go (61.4%)</option>
+				
+				<option value="file18">github.com/lguibr/pongo/server/websocket.go (54.5%)</option>
+				
+				<option value="file19">github.com/lguibr/pongo/utils/config.go (0.0%)</option>
+				
+				<option value="file20">github.com/lguibr/pongo/utils/constants.go (0.0%)</option>
+				
+				<option value="file21">github.com/lguibr/pongo/utils/utils.go (72.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">// File: game/ball.go
+package game
+
+import (
+        "fmt"
+        "math"
+        "math/rand" // Needed for NewBall velocity
+
+        "github.com/lguibr/pongo/utils"
+)
+
+// --- Message Types for Ball Communication ---
+
+// BallPositionMessage signals the ball's current state (sent by BallActor).
+type BallPositionMessage struct {
+        Ball *Ball // Pointer to a state snapshot
+}
+
+// --- Ball Struct (State Holder) ---
+
+type Ball struct {
+        X  int `json:"x"`
+        Y  int `json:"y"`
+        Vx int `json:"vx"`
+        Vy int `json:"vy"`
+        // Ax int `json:"ax"` // Acceleration - removed
+        // Ay int `json:"ay"` // Acceleration - removed
+        Radius      int  `json:"radius"`
+        Id          int  `json:"id"`         // Unique ID (e.g., timestamp + index)
+        OwnerIndex  int  `json:"ownerIndex"` // Index of the player who last hit it
+        Phasing     bool `json:"phasing"`    // Is the ball currently phasing? (Managed by BallActor)
+        Mass        int  `json:"mass"`
+        IsPermanent bool `json:"isPermanent"` // True if this is the player's initial, non-expiring ball
+        canvasSize  int  // Keep for boundary checks within Move or getters if needed
+}
+
+func (b *Ball) GetX() int      <span class="cov0" title="0">{ return b.X }</span>
+func (b *Ball) GetY() int      <span class="cov0" title="0">{ return b.Y }</span>
+func (b *Ball) GetRadius() int <span class="cov0" title="0">{ return b.Radius }</span>
+
+// NewBall creates the initial state data structure for a ball.
+func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *Ball <span class="cov8" title="6">{
+        // Determine initial position if not provided
+        if x == 0 &amp;&amp; y == 0 </span><span class="cov3" title="2">{
+                paddleOffset := cfg.PaddleWidth * 2
+                switch ownerIndex </span>{
+                case 0:<span class="cov1" title="1"> // Right
+                        x = cfg.CanvasSize - paddleOffset - cfg.BallRadius
+                        y = cfg.CanvasSize / 2</span>
+                case 1:<span class="cov1" title="1"> // Top
+                        x = cfg.CanvasSize / 2
+                        y = paddleOffset + cfg.BallRadius</span>
+                case 2:<span class="cov0" title="0"> // Left
+                        x = paddleOffset + cfg.BallRadius
+                        y = cfg.CanvasSize / 2</span>
+                case 3:<span class="cov0" title="0"> // Bottom
+                        x = cfg.CanvasSize / 2
+                        y = cfg.CanvasSize - paddleOffset - cfg.BallRadius</span>
+                default:<span class="cov0" title="0"> // Center as fallback
+                        x = cfg.CanvasSize / 2
+                        y = cfg.CanvasSize / 2</span>
+                }
+        }
+
+        <span class="cov8" title="6">mass := cfg.BallMass
+        radius := cfg.BallRadius
+
+        // --- New Velocity Calculation ---
+        angleOffset := math.Pi / 12
+        angle := angleOffset + rand.Float64()*(math.Pi/2-2*angleOffset)
+
+        switch ownerIndex </span>{
+        case 0:<span class="cov5" title="3">
+                angle += math.Pi / 2
+                if rand.Intn(2) == 0 </span><span class="cov0" title="0">{
+                        angle += math.Pi
+                }</span>
+        case 1:<span class="cov3" title="2">
+                angle += math.Pi
+                if rand.Intn(2) == 0 </span><span class="cov3" title="2">{
+                        angle += math.Pi / 2
+                }</span>
+        case 2:<span class="cov1" title="1">
+                if rand.Intn(2) == 0 </span><span class="cov0" title="0">{
+                        angle += 3 * math.Pi / 2
+                }</span>
+        case 3:<span class="cov0" title="0">
+                angle += 3 * math.Pi / 2
+                if rand.Intn(2) == 0 </span><span class="cov0" title="0">{
+                        angle += math.Pi / 2
+                }</span>
+        }
+
+        <span class="cov8" title="6">speed := float64(cfg.MinBallVelocity + rand.Intn(cfg.MaxBallVelocity-cfg.MinBallVelocity+1))
+
+        vxFloat := speed * math.Cos(angle)
+        vyFloat := speed * math.Sin(angle)
+        vx := int(vxFloat)
+        vy := int(vyFloat)
+
+        if speed &gt; 0 </span><span class="cov8" title="6">{
+                if vx == 0 </span><span class="cov0" title="0">{
+                        vx = int(math.Copysign(1.0, vxFloat))
+                }</span>
+                <span class="cov8" title="6">if vy == 0 </span><span class="cov1" title="1">{
+                        vy = int(math.Copysign(1.0, vyFloat))
+                }</span>
+        }
+
+        <span class="cov8" title="6">return &amp;Ball{
+                X:           x,
+                Y:           y,
+                Vx:          vx,
+                Vy:          vy,
+                Radius:      radius,
+                Id:          index,
+                OwnerIndex:  ownerIndex,
+                canvasSize:  cfg.CanvasSize, // Store canvasSize
+                Mass:        mass,
+                Phasing:     false,
+                IsPermanent: isPermanent,
+        }</span>
+}
+
+// Move updates the ball's position based on velocity and clamps it within bounds. Called by BallActor.
+func (ball *Ball) Move() <span class="cov1" title="1">{
+        // Update position
+        ball.X += ball.Vx
+        ball.Y += ball.Vy
+
+        // Clamp position to ensure the ball center stays within canvas boundaries,
+        // leaving space for the radius.
+        minCoord := ball.Radius
+        maxCoord := ball.canvasSize - ball.Radius
+
+        if ball.X &lt; minCoord </span><span class="cov0" title="0">{
+                ball.X = minCoord
+        }</span> else<span class="cov1" title="1"> if ball.X &gt; maxCoord </span><span class="cov0" title="0">{
+                ball.X = maxCoord
+        }</span>
+
+        <span class="cov1" title="1">if ball.Y &lt; minCoord </span><span class="cov0" title="0">{
+                ball.Y = minCoord
+        }</span> else<span class="cov1" title="1"> if ball.Y &gt; maxCoord </span><span class="cov0" title="0">{
+                ball.Y = maxCoord
+        }</span>
+}
+
+// getCenterIndex calculates the grid cell indices for the ball's center.
+func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) <span class="cov8" title="6">{
+        if ball.canvasSize &lt;= 0 || cfg.GridSize &lt;= 0 </span><span class="cov0" title="0">{
+                fmt.Printf("WARN: getCenterIndex called with invalid canvasSize (%d) or GridSize (%d)\n", ball.canvasSize, cfg.GridSize)
+                return 0, 0
+        }</span>
+        <span class="cov8" title="6">cellSize := ball.canvasSize / cfg.GridSize
+        if cellSize == 0 </span><span class="cov0" title="0">{
+                fmt.Printf("WARN: getCenterIndex calculated cellSize = 0 (canvasSize=%d, gridSize=%d)\n", ball.canvasSize, cfg.GridSize)
+                return 0, 0
+        }</span>
+        <span class="cov8" title="6">gridSize := ball.canvasSize / cellSize
+
+        col = ball.X / cellSize
+        row = ball.Y / cellSize
+
+        finalCol := utils.MaxInt(0, utils.MinInt(gridSize-1, col))
+        finalRow := utils.MaxInt(0, utils.MinInt(gridSize-1, row))
+
+        return finalCol, finalRow</span>
+}
+
+// --- Velocity/State Modification Methods (Called by BallActor via messages) ---
+
+// ReflectVelocity reverses the velocity along the specified axis, ensuring it doesn't become zero.
+func (ball *Ball) ReflectVelocity(axis string) <span class="cov1" title="1">{
+        if axis == "X" </span><span class="cov1" title="1">{
+                originalVx := ball.Vx
+                ball.Vx = -ball.Vx
+                if ball.Vx == 0 &amp;&amp; originalVx != 0 </span><span class="cov0" title="0">{
+                        ball.Vx = int(math.Copysign(1.0, float64(-originalVx)))
+                }</span>
+        } else<span class="cov0" title="0"> if axis == "Y" </span><span class="cov0" title="0">{
+                originalVy := ball.Vy
+                ball.Vy = -ball.Vy
+                if ball.Vy == 0 &amp;&amp; originalVy != 0 </span><span class="cov0" title="0">{
+                        ball.Vy = int(math.Copysign(1.0, float64(-originalVy)))
+                }</span>
+        }
+}
+
+// SetVelocity directly sets the ball's velocity components.
+func (ball *Ball) SetVelocity(vx, vy int) <span class="cov0" title="0">{
+        ball.Vx = vx
+        ball.Vy = vy
+}</span>
+
+// IncreaseVelocity scales the ball's velocity components.
+func (ball *Ball) IncreaseVelocity(ratio float64) <span class="cov1" title="1">{
+        newVx := int(math.Floor(float64(ball.Vx) * ratio))
+        newVy := int(math.Floor(float64(ball.Vy) * ratio))
+        if ball.Vx != 0 &amp;&amp; newVx == 0 </span><span class="cov0" title="0">{
+                newVx = int(math.Copysign(1, float64(ball.Vx)))
+        }</span>
+        <span class="cov1" title="1">if ball.Vy != 0 &amp;&amp; newVy == 0 </span><span class="cov0" title="0">{
+                newVy = int(math.Copysign(1, float64(ball.Vy)))
+        }</span>
+        <span class="cov1" title="1">ball.Vx = newVx
+        ball.Vy = newVy</span>
+}
+
+// IncreaseMass increases the ball's mass and scales its radius slightly. Uses config.
+func (ball *Ball) IncreaseMass(cfg utils.Config, additional int) <span class="cov1" title="1">{
+        ball.Mass += additional
+        ball.Radius += additional * cfg.PowerUpIncreaseMassSize
+        if ball.Radius &lt;= 0 </span><span class="cov0" title="0">{
+                ball.Radius = 1
+        }</span>
+}
+
+// --- Geometric Intersection Checks (Used by GameActor) ---
+
+// BallInterceptPaddles checks for intersection with a paddle.
+func (ball *Ball) BallInterceptPaddles(paddle *Paddle) bool <span class="cov10" title="9">{
+        if paddle == nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov10" title="9">closestX := float64(utils.MaxInt(paddle.X, utils.MinInt(ball.X, paddle.X+paddle.Width)))
+        closestY := float64(utils.MaxInt(paddle.Y, utils.MinInt(ball.Y, paddle.Y+paddle.Height)))
+
+        distanceX := float64(ball.X) - closestX
+        distanceY := float64(ball.Y) - closestY
+
+        distanceSquared := (distanceX * distanceX) + (distanceY * distanceY)
+        return distanceSquared &lt; float64(ball.Radius*ball.Radius)</span>
+}
+
+// InterceptsIndex checks if the ball circle intersects with a grid cell rectangle.
+func (ball *Ball) InterceptsIndex(col, row, cellSize int) bool <span class="cov7" title="5">{
+        if cellSize &lt;= 0 </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov7" title="5">cellLeft := col * cellSize
+        cellTop := row * cellSize
+        cellRight := cellLeft + cellSize
+        cellBottom := cellTop + cellSize
+
+        closestX := float64(utils.MaxInt(cellLeft, utils.MinInt(ball.X, cellRight)))
+        closestY := float64(utils.MaxInt(cellTop, utils.MinInt(ball.Y, cellBottom)))
+
+        distanceX := float64(ball.X) - closestX
+        distanceY := float64(ball.Y) - closestY
+
+        distanceSquared := (distanceX * distanceX) + (distanceY * distanceY)
+        return distanceSquared &lt; float64(ball.Radius*ball.Radius)</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">// File: game/ball_actor.go
+package game
+
+import (
+        "fmt"
+        "time"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/utils"
+)
+
+// --- Ball Actor ---
+
+// BallActor implements the bollywood.Actor interface for managing a ball.
+type BallActor struct {
+        state *Ball        // Use a pointer to the Ball state
+        cfg   utils.Config // Store config
+
+        gameActorPID *bollywood.PID // PID of the GameActor (parent)
+        phasingTimer *time.Timer    // Timer for phasing effect
+}
+
+// NewBallActorProducer creates a Producer for BallActor.
+func NewBallActorProducer(initialState Ball, gameActorPID *bollywood.PID, cfg utils.Config) bollywood.Producer <span class="cov3" title="2">{
+        return func() bollywood.Actor </span><span class="cov3" title="2">{
+                stateCopy := initialState // Make a copy for the actor
+                return &amp;BallActor{
+                        state:        &amp;stateCopy,
+                        cfg:          cfg,
+                        gameActorPID: gameActorPID,
+                }
+        }</span>
+}
+
+// --- Messages Specific to BallActor ---
+
+// stopPhasingCommand internal message from timer.
+type stopPhasingCommand struct{}
+
+// --- Receive Method ---
+
+func (a *BallActor) Receive(ctx bollywood.Context) <span class="cov10" title="19">{
+        switch msg := ctx.Message().(type) </span>{
+        case bollywood.Started:<span class="cov3" title="2"></span>
+                // Actor started
+
+        case UpdatePositionCommand:<span class="cov1" title="1">
+                a.state.Move()</span>
+
+        case GetPositionRequest:<span class="cov6" title="7">
+                // Reply immediately with current state using ctx.Reply if it's an Ask request
+                if ctx.RequestID() != "" </span><span class="cov6" title="7">{
+                        response := PositionResponse{
+                                X:       a.state.X,
+                                Y:       a.state.Y,
+                                Vx:      a.state.Vx,
+                                Vy:      a.state.Vy,
+                                Radius:  a.state.Radius,
+                                Phasing: a.state.Phasing,
+                                // Include other fields if needed, e.g., Mass, IsPermanent
+                        }
+                        ctx.Reply(response)
+                }</span> else<span class="cov0" title="0"> {
+                        // This case should ideally not happen if GameActor always uses Ask for GetPositionRequest
+                        fmt.Printf("WARN: BallActor %d received GetPositionRequest not via Ask.\n", a.state.Id)
+                }</span>
+
+        case ReflectVelocityCommand:<span class="cov1" title="1">
+                a.state.ReflectVelocity(msg.Axis)</span>
+        case SetVelocityCommand:<span class="cov0" title="0">
+                a.state.SetVelocity(msg.Vx, msg.Vy)</span>
+        case SetPhasingCommand:<span class="cov1" title="1">
+                a.state.Phasing = true
+                if a.phasingTimer != nil </span><span class="cov0" title="0">{
+                        a.phasingTimer.Stop() // Stop existing timer if any
+                }</span>
+                // Use config for phasing time
+                <span class="cov1" title="1">a.phasingTimer = time.AfterFunc(a.cfg.BallPhasingTime, func() </span><span class="cov1" title="1">{
+                        // Need engine and self PID to send message back to self
+                        engine := ctx.Engine() // Capture engine from context
+                        selfPID := ctx.Self()  // Capture self PID from context
+                        if engine != nil &amp;&amp; selfPID != nil </span><span class="cov1" title="1">{
+                                // Send message back to the actor's own mailbox
+                                engine.Send(selfPID, stopPhasingCommand{}, nil)
+                        }</span> else<span class="cov0" title="0"> {
+                                // This case should be rare but log if it happens
+                                fmt.Printf("ERROR: BallActor %d phasing timer fired but engine or selfPID is nil.\n", a.state.Id)
+                        }</span>
+                })
+        case stopPhasingCommand:<span class="cov1" title="1">
+                a.state.Phasing = false
+                a.phasingTimer = nil</span> // Clear the timer reference
+        case IncreaseVelocityCommand:<span class="cov1" title="1">
+                a.state.IncreaseVelocity(msg.Ratio)</span> // Ratio comes from GameActor physics now
+        case IncreaseMassCommand:<span class="cov1" title="1">
+                a.state.IncreaseMass(a.cfg, msg.Additional)</span> // Pass config
+        case DestroyBallCommand:<span class="cov0" title="0">
+                // Let the Stopping message handle the actual cleanup
+                ctx.Engine().Stop(ctx.Self())</span> // Initiate stop process
+
+        case bollywood.Stopping:<span class="cov3" title="2">
+                // Stop the phasing timer if it's running
+                if a.phasingTimer != nil </span><span class="cov0" title="0">{
+                        a.phasingTimer.Stop()
+                        a.phasingTimer = nil
+                }</span>
+
+        case bollywood.Stopped:<span class="cov3" title="2"></span>
+                // Actor stopped
+
+        default:<span class="cov0" title="0">
+                fmt.Printf("BallActor %d received unknown message: %T\n", a.state.Id, msg)
+                // If it was an Ask, reply with error
+                if ctx.RequestID() != "" </span><span class="cov0" title="0">{
+                        ctx.Reply(fmt.Errorf("ball actor received unknown message type: %T", msg))
+                }</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">// File: game/broadcaster_actor.go
+package game
+
+import (
+        "fmt"
+        "runtime/debug"
+        "strings"
+        "sync"
+
+        "github.com/lguibr/bollywood"
+        "golang.org/x/net/websocket"
+)
+
+// BroadcasterActor manages sending game state updates to clients in a room.
+type BroadcasterActor struct {
+        clients      map[*websocket.Conn]bool // Set of active connections
+        mu           sync.RWMutex             // Protects the clients map
+        selfPID      *bollywood.PID
+        gameActorPID *bollywood.PID // PID of the GameActor to notify on disconnect
+}
+
+// NewBroadcasterProducer creates a producer for BroadcasterActor.
+func NewBroadcasterProducer(gameActorPID *bollywood.PID) bollywood.Producer <span class="cov0" title="0">{
+        return func() bollywood.Actor </span><span class="cov0" title="0">{
+                return &amp;BroadcasterActor{
+                        clients:      make(map[*websocket.Conn]bool),
+                        gameActorPID: gameActorPID,
+                }
+        }</span>
+}
+
+// Receive handles messages for the BroadcasterActor.
+func (a *BroadcasterActor) Receive(ctx bollywood.Context) <span class="cov0" title="0">{
+        defer func() </span><span class="cov0" title="0">{
+                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                        pidStr := "unknown"
+                        if a.selfPID != nil </span><span class="cov0" title="0">{
+                                pidStr = a.selfPID.String()
+                        }</span>
+                        <span class="cov0" title="0">fmt.Printf("PANIC recovered in BroadcasterActor %s Receive: %v\nStack trace:\n%s\n", pidStr, r, string(debug.Stack()))</span>
+                }
+        }()
+
+        <span class="cov0" title="0">if a.selfPID == nil </span><span class="cov0" title="0">{
+                a.selfPID = ctx.Self()
+        }</span>
+
+        <span class="cov0" title="0">switch msg := ctx.Message().(type) </span>{
+        case bollywood.Started:<span class="cov0" title="0"></span>
+                // Actor started
+
+        case AddClient:<span class="cov0" title="0">
+                if msg.Conn != nil </span><span class="cov0" title="0">{
+                        a.mu.Lock()
+                        a.clients[msg.Conn] = true
+                        a.mu.Unlock()
+                }</span>
+
+        case RemoveClient:<span class="cov0" title="0">
+                if msg.Conn != nil </span><span class="cov0" title="0">{
+                        a.mu.Lock()
+                        _, exists := a.clients[msg.Conn]
+                        if exists </span><span class="cov0" title="0">{
+                                delete(a.clients, msg.Conn)
+                        }</span>
+                        <span class="cov0" title="0">a.mu.Unlock()</span>
+                }
+
+        case BroadcastStateCommand:<span class="cov0" title="0">
+                // Send the GameState struct using websocket.JSON.Send
+                a.broadcast(ctx, msg.State)</span> // Pass the GameState struct
+
+        case bollywood.Stopping:<span class="cov0" title="0"></span>
+                // Actor stopping
+
+        case bollywood.Stopped:<span class="cov0" title="0"></span>
+                // Actor stopped
+
+        default:<span class="cov0" title="0">
+                fmt.Printf("BroadcasterActor %s: Received unknown message type: %T\n", a.selfPID, msg)</span>
+        }
+}
+
+// broadcast sends the GameState struct to all registered clients using JSON encoding.
+func (a *BroadcasterActor) broadcast(ctx bollywood.Context, state GameState) <span class="cov0" title="0">{
+        // Check if the state is valid (basic check, could be more thorough)
+        if state.Canvas == nil </span><span class="cov0" title="0">{
+                fmt.Printf("WARN: BroadcasterActor %s received GameState with nil Canvas to broadcast.\n", a.selfPID)
+                // Decide if you want to return or send a minimal state
+                // return
+        }</span>
+
+        <span class="cov0" title="0">a.mu.RLock()
+        clientsToSend := make([]*websocket.Conn, 0, len(a.clients))
+        for conn := range a.clients </span><span class="cov0" title="0">{
+                clientsToSend = append(clientsToSend, conn)
+        }</span>
+        <span class="cov0" title="0">a.mu.RUnlock()
+
+        if len(clientsToSend) == 0 </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov0" title="0">disconnectedClients := []*websocket.Conn{}
+
+        for _, ws := range clientsToSend </span><span class="cov0" title="0">{
+                // Use websocket.JSON.Send for sending the struct as JSON text message
+                err := websocket.JSON.Send(ws, &amp;state) // Send pointer to the state struct
+                if err != nil </span><span class="cov0" title="0">{
+                        // Check common closed connection errors
+                        errStr := err.Error()
+                        isClosedErr := strings.Contains(errStr, "use of closed network connection") ||
+                                strings.Contains(errStr, "broken pipe") ||
+                                strings.Contains(errStr, "connection reset by peer") ||
+                                strings.Contains(errStr, "EOF") ||
+                                strings.Contains(errStr, "write: connection timed out")
+
+                        if isClosedErr </span><span class="cov0" title="0">{
+                                disconnectedClients = append(disconnectedClients, ws)
+                        }</span> else<span class="cov0" title="0"> {
+                                // Log other unexpected errors
+                                fmt.Printf("ERROR: BroadcasterActor %s: Failed to write state to client %s: %v\n", a.selfPID, ws.RemoteAddr(), err)
+                        }</span>
+                }
+        }
+
+        // Notify self and GameActor about disconnected clients
+        <span class="cov0" title="0">if len(disconnectedClients) &gt; 0 </span><span class="cov0" title="0">{
+                for _, ws := range disconnectedClients </span><span class="cov0" title="0">{
+                        // Tell self to remove the client
+                        ctx.Engine().Send(a.selfPID, RemoveClient{Conn: ws}, nil)
+                        // Tell GameActor the connection dropped
+                        if a.gameActorPID != nil </span><span class="cov0" title="0">{
+                                ctx.Engine().Send(a.gameActorPID, PlayerDisconnect{WsConn: ws}, a.selfPID)
+                        }</span>
+                }
+        }
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package game
+
+import (
+        "github.com/lguibr/asciiring/types"
+        "github.com/lguibr/pongo/utils"
+)
+
+type Canvas struct {
+        Grid       Grid `json:"grid"`
+        Width      int  `json:"width"`
+        Height     int  `json:"height"`
+        GridSize   int  `json:"gridSize"`
+        CanvasSize int  `json:"canvasSize"`
+        CellSize   int  `json:"cellSize"`
+}
+
+func (c *Canvas) GetGrid() [][]Cell  <span class="cov0" title="0">{ return c.Grid }</span>
+func (c *Canvas) GetCanvasSize() int <span class="cov0" title="0">{ return c.CanvasSize }</span>
+func (c *Canvas) GetCellSize() int   <span class="cov0" title="0">{ return c.CellSize }</span>
+
+func NewCanvas(size, gridSize int) *Canvas <span class="cov10" title="7">{
+
+        if size == 0 </span><span class="cov4" title="2">{
+                size = utils.CanvasSize
+        }</span>
+        <span class="cov10" title="7">if gridSize == 0 </span><span class="cov4" title="2">{
+                gridSize = utils.GridSize
+        }</span>
+        <span class="cov10" title="7">if size%gridSize != 0 </span><span class="cov6" title="3">{
+                panic("Size must be a multiple of gridSize")</span>
+        }
+
+        <span class="cov7" title="4">if gridSize &lt; 6 </span><span class="cov1" title="1">{
+                panic("GridSize must be greater or equal than 6")</span>
+        }
+
+        <span class="cov6" title="3">return &amp;Canvas{
+                Grid:       NewGrid(gridSize),
+                Width:      size,
+                Height:     size,
+                GridSize:   gridSize,
+                CanvasSize: size,
+                CellSize:   size / gridSize,
+        }</span>
+}
+
+func (canvas *Canvas) DrawGameOnRGBGrid(paddles [4]*Paddle, balls []*Ball) [][]types.RGBPixel <span class="cov0" title="0">{
+
+        // Initialize empty RGB grid
+        grid := make([][]types.RGBPixel, canvas.GetCanvasSize())
+        for i := range grid </span><span class="cov0" title="0">{
+                grid[i] = make([]types.RGBPixel, canvas.GetCanvasSize())
+        }</span>
+
+        // Define colors for different game objects
+        <span class="cov0" title="0">paddleColor := types.RGBPixel{R: 0, G: 255, B: 0} // white
+        brickColor := types.RGBPixel{R: 255, G: 0, B: 0}  // red
+        ballColor := types.RGBPixel{R: 0, G: 0, B: 255}   // blue
+
+        // Draw the bricks on the RGB grid
+        for _, row := range canvas.GetGrid() </span><span class="cov0" title="0">{
+                for _, cell := range row </span><span class="cov0" title="0">{
+
+                        if cell.Data.Life &gt;= 1 </span><span class="cov0" title="0">{
+                                x, y := cell.GetX()*canvas.GetCellSize(), cell.GetY()*canvas.GetCellSize()
+                                for i := 0; i &lt; canvas.GetCellSize(); i++ </span><span class="cov0" title="0">{
+                                        for j := 0; j &lt; canvas.GetCellSize(); j++ </span><span class="cov0" title="0">{
+                                                grid[x+i][y+j] = brickColor
+                                        }</span>
+                                }
+                        }
+                }
+        }
+
+        // Draw the paddles on the RGB grid
+        <span class="cov0" title="0">for _, paddle := range paddles </span><span class="cov0" title="0">{
+                if paddle == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">for i := paddle.GetX(); i &lt; paddle.GetX()+paddle.GetWidth(); i++ </span><span class="cov0" title="0">{
+                        for j := paddle.GetY(); j &lt; paddle.GetY()+paddle.GetHeight(); j++ </span><span class="cov0" title="0">{
+                                if i &gt;= len(grid) || j &gt;= len(grid[i]) </span><span class="cov0" title="0">{
+                                        continue</span>
+                                }
+                                <span class="cov0" title="0">grid[i][j] = paddleColor</span>
+                        }
+                }
+        }
+
+        // Draw the balls on the RGB grid
+        <span class="cov0" title="0">for _, ball := range balls </span><span class="cov0" title="0">{
+                if ball == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">startX := ball.GetX() - ball.GetRadius()
+                if startX &lt; 0 </span><span class="cov0" title="0">{
+                        startX = 0
+                }</span>
+
+                <span class="cov0" title="0">startY := ball.GetY() - ball.GetRadius()
+                if startY &lt; 0 </span><span class="cov0" title="0">{
+                        startY = 0
+                }</span>
+
+                <span class="cov0" title="0">for i := startX; i &lt;= ball.GetX()+ball.GetRadius() &amp;&amp; i &lt; len(grid); i++ </span><span class="cov0" title="0">{
+                        for j := startY; j &lt;= ball.GetY()+ball.GetRadius() &amp;&amp; j &lt; len(grid[i]); j++ </span><span class="cov0" title="0">{
+                                // Check if the pixel lies inside the ball using the equation of a circle
+                                if (i-ball.GetX())*(i-ball.GetX())+(j-ball.GetY())*(j-ball.GetY()) &lt;= ball.GetRadius()*ball.GetRadius() </span><span class="cov0" title="0">{
+                                        grid[i][j] = ballColor
+                                }</span>
+                        }
+                }
+        }
+
+        <span class="cov0" title="0">return grid</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package game
+
+import "github.com/lguibr/pongo/utils"
+
+type BrickData struct {
+        Type  utils.CellType `json:"type"`
+        Life  int            `json:"life"`
+        Level int            `json:"level"`
+}
+type Cell struct {
+        X    int        `json:"x"`
+        Y    int        `json:"y"`
+        Data *BrickData `json:"data"`
+}
+
+func (c *Cell) GetX() int           <span class="cov0" title="0">{ return c.X }</span>
+func (c *Cell) GetY() int           <span class="cov0" title="0">{ return c.Y }</span>
+func (c *Cell) GetData() *BrickData <span class="cov0" title="0">{ return c.Data }</span>
+func (c *Cell) GetType() int        <span class="cov0" title="0">{ return int(c.Data.Type) }</span>
+
+func (b *BrickData) GetLife() int  <span class="cov0" title="0">{ return b.Life }</span>
+func (b *BrickData) GetLevel() int <span class="cov0" title="0">{ return b.Level }</span>
+
+func NewCell(x, y, life int, typeOfCell utils.CellType) Cell <span class="cov9" title="31">{
+        return Cell{X: x, Y: y, Data: NewBrickData(typeOfCell, life)}
+}</span>
+
+func NewBrickData(typeOfCell utils.CellType, life int) *BrickData <span class="cov10" title="35">{
+        if typeOfCell == utils.Cells.Brick &amp;&amp; life == 0 </span><span class="cov2" title="2">{
+                life = 1
+        }</span>
+        <span class="cov10" title="35">if typeOfCell == utils.Cells.Empty </span><span class="cov9" title="31">{
+                life = 0
+        }</span>
+        <span class="cov10" title="35">return &amp;BrickData{Type: typeOfCell, Life: life, Level: life}</span>
+}
+
+func (cell *Cell) Compare(comparedCell Cell) bool <span class="cov9" title="30">{
+        if cell.Data.Type != comparedCell.Data.Type </span><span class="cov1" title="1">{
+                return false
+        }</span>
+        <span class="cov9" title="29">if cell.Data.Life != comparedCell.Data.Life </span><span class="cov2" title="2">{
+                return false
+        }</span>
+        <span class="cov9" title="27">if cell.Data.Level != comparedCell.Data.Level </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov9" title="27">return true</span>
+}
+
+func (data *BrickData) Compare(comparedData *BrickData) bool <span class="cov6" title="8">{
+        if data.Type != comparedData.Type </span><span class="cov1" title="1">{
+                return false
+        }</span>
+        <span class="cov5" title="7">if data.Life != comparedData.Life </span><span class="cov1" title="1">{
+                return false
+        }</span>
+        <span class="cov5" title="6">if data.Level != comparedData.Level </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov5" title="6">return true</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">// File: game/game.go
+package game
+
+// Game struct is largely deprecated. State is managed by GameActor.
+type Game struct {
+}
+
+// StartGame is DEPRECATED. Initialization happens in GameActor producer.
+func StartGame() *Game <span class="cov0" title="0">{
+        // fmt.Println("WARNING: game.StartGame() is deprecated. GameActor initializes the game.")
+        return nil
+}</span>
+
+// ToJson is DEPRECATED. GameActor handles state marshalling.
+func (game *Game) ToJson() []byte <span class="cov0" title="0">{
+        // fmt.Println("WARNING: game.ToJson() is deprecated. Use GameActor state.")
+        return []byte("{}")
+}</span>
+
+// GetNextIndex is DEPRECATED. GameActor manages player slots.
+func (game *Game) GetNextIndex() int <span class="cov0" title="0">{
+        // fmt.Println("WARNING: game.GetNextIndex() is deprecated. Use GameActor logic.")
+        return -1 // Indicate error or unavailability
+}</span>
+
+// HasPlayer is DEPRECATED. GameActor manages player state.
+func (game *Game) HasPlayer() bool <span class="cov0" title="0">{
+        // fmt.Println("WARNING: game.HasPlayer() is deprecated. Use GameActor logic.")
+        return false
+}</span>
+
+// WriteGameState is DEPRECATED. GameActor broadcasts state.
+// Remove websocket import from signature.
+func (game *Game) WriteGameState( /* ws *websocket.Conn, */ stopCh &lt;-chan struct{}) <span class="cov0" title="0">{
+        // fmt.Println("WARNING: game.WriteGameState() is deprecated. GameActor broadcasts state.")
+        // Drain stopCh to prevent goroutine leak if called somehow
+        &lt;-stopCh
+}</span>
+
+// RemovePlayer is DEPRECATED. Send PlayerDisconnect message to GameActor.
+func (game *Game) RemovePlayer(playerIndex int) {<span class="cov0" title="0">
+        // fmt.Printf("WARNING: game.RemovePlayer(%d) is deprecated. Send PlayerDisconnect message to GameActor.\n", playerIndex)
+}</span>
+
+// AddPlayer is DEPRECATED. GameActor handles PlayerConnectRequest.
+func (g *Game) AddPlayer(index int, player *Player, playerPaddle *Paddle) {<span class="cov0" title="0">
+        // fmt.Printf("WARNING: game.AddPlayer(%d) is deprecated. GameActor handles PlayerConnectRequest.\n", index)
+}</span>
+
+// AddBall is DEPRECATED. Send SpawnBallCommand message to GameActor.
+func (game *Game) AddBall(ball *Ball, expire int) {<span class="cov0" title="0">
+        // fmt.Printf("WARNING: game.AddBall(%d) is deprecated. Send SpawnBallCommand message to GameActor.\n", ball.Id)
+}</span>
+
+// RemoveBall is DEPRECATED. GameActor stops the BallActor.
+func (game *Game) RemoveBall(id int) {<span class="cov0" title="0">
+        // fmt.Printf("WARNING: game.RemoveBall(%d) is deprecated. GameActor stops the BallActor.\n", id)
+}</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">// File: game/game_actor.go
+package game
+
+import (
+        // Keep json import for potential future use or debugging
+        "fmt"
+        "runtime/debug"
+        "sync" // Import sync
+        "sync/atomic"
+        "time"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/utils"
+        "golang.org/x/net/websocket"
+)
+
+// GameActor manages the overall game state and coordinates child actors for a single room.
+type GameActor struct {
+        cfg            utils.Config
+        canvas         *Canvas
+        players        [utils.MaxPlayers]*playerInfo // State managed serially by actor
+        paddles        [utils.MaxPlayers]*Paddle     // State managed serially by actor
+        paddleActors   [utils.MaxPlayers]*bollywood.PID
+        balls          map[int]*Ball // State managed serially by actor
+        ballActors     map[int]*bollywood.PID
+        engine         *bollywood.Engine
+        ticker         *time.Ticker // Ticker for physics/game logic
+        stopTickerCh   chan struct{}
+        bcastTicker    *time.Ticker // Ticker for broadcasting state
+        stopBcastCh    chan struct{}
+        tickerMu       sync.Mutex // Mutex to protect ticker fields and channels
+        selfPID        *bollywood.PID
+        roomManagerPID *bollywood.PID
+        broadcasterPID *bollywood.PID // PID of the dedicated broadcaster actor
+        connToIndex    map[*websocket.Conn]int
+        playerConns    [utils.MaxPlayers]*websocket.Conn
+
+        // Performance Metrics
+        tickDurationSum time.Duration
+        tickCount       int64
+        metricsMu       sync.Mutex // Protect metrics during updates
+}
+
+// playerInfo holds state associated with a connected player/websocket.
+type playerInfo struct {
+        Index       int
+        ID          string
+        Score       atomic.Int32 // Use atomic Int32 for score
+        Color       [3]int
+        Ws          *websocket.Conn
+        IsConnected bool
+}
+
+// NewGameActorProducer creates a producer for the GameActor.
+func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManagerPID *bollywood.PID) bollywood.Producer <span class="cov0" title="0">{
+        return func() bollywood.Actor </span><span class="cov0" title="0">{
+                canvas := NewCanvas(cfg.CanvasSize, cfg.GridSize)
+                canvas.Grid.Fill(cfg.GridFillVectors, cfg.GridFillVectorSize, cfg.GridFillWalkers, cfg.GridFillSteps)
+
+                ga := &amp;GameActor{
+                        cfg:            cfg,
+                        canvas:         canvas,
+                        players:        [utils.MaxPlayers]*playerInfo{},
+                        paddles:        [utils.MaxPlayers]*Paddle{},
+                        paddleActors:   [utils.MaxPlayers]*bollywood.PID{},
+                        balls:          make(map[int]*Ball),
+                        ballActors:     make(map[int]*bollywood.PID),
+                        engine:         engine,
+                        stopTickerCh:   make(chan struct{}), // Initialize channels here
+                        stopBcastCh:    make(chan struct{}),
+                        connToIndex:    make(map[*websocket.Conn]int),
+                        playerConns:    [utils.MaxPlayers]*websocket.Conn{},
+                        roomManagerPID: roomManagerPID,
+                        // Initialize metrics
+                        tickDurationSum: 0,
+                        tickCount:       0,
+                }
+                return ga
+        }</span>
+}
+
+// Receive is the main message handler for the GameActor.
+func (a *GameActor) Receive(ctx bollywood.Context) <span class="cov0" title="0">{
+        defer func() </span><span class="cov0" title="0">{
+                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                        pidStr := "unknown"
+                        if a.selfPID != nil </span><span class="cov0" title="0">{
+                                pidStr = a.selfPID.String()
+                        }</span>
+                        <span class="cov0" title="0">fmt.Printf("PANIC recovered in GameActor %s Receive: %v\nStack trace:\n%s\n", pidStr, r, string(debug.Stack()))
+                        if a.roomManagerPID != nil &amp;&amp; a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov0" title="0">{
+                                a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
+                        }</span>
+                        <span class="cov0" title="0">if a.broadcasterPID != nil </span><span class="cov0" title="0">{
+                                a.engine.Stop(a.broadcasterPID)
+                        }</span>
+                        // Ensure tickers are stopped on panic
+                        <span class="cov0" title="0">a.stopTickers()
+                        // Log metrics on panic as well
+                        a.logPerformanceMetrics()</span>
+                }
+        }()
+
+        <span class="cov0" title="0">if a.selfPID == nil </span><span class="cov0" title="0">{
+                a.selfPID = ctx.Self()
+                if a.selfPID == nil </span><span class="cov0" title="0">{
+                        fmt.Println("ERROR: GameActor ???: Failed to set self PID on first Receive.")
+                        return
+                }</span>
+        }
+
+        <span class="cov0" title="0">switch m := ctx.Message().(type) </span>{
+        case bollywood.Started:<span class="cov0" title="0">
+                broadcasterProps := bollywood.NewProps(NewBroadcasterProducer(a.selfPID))
+                a.broadcasterPID = a.engine.Spawn(broadcasterProps)
+                if a.broadcasterPID == nil </span><span class="cov0" title="0">{
+                        fmt.Printf("FATAL: GameActor %s failed to spawn BroadcasterActor. Stopping self.\n", a.selfPID)
+                        a.engine.Stop(a.selfPID) // This will trigger Stopping case below
+                        return
+                }</span>
+                <span class="cov0" title="0">fmt.Printf("GameActor %s: Started. Broadcaster: %s.\n", a.selfPID, a.broadcasterPID)
+                a.startTickers(ctx)</span> // Start tickers after actor is fully started
+
+        case GameTick:<span class="cov0" title="0"> // Physics tick - Process directly
+                start := time.Now() // Start timer
+
+                // fmt.Printf("GameActor %s: Received GameTick\n", a.selfPID) // Optional: Add log
+                updateCmd := UpdatePositionCommand{}
+                // Collect PIDs without lock
+                pidsToUpdate := make([]*bollywood.PID, 0, len(a.paddleActors)+len(a.ballActors))
+                for _, pid := range a.paddleActors </span><span class="cov0" title="0">{
+                        if pid != nil </span><span class="cov0" title="0">{
+                                pidsToUpdate = append(pidsToUpdate, pid)
+                        }</span>
+                }
+                <span class="cov0" title="0">for _, pid := range a.ballActors </span><span class="cov0" title="0">{
+                        if pid != nil </span><span class="cov0" title="0">{
+                                pidsToUpdate = append(pidsToUpdate, pid)
+                        }</span>
+                }
+                // Send updates
+                <span class="cov0" title="0">for _, pid := range pidsToUpdate </span><span class="cov0" title="0">{
+                        a.engine.Send(pid, updateCmd, a.selfPID)
+                }</span>
+                // Detect collisions (operates on actor state directly now)
+                <span class="cov0" title="0">a.detectCollisions(ctx)
+
+                // Update metrics
+                duration := time.Since(start)
+                a.metricsMu.Lock()
+                a.tickDurationSum += duration
+                a.tickCount++
+                a.metricsMu.Unlock()</span>
+
+        case BroadcastTick:<span class="cov0" title="0"> // Broadcast tick - Process directly
+                // fmt.Printf("GameActor %s: Received BroadcastTick\n", a.selfPID) // Optional: Add log
+                if a.broadcasterPID != nil </span><span class="cov0" title="0">{
+                        // Create snapshot (operates on actor state directly now)
+                        snapshot := a.createGameStateSnapshot()
+                        // Send the GameState struct directly
+                        a.engine.Send(a.broadcasterPID, BroadcastStateCommand{State: snapshot}, a.selfPID)
+                }</span>
+
+        case AssignPlayerToRoom:<span class="cov0" title="0">
+                a.handlePlayerConnect(ctx, m.WsConn)</span>
+
+        case PlayerDisconnect:<span class="cov0" title="0">
+                a.handlePlayerDisconnect(ctx, m.WsConn)</span>
+
+        case ForwardedPaddleDirection:<span class="cov0" title="0">
+                a.handlePaddleDirection(ctx, m.WsConn, m.Direction)</span>
+        case SpawnBallCommand:<span class="cov0" title="0">
+                a.spawnBall(ctx, m.OwnerIndex, m.X, m.Y, m.ExpireIn, m.IsPermanent)</span>
+        case DestroyExpiredBall:<span class="cov0" title="0">
+                a.handleDestroyExpiredBall(ctx, m.BallID)</span>
+
+        case bollywood.Stopping:<span class="cov0" title="0">
+                fmt.Printf("GameActor %s: Stopping.\n", a.selfPID)
+                a.stopTickers()
+                a.cleanupChildActorsAndConnections()
+                // Log metrics before fully stopped
+                a.logPerformanceMetrics()</span>
+
+        case bollywood.Stopped:<span class="cov0" title="0">
+                fmt.Printf("GameActor %s: Stopped.\n", a.selfPID)</span>
+                // Metrics are logged in Stopping phase
+
+        default:<span class="cov0" title="0">
+                fmt.Printf("GameActor %s: Received unknown message type: %T\n", a.selfPID, m)</span>
+        }
+}
+
+// logPerformanceMetrics calculates and prints the average tick duration.
+func (a *GameActor) logPerformanceMetrics() <span class="cov0" title="0">{
+        a.metricsMu.Lock()
+        defer a.metricsMu.Unlock()
+
+        if a.tickCount &gt; 0 </span><span class="cov0" title="0">{
+                avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
+                fmt.Printf("PERF_METRIC GameActor %s: Avg Tick Duration: %v (%d ticks)\n", a.selfPID, avgDuration, a.tickCount)
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Printf("PERF_METRIC GameActor %s: No ticks processed.\n", a.selfPID)
+        }</span>
+}
+
+// startTickers starts the physics and broadcast tickers.
+func (a *GameActor) startTickers(ctx bollywood.Context) <span class="cov0" title="0">{
+        a.tickerMu.Lock() // Lock before accessing ticker fields/channels
+
+        // Physics Ticker
+        if a.ticker == nil </span><span class="cov0" title="0">{
+                a.ticker = time.NewTicker(a.cfg.GameTickPeriod)
+                // Ensure stop channel is fresh if restarting
+                select </span>{
+                case &lt;-a.stopTickerCh:<span class="cov0" title="0"> // If already closed, make a new one
+                        a.stopTickerCh = make(chan struct{})</span>
+                default:<span class="cov0" title="0"></span>
+                }
+                <span class="cov0" title="0">stopCh := a.stopTickerCh // Capture channel for goroutine
+                tickerCh := a.ticker.C   // Capture ticker channel
+
+                a.tickerMu.Unlock() // Unlock before starting goroutine
+
+                go func() </span><span class="cov0" title="0">{
+                        defer func() </span><span class="cov0" title="0">{
+                                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                                        fmt.Printf("PANIC recovered in GameActor %s Physics Ticker: %v\n", a.selfPID, r)
+                                }</span>
+                                <span class="cov0" title="0">fmt.Printf("GameActor %s: Physics Ticker stopped.\n", a.selfPID)</span>
+                        }()
+                        <span class="cov0" title="0">for </span><span class="cov0" title="0">{
+                                select </span>{
+                                case &lt;-stopCh:<span class="cov0" title="0"> // Check stop channel first
+                                        return</span>
+                                case _, ok := &lt;-tickerCh:<span class="cov0" title="0"> // Read from ticker channel
+                                        if !ok </span><span class="cov0" title="0">{
+                                                return // Ticker channel closed
+                                        }</span>
+                                        // Send tick message to self only if engine and PID are valid
+                                        <span class="cov0" title="0">currentEngine := a.engine
+                                        currentSelfPID := a.selfPID
+                                        if currentEngine != nil &amp;&amp; currentSelfPID != nil </span><span class="cov0" title="0">{
+                                                currentEngine.Send(currentSelfPID, GameTick{}, nil)
+                                        }</span> else<span class="cov0" title="0"> {
+                                                return // Engine or PID gone, stop goroutine
+                                        }</span>
+                                }
+                        }
+                }()
+        } else<span class="cov0" title="0"> {
+                a.tickerMu.Unlock() // Unlock if ticker already exists
+        }</span>
+
+        <span class="cov0" title="0">a.tickerMu.Lock() // Lock again for broadcast ticker
+
+        // Broadcast Ticker
+        if a.bcastTicker == nil </span><span class="cov0" title="0">{
+                // Increase broadcast interval slightly
+                broadcastInterval := 50 * time.Millisecond // Increased from 30ms
+                if broadcastInterval &lt; a.cfg.GameTickPeriod </span><span class="cov0" title="0">{
+                        broadcastInterval = a.cfg.GameTickPeriod // Ensure it's not faster than physics tick
+                }</span>
+                <span class="cov0" title="0">a.bcastTicker = time.NewTicker(broadcastInterval)
+                // Ensure stop channel is fresh if restarting
+                select </span>{
+                case &lt;-a.stopBcastCh:<span class="cov0" title="0"> // If already closed, make a new one
+                        a.stopBcastCh = make(chan struct{})</span>
+                default:<span class="cov0" title="0"></span>
+                }
+                <span class="cov0" title="0">stopCh := a.stopBcastCh     // Capture channel for goroutine
+                tickerCh := a.bcastTicker.C // Capture ticker channel
+
+                a.tickerMu.Unlock() // Unlock before starting goroutine
+
+                go func() </span><span class="cov0" title="0">{
+                        defer func() </span><span class="cov0" title="0">{
+                                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                                        fmt.Printf("PANIC recovered in GameActor %s Broadcast Ticker: %v\n", a.selfPID, r)
+                                }</span>
+                                <span class="cov0" title="0">fmt.Printf("GameActor %s: Broadcast Ticker stopped.\n", a.selfPID)</span>
+                        }()
+                        <span class="cov0" title="0">for </span><span class="cov0" title="0">{
+                                select </span>{
+                                case &lt;-stopCh:<span class="cov0" title="0"> // Check stop channel first
+                                        return</span>
+                                case _, ok := &lt;-tickerCh:<span class="cov0" title="0"> // Read from ticker channel
+                                        if !ok </span><span class="cov0" title="0">{
+                                                return // Ticker channel closed
+                                        }</span>
+                                        // Send tick message to self only if engine and PID are valid
+                                        <span class="cov0" title="0">currentEngine := a.engine
+                                        currentSelfPID := a.selfPID
+                                        if currentEngine != nil &amp;&amp; currentSelfPID != nil </span><span class="cov0" title="0">{
+                                                currentEngine.Send(currentSelfPID, BroadcastTick{}, nil)
+                                        }</span> else<span class="cov0" title="0"> {
+                                                return // Engine or PID gone, stop goroutine
+                                        }</span>
+                                }
+                        }
+                }()
+        } else<span class="cov0" title="0"> {
+                a.tickerMu.Unlock() // Unlock if ticker already exists
+        }</span>
+}
+
+// stopTickers stops the physics and broadcast tickers safely using the mutex.
+func (a *GameActor) stopTickers() <span class="cov0" title="0">{
+        a.tickerMu.Lock()
+        defer a.tickerMu.Unlock()
+
+        // Stop Physics Ticker
+        if a.ticker != nil </span><span class="cov0" title="0">{
+                a.ticker.Stop()
+                select </span>{
+                case &lt;-a.stopTickerCh:<span class="cov0" title="0"></span> // Already closed
+                default:<span class="cov0" title="0">
+                        close(a.stopTickerCh)</span>
+                }
+                <span class="cov0" title="0">a.ticker = nil</span>
+        }
+
+        // Stop Broadcast Ticker
+        <span class="cov0" title="0">if a.bcastTicker != nil </span><span class="cov0" title="0">{
+                a.bcastTicker.Stop()
+                select </span>{
+                case &lt;-a.stopBcastCh:<span class="cov0" title="0"></span> // Already closed
+                default:<span class="cov0" title="0">
+                        close(a.stopBcastCh)</span>
+                }
+                <span class="cov0" title="0">a.bcastTicker = nil</span>
+        }
+}
+
+// cleanupChildActorsAndConnections stops all managed actors. No lock needed.
+func (a *GameActor) cleanupChildActorsAndConnections() <span class="cov0" title="0">{
+        paddlesToStop := make([]*bollywood.PID, 0, utils.MaxPlayers)
+        ballsToStop := make([]*bollywood.PID, 0, len(a.ballActors))
+        broadcasterToStop := a.broadcasterPID
+        a.broadcasterPID = nil // Clear immediately
+
+        for i := 0; i &lt; utils.MaxPlayers; i++ </span><span class="cov0" title="0">{
+                if pid := a.paddleActors[i]; pid != nil </span><span class="cov0" title="0">{
+                        paddlesToStop = append(paddlesToStop, pid)
+                        a.paddleActors[i] = nil
+                }</span>
+                <span class="cov0" title="0">if pInfo := a.players[i]; pInfo != nil </span><span class="cov0" title="0">{
+                        if pInfo.Ws != nil </span><span class="cov0" title="0">{
+                                delete(a.connToIndex, pInfo.Ws) // connToIndex still needs management
+                        }</span>
+                        <span class="cov0" title="0">pInfo.Ws = nil
+                        pInfo.IsConnected = false</span>
+                }
+                <span class="cov0" title="0">a.players[i] = nil
+                a.playerConns[i] = nil</span>
+        }
+        <span class="cov0" title="0">for ballID, pid := range a.ballActors </span><span class="cov0" title="0">{
+                if pid != nil </span><span class="cov0" title="0">{
+                        ballsToStop = append(ballsToStop, pid)
+                }</span>
+                <span class="cov0" title="0">delete(a.ballActors, ballID) // Modify map directly
+                delete(a.balls, ballID)</span>      // Modify map directly
+        }
+        <span class="cov0" title="0">if len(a.connToIndex) &gt; 0 </span><span class="cov0" title="0">{
+                a.connToIndex = make(map[*websocket.Conn]int) // Clear map
+        }</span>
+
+        // Stop actors outside the loop
+        <span class="cov0" title="0">currentEngine := a.engine
+        if currentEngine != nil </span><span class="cov0" title="0">{
+                if broadcasterToStop != nil </span><span class="cov0" title="0">{
+                        currentEngine.Stop(broadcasterToStop)
+                }</span>
+                <span class="cov0" title="0">for _, pid := range paddlesToStop </span><span class="cov0" title="0">{
+                        if pid != nil </span><span class="cov0" title="0">{
+                                currentEngine.Stop(pid)
+                        }</span>
+                }
+                <span class="cov0" title="0">for _, pid := range ballsToStop </span><span class="cov0" title="0">{
+                        if pid != nil </span><span class="cov0" title="0">{
+                                currentEngine.Stop(pid)
+                        }</span>
+                }
+        }
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">// File: game/game_actor_broadcast.go
+package game
+
+import (
+        "github.com/lguibr/pongo/utils"
+)
+
+// GameState struct for JSON marshalling (used in broadcast)
+type GameState struct {
+        Canvas  *Canvas                   `json:"canvas"`
+        Players [utils.MaxPlayers]*Player `json:"players"`
+        Paddles [utils.MaxPlayers]*Paddle `json:"paddles"`
+        Balls   []*Ball                   `json:"balls"`
+}
+
+// deepCopyGrid creates a new Grid with copies of all Cells and BrickData.
+func deepCopyGrid(original Grid) Grid <span class="cov0" title="0">{
+        if original == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+        <span class="cov0" title="0">newGrid := make(Grid, len(original))
+        for i, row := range original </span><span class="cov0" title="0">{
+                newRow := make([]Cell, len(row))
+                for j, cell := range row </span><span class="cov0" title="0">{
+                        newCell := cell // Copy basic cell fields (X, Y)
+                        if cell.Data != nil </span><span class="cov0" title="0">{
+                                // Create a new BrickData struct and copy values
+                                newData := *cell.Data
+                                newCell.Data = &amp;newData // Assign pointer to the new BrickData copy
+                        }</span> else<span class="cov0" title="0"> {
+                                newCell.Data = nil
+                        }</span>
+                        <span class="cov0" title="0">newRow[j] = newCell</span>
+                }
+                <span class="cov0" title="0">newGrid[i] = newRow</span>
+        }
+        <span class="cov0" title="0">return newGrid</span>
+}
+
+// createGameStateSnapshot creates a snapshot of the current game state.
+// Assumes it's called within the GameActor's sequential message processing loop.
+// Creates deep copies of mutable slice/map elements and the Canvas grid.
+func (a *GameActor) createGameStateSnapshot() GameState <span class="cov0" title="0">{
+        // --- Prepare the GameState snapshot ---
+        state := GameState{
+                // Canvas:  a.canvas, // Shallow copy - replaced below
+                Players: [utils.MaxPlayers]*Player{},
+                Paddles: [utils.MaxPlayers]*Paddle{},
+                Balls:   make([]*Ball, 0, len(a.balls)),
+        }
+
+        // Deep copy Canvas and Grid
+        if a.canvas != nil </span><span class="cov0" title="0">{
+                canvasCopy := *a.canvas                       // Copy basic canvas fields
+                canvasCopy.Grid = deepCopyGrid(a.canvas.Grid) // Deep copy the grid
+                state.Canvas = &amp;canvasCopy
+        }</span> else<span class="cov0" title="0"> {
+                state.Canvas = nil
+        }</span>
+
+        // Copy player info
+        <span class="cov0" title="0">for i, pi := range a.players </span><span class="cov0" title="0">{
+                if pi != nil &amp;&amp; pi.IsConnected </span><span class="cov0" title="0">{
+                        // Create a copy of the player data, reading score atomically
+                        state.Players[i] = &amp;Player{
+                                Index: pi.Index,
+                                Id:    pi.ID,
+                                Color: pi.Color,
+                                Score: pi.Score.Load(), // Use atomic LoadInt32
+                        }
+                }</span> else<span class="cov0" title="0"> {
+                        state.Players[i] = nil
+                }</span>
+        }
+
+        // Copy paddle info - Create a deep copy
+        <span class="cov0" title="0">for i, p := range a.paddles </span><span class="cov0" title="0">{
+                if p != nil &amp;&amp; a.players[i] != nil &amp;&amp; a.players[i].IsConnected </span><span class="cov0" title="0">{
+                        paddleCopy := *p // Create a copy of the paddle struct
+                        if paddleCopy.canvasSize == 0 &amp;&amp; a.canvas != nil </span><span class="cov0" title="0">{
+                                paddleCopy.canvasSize = a.canvas.CanvasSize
+                        }</span>
+                        <span class="cov0" title="0">state.Paddles[i] = &amp;paddleCopy</span> // Add pointer to the copy
+                } else<span class="cov0" title="0"> {
+                        state.Paddles[i] = nil
+                }</span>
+        }
+
+        // Copy ball info - Create a deep copy
+        <span class="cov0" title="0">for _, b := range a.balls </span><span class="cov0" title="0">{
+                if b != nil </span><span class="cov0" title="0">{
+                        ballCopy := *b // Create a copy of the ball struct
+                        if ballCopy.canvasSize == 0 &amp;&amp; a.canvas != nil </span><span class="cov0" title="0">{
+                                ballCopy.canvasSize = a.canvas.CanvasSize
+                        }</span>
+                        <span class="cov0" title="0">state.Balls = append(state.Balls, &amp;ballCopy)</span> // Add pointer to the copy
+                }
+        }
+
+        <span class="cov0" title="0">return state</span>
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">// File: game/game_actor_handlers.go
+package game
+
+import (
+        // Keep json import for potential future use or debugging
+        "fmt"
+        "math/rand"
+        "time"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/utils"
+        "golang.org/x/net/websocket"
+)
+
+// handlePlayerConnect processes a player connection assigned by the ConnectionHandlerActor.
+// Assumes called within the actor's message loop (no lock needed for main state).
+func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Conn) <span class="cov0" title="0">{
+        remoteAddr := "unknown"
+        if ws != nil </span><span class="cov0" title="0">{
+                remoteAddr = ws.RemoteAddr().String()
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Printf("GameActor %s: Received connect assignment with nil connection.\n", a.selfPID)
+                return
+        }</span>
+
+        // Check if connection is already mapped
+        <span class="cov0" title="0">if existingIndex, ok := a.connToIndex[ws]; ok </span><span class="cov0" title="0">{
+                if pInfo := a.players[existingIndex]; pInfo != nil &amp;&amp; pInfo.IsConnected &amp;&amp; pInfo.Ws == ws </span><span class="cov0" title="0">{
+                        fmt.Printf("GameActor %s: Connection %s already associated with active player %d. Ignoring assignment.\n", a.selfPID, remoteAddr, existingIndex)
+                        return
+                }</span>
+                <span class="cov0" title="0">fmt.Printf("GameActor %s: Connection %s was previously mapped but inactive/mismatched. Cleaning up before reassignment.\n", a.selfPID, remoteAddr)
+                delete(a.connToIndex, ws)
+                if a.players[existingIndex] != nil </span><span class="cov0" title="0">{
+                        a.players[existingIndex].IsConnected = false
+                        a.playerConns[existingIndex] = nil
+                }</span>
+        }
+
+        // Find the first available player slot
+        <span class="cov0" title="0">playerIndex := -1
+        for i, p := range a.players </span><span class="cov0" title="0">{
+                if p == nil </span><span class="cov0" title="0">{
+                        playerIndex = i
+                        break</span>
+                }
+        }
+
+        <span class="cov0" title="0">if playerIndex == -1 </span><span class="cov0" title="0">{
+                fmt.Printf("GameActor %s: Room is full (%d players). Rejecting connection %s.\n", a.selfPID, utils.MaxPlayers, remoteAddr)
+                _ = ws.Close()
+                return
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("GameActor %s: Assigning player index %d to %s\n", a.selfPID, playerIndex, remoteAddr)
+
+        // Check if this is the first player joining this specific room instance
+        isFirstPlayerInRoom := true
+        for i, p := range a.players </span><span class="cov0" title="0">{
+                if p != nil &amp;&amp; i != playerIndex </span><span class="cov0" title="0">{
+                        isFirstPlayerInRoom = false
+                        break</span>
+                }
+        }
+        // Regenerate grid only if it's the very first player
+        <span class="cov0" title="0">if isFirstPlayerInRoom </span><span class="cov0" title="0">{
+                fmt.Printf("GameActor %s: First player joining this room, initializing grid.\n", a.selfPID)
+                if a.canvas == nil </span><span class="cov0" title="0">{
+                        a.canvas = NewCanvas(a.cfg.CanvasSize, a.cfg.GridSize)
+                }</span>
+                <span class="cov0" title="0">a.canvas.Grid = NewGrid(a.cfg.GridSize)
+                a.canvas.Grid.Fill(a.cfg.GridFillVectors, a.cfg.GridFillVectorSize, a.cfg.GridFillWalkers, a.cfg.GridFillSteps)</span>
+        }
+
+        // Create player info and paddle data
+        <span class="cov0" title="0">player := &amp;playerInfo{
+                Index:       playerIndex,
+                ID:          fmt.Sprintf("player%d", playerIndex),
+                Color:       utils.NewRandomColor(),
+                Ws:          ws,
+                IsConnected: true,
+        }
+        player.Score.Store(int32(a.cfg.InitialScore)) // Set initial score atomically
+
+        a.players[playerIndex] = player
+        a.connToIndex[ws] = playerIndex // Map connection to index
+        a.playerConns[playerIndex] = ws // Map index back to connection
+
+        paddleData := NewPaddle(a.cfg, playerIndex)
+        a.paddles[playerIndex] = paddleData
+
+        // Cache necessary variables
+        selfPID := a.selfPID
+        engine := a.engine
+        cfg := a.cfg
+        broadcasterPID := a.broadcasterPID
+
+        // Tell broadcaster to add the client
+        if broadcasterPID != nil </span><span class="cov0" title="0">{
+                engine.Send(broadcasterPID, AddClient{Conn: ws}, selfPID)
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Printf("ERROR: GameActor %s: Broadcaster PID is nil during player connect for %s.\n", selfPID, remoteAddr)
+        }</span>
+
+        // Spawn Paddle Actor
+        <span class="cov0" title="0">paddleProducer := NewPaddleActorProducer(*paddleData, selfPID, cfg)
+        paddlePID := engine.Spawn(bollywood.NewProps(paddleProducer))
+        if paddlePID == nil </span><span class="cov0" title="0">{
+                fmt.Printf("ERROR: GameActor %s failed to spawn PaddleActor for player %d\n", a.selfPID, playerIndex)
+                // Clean up player state if actor spawn failed (still within actor loop)
+                if pInfo := a.players[playerIndex]; pInfo != nil &amp;&amp; pInfo.Ws == ws </span><span class="cov0" title="0">{
+                        delete(a.connToIndex, ws)
+                        a.players[playerIndex] = nil
+                        a.paddles[playerIndex] = nil
+                        a.playerConns[playerIndex] = nil
+                }</span>
+                <span class="cov0" title="0">if broadcasterPID != nil </span><span class="cov0" title="0">{
+                        engine.Send(broadcasterPID, RemoveClient{Conn: ws}, selfPID)
+                }</span>
+                <span class="cov0" title="0">_ = ws.Close()
+                return</span>
+        }
+
+        // Store Paddle Actor PID (still within actor loop)
+        <span class="cov0" title="0">if pInfo := a.players[playerIndex]; pInfo != nil &amp;&amp; pInfo.IsConnected &amp;&amp; pInfo.Ws == ws </span><span class="cov0" title="0">{
+                a.paddleActors[playerIndex] = paddlePID
+        }</span> else<span class="cov0" title="0"> {
+                // Player disconnected very quickly? Should be rare now.
+                fmt.Printf("GameActor %s: Player %d (%s) disconnected before PaddleActor PID %s could be stored. Stopping actor.\n", a.selfPID, playerIndex, remoteAddr, paddlePID)
+                if paddlePID != nil </span><span class="cov0" title="0">{
+                        engine.Stop(paddlePID)
+                }</span>
+                <span class="cov0" title="0">if broadcasterPID != nil </span><span class="cov0" title="0">{
+                        engine.Send(broadcasterPID, RemoveClient{Conn: ws}, selfPID)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        }
+
+        // Spawn initial Ball Actor
+        <span class="cov0" title="0">a.spawnBall(ctx, playerIndex, 0, 0, 0, true) // Spawn permanent ball
+
+        // Send initial state immediately
+        initialSnapshot := a.createGameStateSnapshot()
+        currentBroadcasterPID := a.broadcasterPID // Re-fetch broadcaster PID
+
+        if currentBroadcasterPID != nil </span><span class="cov0" title="0">{
+                fmt.Printf("GameActor %s: Sending initial state broadcast for player %d.\n", a.selfPID, playerIndex)
+                // Send the GameState struct directly
+                engine.Send(currentBroadcasterPID, BroadcastStateCommand{State: initialSnapshot}, selfPID)
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Printf("WARN: GameActor %s: Broadcaster PID nil, cannot send initial state for player %d.\n", a.selfPID, playerIndex)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("GameActor %s: Player %d setup complete.\n", a.selfPID, playerIndex)</span>
+}
+
+// handlePlayerDisconnect processes a player disconnection event.
+// Assumes called within the actor's message loop (no lock needed for main state).
+func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocket.Conn) <span class="cov0" title="0">{
+        if conn == nil </span><span class="cov0" title="0">{
+                fmt.Printf("GameActor %s: Received disconnect with nil connection.\n", a.selfPID)
+                return
+        }</span>
+        <span class="cov0" title="0">connAddr := conn.RemoteAddr().String()
+
+        playerIndex, playerFound := a.connToIndex[conn]
+
+        if !playerFound || playerIndex &lt; 0 || playerIndex &gt;= utils.MaxPlayers || a.players[playerIndex] == nil || a.players[playerIndex].Ws != conn </span><span class="cov0" title="0">{
+                if playerFound </span><span class="cov0" title="0">{
+                        delete(a.connToIndex, conn)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        }
+
+        <span class="cov0" title="0">pInfo := a.players[playerIndex]
+
+        if !pInfo.IsConnected </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("GameActor %s: Handling disconnect for player %d (%s)\n", a.selfPID, playerIndex, connAddr)
+
+        // Mark as disconnected
+        pInfo.IsConnected = false
+
+        // --- Stop Actors and Manage Persistent Ball ---
+        paddleToStop := a.paddleActors[playerIndex]
+        a.paddleActors[playerIndex] = nil
+
+        ownedBallIDs := []int{}
+        ownedPermanentBallIDs := []int{}
+        for ballID, ball := range a.balls </span><span class="cov0" title="0">{
+                if ball != nil &amp;&amp; ball.OwnerIndex == playerIndex </span><span class="cov0" title="0">{
+                        ownedBallIDs = append(ownedBallIDs, ballID)
+                        if ball.IsPermanent </span><span class="cov0" title="0">{
+                                ownedPermanentBallIDs = append(ownedPermanentBallIDs, ballID)
+                        }</span>
+                }
+        }
+
+        <span class="cov0" title="0">ballToKeepID := -1
+        remainingBallCount := 0
+        for id, b := range a.balls </span><span class="cov0" title="0">{
+                isOwnedByDisconnectingPlayer := false
+                for _, ownedID := range ownedBallIDs </span><span class="cov0" title="0">{
+                        if id == ownedID </span><span class="cov0" title="0">{
+                                isOwnedByDisconnectingPlayer = true
+                                break</span>
+                        }
+                }
+                <span class="cov0" title="0">if b != nil &amp;&amp; !isOwnedByDisconnectingPlayer </span><span class="cov0" title="0">{
+                        remainingBallCount++
+                }</span>
+        }
+
+        <span class="cov0" title="0">if remainingBallCount == 0 &amp;&amp; len(ownedBallIDs) &gt; 0 </span><span class="cov0" title="0">{
+                if len(ownedPermanentBallIDs) &gt; 0 </span><span class="cov0" title="0">{
+                        ballToKeepID = ownedPermanentBallIDs[0]
+                }</span> else<span class="cov0" title="0"> {
+                        ballToKeepID = ownedBallIDs[0]
+                }</span>
+                <span class="cov0" title="0">fmt.Printf("GameActor %s: Player %d owned last ball(s). Keeping ball %d.\n", a.selfPID, playerIndex, ballToKeepID)</span>
+        }
+
+        <span class="cov0" title="0">ballsToStopPIDs := []*bollywood.PID{}
+        for _, ballID := range ownedBallIDs </span><span class="cov0" title="0">{
+                if ballID == ballToKeepID </span><span class="cov0" title="0">{
+                        if keptBall, ok := a.balls[ballID]; ok </span><span class="cov0" title="0">{
+                                fmt.Printf("GameActor %s: Making kept ball %d ownerless and permanent.\n", a.selfPID, ballID)
+                                keptBall.OwnerIndex = -1
+                                keptBall.IsPermanent = true
+                        }</span>
+                } else<span class="cov0" title="0"> {
+                        if pid, ok := a.ballActors[ballID]; ok &amp;&amp; pid != nil </span><span class="cov0" title="0">{
+                                ballsToStopPIDs = append(ballsToStopPIDs, pid)
+                        }</span>
+                        <span class="cov0" title="0">delete(a.balls, ballID)
+                        delete(a.ballActors, ballID)</span>
+                }
+        }
+
+        // --- Clean up GameActor state ---
+        <span class="cov0" title="0">delete(a.connToIndex, conn)
+        a.players[playerIndex] = nil
+        a.paddles[playerIndex] = nil
+        a.playerConns[playerIndex] = nil
+
+        // Check if room is now empty
+        playersLeft := false
+        for _, p := range a.players </span><span class="cov0" title="0">{
+                if p != nil </span><span class="cov0" title="0">{
+                        playersLeft = true
+                        break</span>
+                }
+        }
+        <span class="cov0" title="0">roomIsEmpty := !playersLeft
+
+        // Cache PIDs needed outside actor loop
+        roomManagerPID := a.roomManagerPID
+        selfPID := a.selfPID
+        engine := a.engine
+        broadcasterPID := a.broadcasterPID
+
+        // --- Stop Actors ---
+        if paddleToStop != nil </span><span class="cov0" title="0">{
+                engine.Stop(paddleToStop)
+        }</span>
+        <span class="cov0" title="0">for _, pid := range ballsToStopPIDs </span><span class="cov0" title="0">{
+                engine.Stop(pid)
+        }</span>
+
+        // Tell broadcaster to remove the client
+        <span class="cov0" title="0">if broadcasterPID != nil </span><span class="cov0" title="0">{
+                engine.Send(broadcasterPID, RemoveClient{Conn: conn}, selfPID)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("GameActor %s: Player %d disconnected and cleaned up.\n", a.selfPID, playerIndex)
+
+        // --- Notify RoomManager if Empty ---
+        if roomIsEmpty </span><span class="cov0" title="0">{
+                fmt.Printf("GameActor %s: Last player disconnected. Room is empty. Notifying RoomManager %s.\n", a.selfPID, roomManagerPID)
+                if roomManagerPID != nil &amp;&amp; selfPID != nil </span><span class="cov0" title="0">{
+                        engine.Send(roomManagerPID, GameRoomEmpty{RoomPID: selfPID}, nil)
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("ERROR: GameActor %s cannot notify RoomManager, PID is nil. Stopping self.\n", a.selfPID)
+                        if selfPID != nil </span><span class="cov0" title="0">{
+                                engine.Stop(selfPID)
+                        }</span>
+                }
+        }
+}
+
+// handlePaddleDirection finds the player index from the connection and forwards.
+// Assumes called within the actor's message loop (no lock needed).
+func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websocket.Conn, directionData []byte) <span class="cov0" title="0">{
+        if wsConn == nil </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov0" title="0">playerIndex, playerFound := a.connToIndex[wsConn]
+        var pid *bollywood.PID
+
+        isValidPlayer := playerFound &amp;&amp;
+                playerIndex &gt;= 0 &amp;&amp;
+                playerIndex &lt; utils.MaxPlayers &amp;&amp;
+                a.players[playerIndex] != nil &amp;&amp;
+                a.players[playerIndex].IsConnected &amp;&amp;
+                a.players[playerIndex].Ws == wsConn
+
+        if isValidPlayer </span><span class="cov0" title="0">{
+                pid = a.paddleActors[playerIndex]
+        }</span>
+
+        <span class="cov0" title="0">if pid != nil </span><span class="cov0" title="0">{
+                a.engine.Send(pid, PaddleDirectionMessage{Direction: directionData}, ctx.Self())
+        }</span>
+}
+
+// handlePaddlePositionUpdate - No longer needed as GameActor queries state via Ask.
+// func (a *GameActor) handlePaddlePositionUpdate(ctx bollywood.Context, incomingPaddleState *Paddle) { ... }
+
+// handleBallPositionUpdate - No longer needed as GameActor queries state via Ask.
+// func (a *GameActor) handleBallPositionUpdate(ctx bollywood.Context, ballState *Ball) { ... }
+
+// spawnBall - Assumes called within the actor's message loop (no lock needed).
+func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expireIn time.Duration, isPermanent bool) <span class="cov0" title="0">{
+        ownerValidAndConnected := ownerIndex &gt;= 0 &amp;&amp; ownerIndex &lt; utils.MaxPlayers &amp;&amp; a.players[ownerIndex] != nil &amp;&amp; a.players[ownerIndex].IsConnected
+        ownerWs := (*websocket.Conn)(nil)
+        if ownerValidAndConnected </span><span class="cov0" title="0">{
+                ownerWs = a.players[ownerIndex].Ws // Still need WS for re-verification check
+        }</span>
+        <span class="cov0" title="0">cfg := a.cfg
+        selfPID := a.selfPID
+        engine := a.engine
+
+        if !ownerValidAndConnected </span><span class="cov0" title="0">{
+                fmt.Printf("GameActor %s: Cannot spawn ball for invalid or disconnected owner index %d\n", a.selfPID, ownerIndex)
+                return
+        }</span>
+
+        <span class="cov0" title="0">if selfPID == nil || engine == nil </span><span class="cov0" title="0">{
+                fmt.Printf("ERROR: GameActor %s cannot spawn ball, self PID or engine is nil.\n", a.selfPID)
+                return
+        }</span>
+
+        <span class="cov0" title="0">ballID := time.Now().Nanosecond() + ownerIndex + rand.Intn(1000)
+        ballData := NewBall(cfg, x, y, ownerIndex, ballID, isPermanent)
+
+        ballProducer := NewBallActorProducer(*ballData, selfPID, cfg)
+        ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
+        if ballPID == nil </span><span class="cov0" title="0">{
+                fmt.Printf("ERROR: GameActor %s failed to spawn BallActor for player %d, ball %d\n", a.selfPID, ownerIndex, ballID)
+                return
+        }</span>
+
+        // Re-verify owner is still connected with the *same* websocket connection before adding
+        // This check still needs to happen even within the actor loop, as the disconnect message
+        // might be processed between the start of this handler and now.
+        <span class="cov0" title="0">if pInfo := a.players[ownerIndex]; pInfo != nil &amp;&amp; pInfo.IsConnected &amp;&amp; pInfo.Ws == ownerWs </span><span class="cov0" title="0">{
+                a.balls[ballID] = ballData
+                a.ballActors[ballID] = ballPID
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Printf("GameActor %s: Owner %d disconnected/changed before ball %d could be added. Stopping spawned actor %s.\n", a.selfPID, ownerIndex, ballID, ballPID)
+                engine.Stop(ballPID)
+                return
+        }</span>
+
+        <span class="cov0" title="0">if !isPermanent &amp;&amp; expireIn &gt; 0 </span><span class="cov0" title="0">{
+                randomOffset := time.Duration(rand.Intn(4000)-2000) * time.Millisecond
+                actualExpireIn := expireIn + randomOffset
+                if actualExpireIn &lt;= 0 </span><span class="cov0" title="0">{
+                        actualExpireIn = 500 * time.Millisecond
+                }</span>
+
+                <span class="cov0" title="0">time.AfterFunc(actualExpireIn, func() </span><span class="cov0" title="0">{
+                        currentSelfPID := a.selfPID
+                        currentEngine := a.engine
+                        if currentEngine != nil &amp;&amp; currentSelfPID != nil </span><span class="cov0" title="0">{
+                                currentEngine.Send(currentSelfPID, DestroyExpiredBall{BallID: ballID}, nil)
+                        }</span> else<span class="cov0" title="0"> {
+                                fmt.Printf("ERROR: Cannot send DestroyExpiredBall for %d, engine/selfPID invalid in timer.\n", ballID)
+                        }</span>
+                })
+        }
+}
+
+// handleDestroyExpiredBall - Assumes called within the actor's message loop (no lock needed).
+func (a *GameActor) handleDestroyExpiredBall(ctx bollywood.Context, ballID int) <span class="cov0" title="0">{
+        pidToStop, actorExists := a.ballActors[ballID]
+        ballState, stateExists := a.balls[ballID]
+
+        if stateExists &amp;&amp; ballState.IsPermanent </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov0" title="0">if actorExists &amp;&amp; stateExists &amp;&amp; pidToStop != nil </span><span class="cov0" title="0">{
+                delete(a.balls, ballID)
+                delete(a.ballActors, ballID)
+                engine := a.engine
+                if engine != nil </span><span class="cov0" title="0">{
+                        engine.Stop(pidToStop)
+                }</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">// File: game/game_actor_physics.go
+package game
+
+import (
+        "errors" // Import errors
+        "fmt"
+        "math"
+        "math/rand"
+        "strings"
+        "sync" // Import atomic
+        "time"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/utils"
+)
+
+// AskTimeout defines how long GameActor waits for a response from child actors.
+const AskTimeout = 5 * time.Millisecond // Short timeout for position queries
+
+// detectCollisions checks for and handles collisions. Queries child state first using Ask.
+// Assumes called within the actor's message loop (no lock needed for main state).
+func (a *GameActor) detectCollisions(ctx bollywood.Context) <span class="cov0" title="0">{
+        currentEngine := a.engine
+        if currentEngine == nil </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        // --- 1. Get PIDs of active children ---
+        // No lock needed - reading actor state within actor loop
+        <span class="cov0" title="0">paddlePIDs := make(map[int]*bollywood.PID)
+        ballPIDs := make(map[int]*bollywood.PID)
+        for i, pid := range a.paddleActors </span><span class="cov0" title="0">{
+                if i &gt;= 0 &amp;&amp; i &lt; len(a.players) &amp;&amp; a.players[i] != nil &amp;&amp; a.players[i].IsConnected &amp;&amp; pid != nil </span><span class="cov0" title="0">{
+                        paddlePIDs[i] = pid
+                }</span>
+        }
+        <span class="cov0" title="0">for id, pid := range a.ballActors </span><span class="cov0" title="0">{
+                if pid != nil </span><span class="cov0" title="0">{
+                        ballPIDs[id] = pid
+                }</span>
+        }
+
+        // --- 2. Query current state from all children using Ask ---
+        <span class="cov0" title="0">var wg sync.WaitGroup
+        positionResponses := sync.Map{} // Stores PositionResponse keyed by "paddle-idx" or "ball-id"
+        queryErrors := sync.Map{}       // Stores errors keyed by PID string
+
+        // Query Paddles
+        for index, pid := range paddlePIDs </span><span class="cov0" title="0">{
+                wg.Add(1)
+                go func(idx int, targetPID *bollywood.PID) </span><span class="cov0" title="0">{
+                        defer wg.Done()
+                        reply, err := currentEngine.Ask(targetPID, GetPositionRequest{}, AskTimeout)
+                        if err != nil </span><span class="cov0" title="0">{
+                                if !errors.Is(err, bollywood.ErrTimeout) &amp;&amp; !strings.Contains(err.Error(), "not found") </span><span class="cov0" title="0">{
+                                        queryErrors.Store(targetPID.String(), err)
+                                }</span>
+                                <span class="cov0" title="0">return</span>
+                        }
+                        <span class="cov0" title="0">if resp, ok := reply.(PositionResponse); ok </span><span class="cov0" title="0">{
+                                positionResponses.Store(fmt.Sprintf("paddle-%d", idx), resp)
+                        }</span> else<span class="cov0" title="0"> {
+                                queryErrors.Store(targetPID.String(), fmt.Errorf("unexpected reply type: %T", reply))
+                        }</span>
+                }(index, pid)
+        }
+
+        // Query Balls
+        <span class="cov0" title="0">for id, pid := range ballPIDs </span><span class="cov0" title="0">{
+                wg.Add(1)
+                go func(ballID int, targetPID *bollywood.PID) </span><span class="cov0" title="0">{
+                        defer wg.Done()
+                        reply, err := currentEngine.Ask(targetPID, GetPositionRequest{}, AskTimeout)
+                        if err != nil </span><span class="cov0" title="0">{
+                                if !errors.Is(err, bollywood.ErrTimeout) &amp;&amp; !strings.Contains(err.Error(), "not found") </span><span class="cov0" title="0">{
+                                        queryErrors.Store(targetPID.String(), err)
+                                }</span>
+                                <span class="cov0" title="0">return</span>
+                        }
+                        <span class="cov0" title="0">if resp, ok := reply.(PositionResponse); ok </span><span class="cov0" title="0">{
+                                positionResponses.Store(fmt.Sprintf("ball-%d", ballID), resp)
+                        }</span> else<span class="cov0" title="0"> {
+                                queryErrors.Store(targetPID.String(), fmt.Errorf("unexpected reply type: %T", reply))
+                        }</span>
+                }(id, pid)
+        }
+
+        <span class="cov0" title="0">wg.Wait() // Wait for all queries to complete or timeout
+
+        queryErrors.Range(func(key, value interface{}) bool </span><span class="cov0" title="0">{
+                fmt.Printf("WARN: GameActor %s: Error querying child %s: %v\n", a.selfPID, key.(string), value.(error))
+                return true
+        }</span>)
+
+        // --- 3. Update GameActor's internal state cache based on successful responses ---
+        // No lock needed - modifying actor state within actor loop
+        <span class="cov0" title="0">activeBalls := make(map[int]*Ball)
+        activePaddles := make(map[int]*Paddle)
+
+        positionResponses.Range(func(key, value interface{}) bool </span><span class="cov0" title="0">{
+                keyStr := key.(string)
+                resp := value.(PositionResponse)
+
+                if strings.HasPrefix(keyStr, "ball-") </span><span class="cov0" title="0">{
+                        var ballID int
+                        fmt.Sscanf(keyStr, "ball-%d", &amp;ballID)
+                        if ball, ok := a.balls[ballID]; ok &amp;&amp; ball != nil </span><span class="cov0" title="0">{
+                                ball.X, ball.Y, ball.Vx, ball.Vy = resp.X, resp.Y, resp.Vx, resp.Vy
+                                ball.Radius, ball.Phasing = resp.Radius, resp.Phasing
+                                activeBalls[ballID] = ball
+                        }</span>
+                } else<span class="cov0" title="0"> if strings.HasPrefix(keyStr, "paddle-") </span><span class="cov0" title="0">{
+                        var paddleIndex int
+                        fmt.Sscanf(keyStr, "paddle-%d", &amp;paddleIndex)
+                        if paddleIndex &gt;= 0 &amp;&amp; paddleIndex &lt; len(a.paddles) &amp;&amp; a.paddles[paddleIndex] != nil </span><span class="cov0" title="0">{
+                                paddle := a.paddles[paddleIndex]
+                                if paddleIndex &gt;= 0 &amp;&amp; paddleIndex &lt; len(a.players) &amp;&amp; a.players[paddleIndex] != nil &amp;&amp; a.players[paddleIndex].IsConnected </span><span class="cov0" title="0">{
+                                        paddle.X, paddle.Y, paddle.Vx, paddle.Vy = resp.X, resp.Y, resp.Vx, resp.Vy
+                                        paddle.Width, paddle.Height, paddle.IsMoving = resp.Width, resp.Height, resp.IsMoving
+                                        activePaddles[paddleIndex] = paddle
+                                }</span>
+                        }
+                }
+                <span class="cov0" title="0">return true</span>
+        })
+
+        // --- 4. Perform Collision Detection using updated state ---
+        // No lock needed - modifying actor state within actor loop
+        <span class="cov0" title="0">cellSize := a.cfg.CellSize
+        canvasSize := a.cfg.CanvasSize
+        ballsToRemove := []int{}
+        powerUpsToTrigger := []Ball{}
+
+        for ballID, ball := range activeBalls </span><span class="cov0" title="0">{
+                ballActorPID, pidExists := a.ballActors[ballID]
+                if !pidExists || ballActorPID == nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">shouldPhase := false
+                reflectedX := false
+                reflectedY := false
+
+                // 4.1 Wall Collisions
+                hitWall := -1
+                if ball.X+ball.Radius &gt;= canvasSize </span><span class="cov0" title="0">{
+                        hitWall = 0
+                }</span> else<span class="cov0" title="0"> if ball.Y-ball.Radius &lt;= 0 </span><span class="cov0" title="0">{
+                        hitWall = 1
+                }</span> else<span class="cov0" title="0"> if ball.X-ball.Radius &lt;= 0 </span><span class="cov0" title="0">{
+                        hitWall = 2
+                }</span> else<span class="cov0" title="0"> if ball.Y+ball.Radius &gt;= canvasSize </span><span class="cov0" title="0">{
+                        hitWall = 3
+                }</span>
+
+                <span class="cov0" title="0">if hitWall != -1 </span><span class="cov0" title="0">{
+                        axisToReflect := ""
+                        if hitWall == 0 || hitWall == 2 </span><span class="cov0" title="0">{
+                                if !reflectedX </span><span class="cov0" title="0">{
+                                        axisToReflect = "X"
+                                        reflectedX = true
+                                }</span>
+                        } else<span class="cov0" title="0"> {
+                                if !reflectedY </span><span class="cov0" title="0">{
+                                        axisToReflect = "Y"
+                                        reflectedY = true
+                                }</span>
+                        }
+
+                        <span class="cov0" title="0">concederIndex := hitWall
+                        if concederIndex &gt;= 0 &amp;&amp; concederIndex &lt; len(a.players) &amp;&amp; a.players[concederIndex] != nil &amp;&amp; a.players[concederIndex].IsConnected </span><span class="cov0" title="0">{
+                                pInfo := a.players[concederIndex]
+                                if axisToReflect != "" </span><span class="cov0" title="0">{
+                                        currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: axisToReflect}, nil)
+                                }</span>
+                                <span class="cov0" title="0">shouldPhase = true
+                                scorerIndex := ball.OwnerIndex
+                                if scorerIndex &gt;= 0 &amp;&amp; scorerIndex &lt; len(a.players) &amp;&amp; a.players[scorerIndex] != nil &amp;&amp; a.players[scorerIndex].IsConnected &amp;&amp; scorerIndex != concederIndex </span><span class="cov0" title="0">{
+                                        scInfo := a.players[scorerIndex]
+                                        scInfo.Score.Add(1)
+                                        pInfo.Score.Add(-1)
+                                }</span> else<span class="cov0" title="0"> if scorerIndex == -1 </span><span class="cov0" title="0">{
+                                        pInfo.Score.Add(-1)
+                                }</span>
+                        } else<span class="cov0" title="0"> {
+                                if ball.IsPermanent </span><span class="cov0" title="0">{
+                                        if axisToReflect != "" </span><span class="cov0" title="0">{
+                                                currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: axisToReflect}, nil)
+                                        }</span>
+                                        <span class="cov0" title="0">shouldPhase = true</span>
+                                } else<span class="cov0" title="0"> {
+                                        ballsToRemove = append(ballsToRemove, ballID)
+                                        continue</span>
+                                }
+                        }
+                }
+
+                // 4.2 Paddle Collisions
+                <span class="cov0" title="0">for paddleIndex, paddle := range activePaddles </span><span class="cov0" title="0">{
+                        if paddle == nil </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+                        <span class="cov0" title="0">if !(paddleIndex &gt;= 0 &amp;&amp; paddleIndex &lt; len(a.players) &amp;&amp; a.players[paddleIndex] != nil &amp;&amp; a.players[paddleIndex].IsConnected) </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+
+                        <span class="cov0" title="0">if !ball.Phasing &amp;&amp; ball.BallInterceptPaddles(paddle) </span><span class="cov0" title="0">{
+                                vInX := float64(ball.Vx)
+                                vInY := float64(ball.Vy)
+                                speed := math.Sqrt(vInX*vInX + vInY*vInY)
+                                if speed &lt; float64(a.cfg.MinBallVelocity) </span><span class="cov0" title="0">{
+                                        speed = float64(a.cfg.MinBallVelocity)
+                                }</span>
+                                <span class="cov0" title="0">paddleCenterX := float64(paddle.X + paddle.Width/2)
+                                paddleCenterY := float64(paddle.Y + paddle.Height/2)
+                                hitOffsetX := float64(ball.X) - paddleCenterX
+                                hitOffsetY := float64(ball.Y) - paddleCenterY
+                                normOffset := 0.0
+                                if paddle.Index%2 == 0 </span><span class="cov0" title="0">{
+                                        if paddle.Height &gt; 0 </span><span class="cov0" title="0">{
+                                                normOffset = hitOffsetY / (float64(paddle.Height) / 2.0)
+                                        }</span>
+                                } else<span class="cov0" title="0"> {
+                                        if paddle.Width &gt; 0 </span><span class="cov0" title="0">{
+                                                normOffset = hitOffsetX / (float64(paddle.Width) / 2.0)
+                                        }</span>
+                                }
+                                <span class="cov0" title="0">normOffset = math.Max(-1.0, math.Min(1.0, normOffset))
+
+                                vBaseX := vInX
+                                vBaseY := vInY
+                                if paddle.Index%2 == 0 </span><span class="cov0" title="0">{
+                                        if !reflectedX </span><span class="cov0" title="0">{
+                                                vBaseX = -vInX
+                                                reflectedX = true
+                                        }</span>
+                                } else<span class="cov0" title="0"> {
+                                        if !reflectedY </span><span class="cov0" title="0">{
+                                                vBaseY = -vInY
+                                                reflectedY = true
+                                        }</span>
+                                }
+
+                                <span class="cov0" title="0">maxAngleDeflection := math.Pi / a.cfg.BallHitPaddleAngleFactor
+                                maxComponentChange := speed * math.Sin(maxAngleDeflection)
+
+                                vFinalX := vBaseX
+                                vFinalY := vBaseY
+                                if paddle.Index%2 == 0 </span><span class="cov0" title="0">{
+                                        vFinalY = vBaseY + normOffset*maxComponentChange
+                                }</span> else<span class="cov0" title="0"> {
+                                        vFinalX = vBaseX + normOffset*maxComponentChange
+                                }</span>
+
+                                <span class="cov0" title="0">finalDirLen := math.Sqrt(vFinalX*vFinalX + vFinalY*vFinalY)
+                                if finalDirLen &gt; 0 </span><span class="cov0" title="0">{
+                                        vFinalX /= finalDirLen
+                                        vFinalY /= finalDirLen
+                                }</span> else<span class="cov0" title="0"> {
+                                        vFinalX, vFinalY = failsafeDirection(paddle.Index, hitOffsetX, hitOffsetY)
+                                }</span>
+
+                                <span class="cov0" title="0">paddleVelAlongHit := float64(paddle.Vx)*vFinalX + float64(paddle.Vy)*vFinalY
+                                targetSpeed := speed + (paddleVelAlongHit * a.cfg.BallHitPaddleSpeedFactor)
+                                minSpeedAfterHit := float64(a.cfg.MinBallVelocity)
+                                if targetSpeed &lt; minSpeedAfterHit </span><span class="cov0" title="0">{
+                                        targetSpeed = minSpeedAfterHit
+                                }</span>
+
+                                <span class="cov0" title="0">vFinalX *= targetSpeed
+                                vFinalY *= targetSpeed
+
+                                finalVxInt, finalVyInt := ensureNonZeroIntVelocity(vFinalX, vFinalY)
+
+                                currentEngine.Send(ballActorPID, SetVelocityCommand{Vx: finalVxInt, Vy: finalVyInt}, nil)
+                                ball.OwnerIndex = paddleIndex
+                                shouldPhase = true
+                                goto nextBall</span>
+                        }
+                }
+
+                // 4.3 Brick Collisions
+                <span class="cov0" title="0">if !ball.Phasing </span><span class="cov0" title="0">{
+                        collidedCells := a.findCollidingCells(ball, cellSize)
+                        for _, cellPos := range collidedCells </span><span class="cov0" title="0">{
+                                col, row := cellPos[0], cellPos[1]
+                                if col &lt; 0 || col &gt;= a.cfg.GridSize || row &lt; 0 || row &gt;= a.cfg.GridSize </span><span class="cov0" title="0">{
+                                        continue</span>
+                                }
+                                <span class="cov0" title="0">cell := &amp;a.canvas.Grid[col][row] // Modify grid directly
+
+                                if cell.Data.Type == utils.Cells.Brick </span><span class="cov0" title="0">{
+                                        brickLevel := cell.Data.Level
+                                        cell.Data.Life--
+
+                                        dx := float64(ball.X - (col*cellSize + cellSize/2))
+                                        dy := float64(ball.Y - (row*cellSize + cellSize/2))
+
+                                        if math.Abs(dx) &gt; math.Abs(dy) </span><span class="cov0" title="0">{
+                                                if !reflectedX </span><span class="cov0" title="0">{
+                                                        currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: "X"}, nil)
+                                                        reflectedX = true
+                                                }</span>
+                                        } else<span class="cov0" title="0"> {
+                                                if !reflectedY </span><span class="cov0" title="0">{
+                                                        currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: "Y"}, nil)
+                                                        reflectedY = true
+                                                }</span>
+                                        }
+
+                                        <span class="cov0" title="0">if cell.Data.Life &lt;= 0 </span><span class="cov0" title="0">{
+                                                cell.Data.Type = utils.Cells.Empty
+                                                cell.Data.Level = 0
+
+                                                scorerIndex := ball.OwnerIndex
+                                                if scorerIndex &gt;= 0 &amp;&amp; scorerIndex &lt; len(a.players) &amp;&amp; a.players[scorerIndex] != nil &amp;&amp; a.players[scorerIndex].IsConnected </span><span class="cov0" title="0">{
+                                                        scInfo := a.players[scorerIndex]
+                                                        scInfo.Score.Add(int32(brickLevel))
+                                                }</span>
+
+                                                <span class="cov0" title="0">if rand.Float64() &lt; a.cfg.PowerUpChance </span><span class="cov0" title="0">{
+                                                        ballStateCopy := *ball
+                                                        powerUpsToTrigger = append(powerUpsToTrigger, ballStateCopy)
+                                                }</span>
+                                        }
+                                        <span class="cov0" title="0">shouldPhase = true
+                                        goto nextBall</span>
+                                }
+                        }
+                }
+
+        nextBall:
+                <span class="cov0" title="0">if shouldPhase </span><span class="cov0" title="0">{
+                        currentEngine.Send(ballActorPID, SetPhasingCommand{}, nil)
+                }</span>
+        } // End ball loop
+
+        // --- 5. Handle Ball Removals and Power-ups ---
+        <span class="cov0" title="0">pidsToStop := make([]*bollywood.PID, 0, len(ballsToRemove))
+        if len(ballsToRemove) &gt; 0 </span><span class="cov0" title="0">{
+                for _, ballID := range ballsToRemove </span><span class="cov0" title="0">{
+                        if pid, ok := a.ballActors[ballID]; ok &amp;&amp; pid != nil </span><span class="cov0" title="0">{
+                                pidsToStop = append(pidsToStop, pid)
+                        }</span>
+                        <span class="cov0" title="0">delete(a.balls, ballID)
+                        delete(a.ballActors, ballID)</span>
+                }
+        }
+        <span class="cov0" title="0">for _, ballState := range powerUpsToTrigger </span><span class="cov0" title="0">{
+                a.triggerRandomPowerUp(ctx, &amp;ballState)
+        }</span>
+
+        // --- 6. Stop Removed Ball Actors (outside the main state modification section) ---
+        <span class="cov0" title="0">if len(pidsToStop) &gt; 0 </span><span class="cov0" title="0">{
+                for _, pid := range pidsToStop </span><span class="cov0" title="0">{
+                        currentEngine.Stop(pid)
+                }</span>
+        }
+}
+
+// findCollidingCells remains the same.
+func (a *GameActor) findCollidingCells(ball *Ball, cellSize int) [][2]int <span class="cov0" title="0">{
+        collided := [][2]int{}
+        gridSize := a.cfg.GridSize
+        if cellSize &lt;= 0 || gridSize &lt;= 0 || ball == nil </span><span class="cov0" title="0">{
+                return collided
+        }</span>
+        <span class="cov0" title="0">minCol := (ball.X - ball.Radius) / cellSize
+        maxCol := (ball.X + ball.Radius) / cellSize
+        minRow := (ball.Y - ball.Radius) / cellSize
+        maxRow := (ball.Y + ball.Radius) / cellSize
+        minCol = utils.MaxInt(0, minCol)
+        maxCol = utils.MinInt(gridSize-1, maxCol)
+        minRow = utils.MaxInt(0, minRow)
+        maxRow = utils.MinInt(gridSize-1, maxRow)
+        for c := minCol; c &lt;= maxCol; c++ </span><span class="cov0" title="0">{
+                for r := minRow; r &lt;= maxRow; r++ </span><span class="cov0" title="0">{
+                        if ball.InterceptsIndex(c, r, cellSize) </span><span class="cov0" title="0">{
+                                collided = append(collided, [2]int{c, r})
+                        }</span>
+                }
+        }
+        <span class="cov0" title="0">return collided</span>
+}
+
+// triggerRandomPowerUp remains the same.
+// Assumes called within the actor's message loop.
+func (a *GameActor) triggerRandomPowerUp(ctx bollywood.Context, ball *Ball) <span class="cov0" title="0">{
+        if ball == nil || a.engine == nil || a.selfPID == nil </span><span class="cov0" title="0">{
+                return
+        }</span>
+        <span class="cov0" title="0">powerUpType := rand.Intn(3)
+        ballActorPID, actorExists := a.ballActors[ball.Id]
+        _, stateExists := a.balls[ball.Id]
+        if !actorExists || !stateExists || ballActorPID == nil </span><span class="cov0" title="0">{
+                return
+        }</span>
+        <span class="cov0" title="0">ownerIndex := ball.OwnerIndex
+        ownerValid := false
+        if ownerIndex &gt;= 0 &amp;&amp; ownerIndex &lt; len(a.players) &amp;&amp; a.players[ownerIndex] != nil &amp;&amp; a.players[ownerIndex].IsConnected </span><span class="cov0" title="0">{
+                ownerValid = true
+        }</span>
+
+        <span class="cov0" title="0">switch powerUpType </span>{
+        case 0:<span class="cov0" title="0"> // SpawnBall
+                if ownerValid </span><span class="cov0" title="0">{
+                        a.engine.Send(a.selfPID, SpawnBallCommand{
+                                OwnerIndex: ownerIndex, X: ball.X, Y: ball.Y,
+                                ExpireIn: a.cfg.PowerUpSpawnBallExpiry, IsPermanent: false,
+                        }, nil)
+                }</span>
+        case 1:<span class="cov0" title="0"> // IncreaseMass
+                a.engine.Send(ballActorPID, IncreaseMassCommand{Additional: a.cfg.PowerUpIncreaseMassAdd}, nil)</span>
+        case 2:<span class="cov0" title="0"> // IncreaseVelocity
+                a.engine.Send(ballActorPID, IncreaseVelocityCommand{Ratio: a.cfg.PowerUpIncreaseVelRatio}, nil)</span>
+        }
+}
+
+// failsafeDirection remains the same.
+func failsafeDirection(paddleIndex int, hitOffsetX, hitOffsetY float64) (float64, float64) <span class="cov0" title="0">{
+        vFinalX := -hitOffsetX
+        vFinalY := -hitOffsetY
+        failsafeLen := math.Sqrt(vFinalX*vFinalX + vFinalY*vFinalY)
+        if failsafeLen &gt; 0 </span><span class="cov0" title="0">{
+                vFinalX /= failsafeLen
+                vFinalY /= failsafeLen
+        }</span> else<span class="cov0" title="0"> {
+                vFinalX, vFinalY = 0, 0
+                switch paddleIndex </span>{
+                case 0:<span class="cov0" title="0">
+                        vFinalX = -1</span>
+                case 1:<span class="cov0" title="0">
+                        vFinalY = 1</span>
+                case 2:<span class="cov0" title="0">
+                        vFinalX = 1</span>
+                case 3:<span class="cov0" title="0">
+                        vFinalY = -1</span>
+                }
+        }
+        <span class="cov0" title="0">return vFinalX, vFinalY</span>
+}
+
+// ensureNonZeroIntVelocity remains the same.
+func ensureNonZeroIntVelocity(vxFloat, vyFloat float64) (int, int) <span class="cov0" title="0">{
+        vxInt := int(vxFloat)
+        vyInt := int(vyFloat)
+        if vxInt == 0 &amp;&amp; vxFloat != 0 </span><span class="cov0" title="0">{
+                vxInt = int(math.Copysign(1.0, vxFloat))
+        }</span>
+        <span class="cov0" title="0">if vyInt == 0 &amp;&amp; vyFloat != 0 </span><span class="cov0" title="0">{
+                vyInt = int(math.Copysign(1.0, vyFloat))
+        }</span>
+        <span class="cov0" title="0">if vxInt == 0 &amp;&amp; vyInt == 0 &amp;&amp; (vxFloat != 0 || vyFloat != 0) </span><span class="cov0" title="0">{
+                if math.Abs(vxFloat) &gt; math.Abs(vyFloat) </span><span class="cov0" title="0">{
+                        vxInt = int(math.Copysign(1.0, vxFloat))
+                        vyInt = 0
+                }</span> else<span class="cov0" title="0"> if math.Abs(vyFloat) &gt; math.Abs(vxFloat) </span><span class="cov0" title="0">{
+                        vxInt = 0
+                        vyInt = int(math.Copysign(1.0, vyFloat))
+                }</span> else<span class="cov0" title="0"> {
+                        vxInt = int(math.Copysign(1.0, vxFloat))
+                        vyInt = int(math.Copysign(1.0, vyFloat))
+                }</span>
+                <span class="cov0" title="0">if vxInt == 0 &amp;&amp; vyInt == 0 </span><span class="cov0" title="0">{
+                        vxInt = 1
+                }</span>
+        }
+        <span class="cov0" title="0">return vxInt, vyInt</span>
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">// File: game/grid.go
+package game
+
+import (
+        "github.com/lguibr/pongo/utils"
+)
+
+type Grid [][]Cell
+
+func (grid Grid) LineIntersectedCellIndices(cellSize int, line [2][2]int) [][2]int <span class="cov6" title="3804">{
+        var intersects [][2]int
+        for i := range grid </span><span class="cov8" title="74008">{
+                for j := range grid[i] </span><span class="cov10" title="1820016">{
+                        if line[0][0] &lt;= i &amp;&amp; i &lt;= line[1][0] &amp;&amp; line[0][1] &lt;= j &amp;&amp; j &lt;= line[1][1] </span><span class="cov6" title="6332">{
+                                intersects = append(intersects, [2]int{i, j})
+                        }</span>
+                }
+        }
+        <span class="cov6" title="3804">return intersects</span>
+}
+
+func NewGrid(gridSize int) Grid <span class="cov4" title="413">{
+        grid := make(Grid, gridSize)
+        for i := range grid </span><span class="cov5" title="2081">{
+                grid[i] = make([]Cell, gridSize)
+        }</span>
+
+        <span class="cov4" title="413">for i, row := range grid </span><span class="cov5" title="2081">{
+                for j := range row </span><span class="cov6" title="10689">{
+                        data := &amp;BrickData{Type: utils.Cells.Empty, Life: 0}
+                        grid[i][j] = Cell{X: i, Y: j, Data: data}
+                }</span>
+        }
+        <span class="cov4" title="413">return grid</span>
+}
+
+func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) <span class="cov5" title="700">{
+        vectorZero := [2]int{0, 0}
+        randomVectors := utils.NewRandomPositiveVectors(numberOfVectors, maxVectorSize)
+
+        randomLines := [][2][2]int{}
+        for _, vector := range randomVectors </span><span class="cov6" title="3800">{
+                randomLines = append(randomLines, [2][2]int{vectorZero, vector})
+        }</span>
+
+        <span class="cov5" title="700">indexes := [][2]int{}
+        for _, line := range randomLines </span><span class="cov6" title="3800">{
+                indexes = append(indexes, grid.LineIntersectedCellIndices(utils.CellSize, line)...)
+        }</span>
+
+        <span class="cov5" title="700">for _, index := range indexes </span><span class="cov6" title="6323">{
+                if grid[index[0]][index[1]].Data.Type == utils.Cells.Brick </span><span class="cov6" title="4654">{
+                        grid[index[0]][index[1]].Data.Life = grid[index[0]][index[1]].Data.Life + 1
+                        continue</span>
+                }
+
+                <span class="cov5" title="1669">grid[index[0]][index[1]] = Cell{
+                        X: index[0],
+                        Y: index[1],
+                        Data: &amp;BrickData{
+                                Type: utils.Cells.Brick,
+                                Life: 1,
+                        },
+                }</span>
+
+        }
+
+}
+
+func (grid Grid) FillGridWithQuarterGrids(q1, q2, q3, q4 Grid) <span class="cov3" title="101">{
+        if len(q1) != len(q2) || len(q1) != len(q3) || len(q1) != len(q4) || len(q1) == 0 </span><span class="cov0" title="0">{
+                panic("Grids must be of the same size")</span>
+        }
+        <span class="cov3" title="101">if len(grid) != 2*len(q1) || len(grid) == 0 </span><span class="cov0" title="0">{
+                panic("Grid must be twice the size of the quarter grids")</span>
+        }
+
+        <span class="cov3" title="101">n := len(grid)
+        m := len(grid[0])
+
+        for i := 0; i &lt; n/2; i++ </span><span class="cov4" title="501">{
+                for j := 0; j &lt; m/2; j++ </span><span class="cov5" title="2501">{
+                        // Filling quarter one of the grid
+                        grid[i][j] = q1[i][j]
+                        grid[i][j].X = i // Fixing the X value
+                        grid[i][j].Y = j // Fixing the Y value
+                        // Filling quarter two of the grid
+                        grid[i][m-1-j] = q2[i][j]
+                        grid[i][m-1-j].X = i
+                        grid[i][m-1-j].Y = m - 1 - j
+                        // Filling quarter three of the grid
+                        grid[n-1-i][j] = q3[i][j]
+                        grid[n-1-i][j].X = n - 1 - i
+                        grid[n-1-i][j].Y = j
+                        // Filling quarter four of the grid
+                        grid[n-1-i][m-1-j] = q4[i][j]
+                        grid[n-1-i][m-1-j].X = n - 1 - i
+                        grid[n-1-i][m-1-j].Y = m - 1 - j
+
+                }</span>
+        }
+}
+
+func (grid Grid) Rotate() Grid <span class="cov5" title="803">{
+        result := make([][]Cell, len(grid[0]))
+        for i := range result </span><span class="cov6" title="4006">{
+                result[i] = make([]Cell, len(grid))
+        }</span>
+        <span class="cov5" title="803">for i, row := range grid </span><span class="cov6" title="4006">{
+                for j, cell := range row </span><span class="cov7" title="20014">{
+                        result[j][len(grid)-i-1] = cell
+                }</span>
+        }
+        <span class="cov5" title="803">return result</span>
+}
+
+func (grid Grid) RandomWalker(numberOfSteps int) <span class="cov5" title="803">{
+        gridSize := len(grid)
+        startPoint := [2]int{gridSize / 2, gridSize / 2}
+        grid[startPoint[0]][startPoint[1]].Data.Type = utils.Cells.Brick
+        grid[startPoint[0]][startPoint[1]].Data.Life = 1
+        var getNextPoint func(currentPoint [2]int) [2]int
+        getNextPoint = func(currentPoint [2]int) [2]int </span><span class="cov5" title="1907">{
+
+                nextPoint := [2]int{currentPoint[0] + utils.RandomNumber(2), currentPoint[1] + utils.RandomNumber(2)}
+                if nextPoint[0] &lt; 0 || nextPoint[0] &gt; gridSize || nextPoint[1] &lt; 0 || nextPoint[1] &gt; gridSize </span><span class="cov0" title="0">{
+                        return getNextPoint(currentPoint)
+                }</span>
+                <span class="cov5" title="1907">return nextPoint</span>
+        }
+
+        <span class="cov5" title="803">stepsResting := numberOfSteps - 1
+        for i := 0; i &lt; stepsResting; i++ </span><span class="cov5" title="1907">{
+                nextPoint := getNextPoint(startPoint)
+                nextCell := grid[nextPoint[0]][nextPoint[1]]
+                if nextCell.Data.Type == utils.Cells.Brick </span><span class="cov5" title="1195">{
+                        nextCell.Data.Life++
+                }</span> else<span class="cov5" title="712"> {
+                        nextCell.Data.Type = utils.Cells.Brick
+                        nextCell.Data.Life = 1
+                }</span>
+        }
+}
+
+func (grid Grid) Compare(comparedGrid Grid) bool <span class="cov2" title="13">{
+        if len(grid) != len(comparedGrid) </span><span class="cov1" title="3">{
+                return false
+        }</span>
+        <span class="cov2" title="10">for i := range grid </span><span class="cov2" title="12">{
+                if len(grid[i]) != len(comparedGrid[i]) </span><span class="cov1" title="1">{
+                        return false
+                }</span>
+                <span class="cov2" title="11">for j := range grid[i] </span><span class="cov2" title="23">{
+                        match := grid[i][j].Compare(comparedGrid[i][j])
+                        if !match </span><span class="cov1" title="1">{
+                                return false
+                        }</span>
+                }
+        }
+        <span class="cov2" title="8">return true</span>
+}
+
+func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps int) <span class="cov3" title="100">{
+        if numberOfVectors == 0 </span><span class="cov0" title="0">{
+                numberOfVectors = utils.NumberOfVectors
+        }</span>
+        <span class="cov3" title="100">if maxVectorSize == 0 </span><span class="cov0" title="0">{
+                maxVectorSize = utils.MaxVectorSize
+        }</span>
+        <span class="cov3" title="100">if randomWalkers == 0 </span><span class="cov0" title="0">{
+                randomWalkers = utils.NumberOfRandomWalkers
+        }</span>
+        <span class="cov3" title="100">if randomSteps == 0 </span><span class="cov0" title="0">{
+                randomSteps = utils.NumberOfRandomSteps
+        }</span>
+
+        <span class="cov3" title="100">gridSize := len(grid)
+        halfGridSize := gridSize / 2
+        quarters := [4]Grid{}
+
+        for i := 0; i &lt; 4; i++ </span><span class="cov4" title="400">{
+                gridSeed := NewGrid(halfGridSize)
+                gridSeed.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)
+                for j := 0; j &lt; randomWalkers; j++ </span><span class="cov5" title="800">{
+                        gridSeed.RandomWalker(randomSteps)
+                }</span>
+                <span class="cov4" title="400">quarters[i] = gridSeed.Rotate().Rotate()</span>
+        }
+
+        <span class="cov3" title="100">grid.FillGridWithQuarterGrids(
+                quarters[0],
+                quarters[1],
+                quarters[2],
+                quarters[3],
+        )</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">// File: game/paddle.go
+package game
+
+import (
+        "fmt"
+
+        "github.com/lguibr/pongo/utils"
+)
+
+// --- Message Types for Paddle Communication ---
+
+// PaddlePositionMessage signals the paddle's current state (sent by PaddleActor).
+type PaddlePositionMessage struct {
+        Paddle *Paddle // Pointer to a state snapshot
+}
+
+// Direction struct for unmarshalling JSON from frontend
+type Direction struct {
+        Direction string `json:"direction"` // "ArrowLeft", "ArrowRight", "Stop"
+}
+
+// --- Paddle Struct (State Holder) ---
+
+type Paddle struct {
+        X          int    `json:"x"`
+        Y          int    `json:"y"`
+        Width      int    `json:"width"`
+        Height     int    `json:"height"`
+        Index      int    `json:"index"`     // Player index (0-3)
+        Direction  string `json:"direction"` // Internal: "left", "right", or "" (stop)
+        Velocity   int    `json:"-"`         // Base velocity from config, not marshalled
+        Vx         int    `json:"vx"`        // Current horizontal velocity (for physics)
+        Vy         int    `json:"vy"`        // Current vertical velocity (for physics)
+        IsMoving   bool   `json:"isMoving"`  // Flag indicating if the paddle has active movement input
+        canvasSize int    // Store canvas size for boundary checks
+}
+
+func (p *Paddle) GetX() int      <span class="cov0" title="0">{ return p.X }</span>
+func (p *Paddle) GetY() int      <span class="cov0" title="0">{ return p.Y }</span>
+func (p *Paddle) GetWidth() int  <span class="cov0" title="0">{ return p.Width }</span>
+func (p *Paddle) GetHeight() int <span class="cov0" title="0">{ return p.Height }</span>
+
+// NewPaddle creates the initial state data structure for a paddle. Uses config.
+func NewPaddle(cfg utils.Config, index int) *Paddle <span class="cov1" title="1">{
+        paddle := &amp;Paddle{
+                Index:      index,
+                Velocity:   cfg.PaddleVelocity, // Use config
+                canvasSize: cfg.CanvasSize,     // Store canvas size
+                Direction:  "",                 // Start stopped
+                Vx:         0,
+                Vy:         0,
+                IsMoving:   false, // Start not moving
+        }
+
+        // Set dimensions and initial position based on index
+        switch index </span>{
+        case 0:<span class="cov1" title="1"> // Right edge, vertical
+                paddle.Width = cfg.PaddleWidth
+                paddle.Height = cfg.PaddleLength
+                paddle.X = cfg.CanvasSize - paddle.Width
+                paddle.Y = (cfg.CanvasSize - paddle.Height) / 2</span>
+        case 1:<span class="cov0" title="0"> // Top edge, horizontal
+                paddle.Width = cfg.PaddleLength
+                paddle.Height = cfg.PaddleWidth
+                paddle.X = (cfg.CanvasSize - paddle.Width) / 2
+                paddle.Y = 0</span>
+        case 2:<span class="cov0" title="0"> // Left edge, vertical
+                paddle.Width = cfg.PaddleWidth
+                paddle.Height = cfg.PaddleLength
+                paddle.X = 0
+                paddle.Y = (cfg.CanvasSize - paddle.Height) / 2</span>
+        case 3:<span class="cov0" title="0"> // Bottom edge, horizontal
+                paddle.Width = cfg.PaddleLength
+                paddle.Height = cfg.PaddleWidth
+                paddle.X = (cfg.CanvasSize - paddle.Width) / 2
+                paddle.Y = cfg.CanvasSize - paddle.Height</span>
+        default:<span class="cov0" title="0">
+                // Should not happen with MaxPlayers check
+                fmt.Printf("Warning: Invalid paddle index %d\n", index)
+                paddle.X, paddle.Y, paddle.Width, paddle.Height = 0, 0, 10, 10</span> // Default fallback
+        }
+
+        <span class="cov1" title="1">return paddle</span>
+}
+
+// Move updates the paddle's position based on its direction and velocity.
+// Handles stopping when direction is empty. Called by PaddleActor.
+// Also updates Vx, Vy, and IsMoving based on the current direction.
+func (paddle *Paddle) Move() <span class="cov10" title="21">{
+        // Reset velocity before applying movement
+        paddle.Vx = 0
+        paddle.Vy = 0
+        paddle.IsMoving = false // Assume stopped unless direction dictates otherwise
+
+        switch paddle.Index </span>{
+        case 0, 2:<span class="cov7" title="10"> // Vertical paddles (Right, Left)
+                switch paddle.Direction </span>{
+                case "left":<span class="cov4" title="3"> // Move Up
+                        paddle.Vy = -paddle.Velocity
+                        paddle.Y = utils.MaxInt(0, paddle.Y-paddle.Velocity)
+                        paddle.IsMoving = true</span>
+                case "right":<span class="cov5" title="4"> // Move Down
+                        paddle.Vy = paddle.Velocity
+                        paddle.Y = utils.MinInt(paddle.canvasSize-paddle.Height, paddle.Y+paddle.Velocity)
+                        paddle.IsMoving = true</span>
+                case "":<span class="cov3" title="2"></span> // Stop
+                        // Vx, Vy already 0, IsMoving already false
+                default:<span class="cov1" title="1">
+                        // Unknown direction, stop
+                        paddle.Direction = ""</span>
+                }
+        case 1, 3:<span class="cov8" title="11"> // Horizontal paddles (Top, Bottom)
+                switch paddle.Direction </span>{
+                case "left":<span class="cov4" title="3"> // Move Left
+                        paddle.Vx = -paddle.Velocity
+                        paddle.X = utils.MaxInt(0, paddle.X-paddle.Velocity)
+                        paddle.IsMoving = true</span>
+                case "right":<span class="cov4" title="3"> // Move Right
+                        paddle.Vx = paddle.Velocity
+                        paddle.X = utils.MinInt(paddle.canvasSize-paddle.Width, paddle.X+paddle.Velocity)
+                        paddle.IsMoving = true</span>
+                case "":<span class="cov1" title="1"></span> // Stop
+                        // Vx, Vy already 0, IsMoving already false
+                default:<span class="cov5" title="4">
+                        // Unknown direction, stop
+                        paddle.Direction = ""</span>
+                }
+        }
+}
+</pre>
+		
+		<pre class="file" id="file12" style="display: none">// File: pongo/game/paddle_actor.go
+package game
+
+import (
+        "encoding/json"
+        "fmt"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/utils"
+)
+
+// PaddleActor implements the bollywood.Actor interface for managing a paddle.
+type PaddleActor struct {
+        state        *Paddle        // Use a pointer to the Paddle state
+        cfg          utils.Config   // Store config
+        gameActorPID *bollywood.PID // PID of the GameActor (parent)
+        selfPID      *bollywood.PID // Store self PID for logging
+}
+
+// NewPaddleActorProducer creates a bollywood.Producer for PaddleActor.
+func NewPaddleActorProducer(initialState Paddle, gameActorPID *bollywood.PID, cfg utils.Config) bollywood.Producer <span class="cov1" title="1">{
+        return func() bollywood.Actor </span><span class="cov1" title="1">{
+                actorState := initialState
+                return &amp;PaddleActor{
+                        state:        &amp;actorState,
+                        cfg:          cfg,
+                        gameActorPID: gameActorPID,
+                }
+        }</span>
+}
+
+// Receive handles incoming messages for the PaddleActor.
+func (a *PaddleActor) Receive(ctx bollywood.Context) <span class="cov10" title="10">{
+        if a.selfPID == nil </span><span class="cov1" title="1">{
+                a.selfPID = ctx.Self()
+        }</span>
+        <span class="cov10" title="10">pidStr := "unknown"
+        if a.selfPID != nil </span><span class="cov10" title="10">{
+                pidStr = a.selfPID.String()
+        }</span>
+
+        <span class="cov10" title="10">switch msg := ctx.Message().(type) </span>{
+        case bollywood.Started:<span class="cov1" title="1"></span>
+                // Actor started
+
+        case UpdatePositionCommand:<span class="cov3" title="2">
+                // fmt.Printf("PaddleActor %s (Index %d): Received UpdatePositionCommand, calling Move()\n", pidStr, a.state.Index) // Optional log
+                a.state.Move()</span> // Move calculates Vx/Vy/IsMoving based on Direction
+
+        case GetPositionRequest:<span class="cov5" title="3">
+                // Reply immediately with current state using ctx.Reply if it's an Ask request
+                if ctx.RequestID() != "" </span><span class="cov5" title="3">{
+                        response := PositionResponse{
+                                X:        a.state.X,
+                                Y:        a.state.Y,
+                                Vx:       a.state.Vx,
+                                Vy:       a.state.Vy,
+                                Width:    a.state.Width,
+                                Height:   a.state.Height,
+                                IsMoving: a.state.IsMoving,
+                        }
+                        ctx.Reply(response)
+                }</span> else<span class="cov0" title="0"> {
+                        // This case should ideally not happen if GameActor always uses Ask for GetPositionRequest
+                        fmt.Printf("WARN: PaddleActor %s (Index %d) received GetPositionRequest not via Ask.\n", pidStr, a.state.Index)
+                }</span>
+
+        case PaddleDirectionMessage:<span class="cov3" title="2">
+                var receivedDirection Direction
+                err := json.Unmarshal(msg.Direction, &amp;receivedDirection)
+                if err == nil </span><span class="cov3" title="2">{
+                        newInternalDirection := utils.DirectionFromString(receivedDirection.Direction)
+                        fmt.Printf("PaddleActor %s (Index %d): Received direction '%s', internal: '%s'\n", pidStr, a.state.Index, receivedDirection.Direction, newInternalDirection) // Log direction
+
+                        // Update state only if direction actually changed
+                        if a.state.Direction != newInternalDirection </span><span class="cov3" title="2">{
+                                fmt.Printf("PaddleActor %s (Index %d): Direction changed from '%s' to '%s'\n", pidStr, a.state.Index, a.state.Direction, newInternalDirection) // Log change
+                                a.state.Direction = newInternalDirection
+                                a.state.IsMoving = (newInternalDirection != "") // Update IsMoving flag
+
+                                // If stopping, immediately reset velocity components
+                                if newInternalDirection == "" </span><span class="cov1" title="1">{
+                                        a.state.Vx = 0
+                                        a.state.Vy = 0
+                                }</span>
+                        }
+                } else<span class="cov0" title="0"> {
+                        fmt.Printf("PaddleActor %s (Index %d) failed to unmarshal direction: %v\n", pidStr, a.state.Index, err)
+                        // Ensure stopped state on error
+                        if a.state.Direction != "" </span><span class="cov0" title="0">{
+                                a.state.Direction = ""
+                                a.state.Vx = 0
+                                a.state.Vy = 0
+                                a.state.IsMoving = false
+                        }</span>
+                }
+
+        case bollywood.Stopping:<span class="cov1" title="1"></span>
+                // Actor stopping
+
+        case bollywood.Stopped:<span class="cov1" title="1"></span>
+                // Actor stopped
+
+        default:<span class="cov0" title="0">
+                fmt.Printf("PaddleActor %s (Index %d) received unknown message: %T\n", pidStr, a.state.Index, msg)
+                // If it was an Ask, reply with error
+                if ctx.RequestID() != "" </span><span class="cov0" title="0">{
+                        ctx.Reply(fmt.Errorf("paddle actor received unknown message type: %T", msg))
+                }</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file13" style="display: none">// File: game/player.go
+package game
+
+import (
+        "fmt"
+
+        "github.com/lguibr/pongo/utils"
+)
+
+// Player struct now primarily for holding state data used in JSON marshalling.
+type Player struct {
+        Index int    `json:"index"`
+        Id    string `json:"id"`
+        Color [3]int `json:"color"`
+        Score int32  `json:"score"` // Changed to int32 for atomic operations
+}
+
+// NewPlayerChannel is DEPRECATED.
+func NewPlayerChannel() /* chan PlayerMessage */ interface{} <span class="cov0" title="0">{ // Return interface{} to avoid type error
+        // fmt.Println("WARNING: NewPlayerChannel() is deprecated.")
+        return nil
+}</span>
+
+// NewPlayer creates the Player data struct.
+func NewPlayer(canvas *Canvas, index int) *Player <span class="cov10" title="2">{
+        return &amp;Player{
+                Index: index,
+                Id:    "player" + fmt.Sprint(index),
+                Color: utils.NewRandomColor(),
+                Score: int32(utils.InitialScore), // Cast initial score to int32
+        }
+}</span>
+
+// Connect is DEPRECATED. GameActor handles connection logic.
+func (player *Player) Connect() {<span class="cov0" title="0">
+        // fmt.Printf("WARNING: player.Connect() for player %d is deprecated. GameActor handles connection.\n", player.Index)
+}</span>
+
+// Disconnect is DEPRECATED. Connection handler sends PlayerDisconnect to GameActor.
+func (player *Player) Disconnect() {<span class="cov0" title="0">
+        // fmt.Printf("WARNING: player.Disconnect() for player %d is deprecated. Connection handler sends message.\n", player.Index)
+}</span>
+</pre>
+		
+		<pre class="file" id="file14" style="display: none">// File: game/room_manager.go
+package game
+
+import (
+        "fmt"
+        "runtime/debug"
+        "sync"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/utils"
+)
+
+// Increase maxRooms significantly to support ~200 players (200 / 4 = 50 rooms)
+// Add some buffer.
+const maxRooms = 75 // Limit the number of concurrent rooms
+
+// RoomInfo holds information about an active game room.
+type RoomInfo struct {
+        PID         *bollywood.PID
+        PlayerCount int // Approximate count
+}
+
+// RoomManagerActor manages multiple GameActor instances (rooms).
+type RoomManagerActor struct {
+        engine     *bollywood.Engine
+        cfg        utils.Config
+        rooms      map[string]*RoomInfo // Map room ID (PID string) to RoomInfo
+        mu         sync.RWMutex
+        selfPID    *bollywood.PID
+        nextRoomID int
+}
+
+// NewRoomManagerProducer creates a producer for the RoomManagerActor.
+func NewRoomManagerProducer(engine *bollywood.Engine, cfg utils.Config) bollywood.Producer <span class="cov1" title="1">{
+        return func() bollywood.Actor </span><span class="cov1" title="1">{
+                return &amp;RoomManagerActor{
+                        engine:     engine,
+                        cfg:        cfg,
+                        rooms:      make(map[string]*RoomInfo),
+                        nextRoomID: 1,
+                }
+        }</span>
+}
+
+// Receive Method
+func (a *RoomManagerActor) Receive(ctx bollywood.Context) <span class="cov10" title="3">{
+        defer func() </span><span class="cov10" title="3">{
+                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                        pidStr := "unknown"
+                        if a.selfPID != nil </span><span class="cov0" title="0">{
+                                pidStr = a.selfPID.String()
+                        }</span>
+                        <span class="cov0" title="0">fmt.Printf("PANIC recovered in RoomManagerActor %s Receive: %v\nStack trace:\n%s\n", pidStr, r, string(debug.Stack()))
+                        // If this was an Ask request, reply with error
+                        if ctx.RequestID() != "" </span><span class="cov0" title="0">{
+                                ctx.Reply(fmt.Errorf("room manager panicked: %v", r))
+                        }</span>
+                }
+        }()
+
+        <span class="cov10" title="3">if a.selfPID == nil </span><span class="cov1" title="1">{
+                a.selfPID = ctx.Self()
+        }</span>
+
+        <span class="cov10" title="3">switch msg := ctx.Message().(type) </span>{
+        case bollywood.Started:<span class="cov1" title="1">
+                fmt.Printf("RoomManagerActor %s: Started.\n", a.selfPID)</span>
+
+        case FindRoomRequest:<span class="cov0" title="0">
+                a.handleFindRoom(ctx, msg.ReplyTo)</span>
+
+        case GameRoomEmpty:<span class="cov0" title="0">
+                a.handleGameRoomEmpty(ctx, msg.RoomPID)</span>
+
+        case GetRoomListRequest:<span class="cov0" title="0">
+                // This message now likely comes via Ask
+                a.handleGetRoomList(ctx)</span> // Pass context for Reply
+
+        case bollywood.Stopping:<span class="cov1" title="1">
+                fmt.Printf("RoomManagerActor %s: Stopping. Shutting down all rooms.\n", a.selfPID)
+                a.mu.Lock()
+                pidsToStop := []*bollywood.PID{}
+                for _, roomInfo := range a.rooms </span><span class="cov0" title="0">{
+                        if roomInfo.PID != nil </span><span class="cov0" title="0">{
+                                pidsToStop = append(pidsToStop, roomInfo.PID)
+                        }</span>
+                }
+                <span class="cov1" title="1">a.rooms = make(map[string]*RoomInfo)
+                a.mu.Unlock()
+                for _, pid := range pidsToStop </span><span class="cov0" title="0">{
+                        a.engine.Stop(pid)
+                }</span>
+
+        case bollywood.Stopped:<span class="cov1" title="1">
+                fmt.Printf("RoomManagerActor %s: Stopped.\n", a.selfPID)</span>
+
+        default:<span class="cov0" title="0">
+                fmt.Printf("RoomManagerActor %s: Received unknown message type: %T\n", a.selfPID, msg)
+                // If it was an Ask, reply with error
+                if ctx.RequestID() != "" </span><span class="cov0" title="0">{
+                        ctx.Reply(fmt.Errorf("unknown message type: %T", msg))
+                }</span>
+        }
+}
+
+// Handler Methods
+
+func (a *RoomManagerActor) handleFindRoom(ctx bollywood.Context, replyTo *bollywood.PID) <span class="cov0" title="0">{
+        if replyTo == nil </span><span class="cov0" title="0">{
+                return
+        }</span>
+        <span class="cov0" title="0">a.mu.Lock()
+
+        // Find existing room
+        for _, roomInfo := range a.rooms </span><span class="cov0" title="0">{
+                if roomInfo.PID != nil &amp;&amp; roomInfo.PlayerCount &lt; utils.MaxPlayers </span><span class="cov0" title="0">{
+                        roomInfo.PlayerCount++ // Increment approximate count
+                        roomPID := roomInfo.PID
+                        a.mu.Unlock()
+                        a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
+                        return
+                }</span>
+        }
+
+        // Check max rooms
+        <span class="cov0" title="0">if len(a.rooms) &gt;= maxRooms </span><span class="cov0" title="0">{
+                fmt.Printf("RoomManagerActor %s: Max rooms (%d) reached. Rejecting request from %s.\n", a.selfPID, maxRooms, replyTo)
+                a.mu.Unlock()
+                a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID)
+                return
+        }</span>
+
+        // Create new room
+        <span class="cov0" title="0">roomIDStr := fmt.Sprintf("room-%d", a.nextRoomID)
+        a.nextRoomID++
+        gameActorProps := bollywood.NewProps(NewGameActorProducer(a.engine, a.cfg, a.selfPID))
+        gameActorPID := a.engine.Spawn(gameActorProps)
+        if gameActorPID == nil </span><span class="cov0" title="0">{
+                fmt.Printf("ERROR: RoomManagerActor %s: Failed to spawn GameActor for room %s. Replying nil to %s.\n", a.selfPID, roomIDStr, replyTo)
+                a.mu.Unlock()
+                a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID)
+                return
+        }</span>
+
+        <span class="cov0" title="0">roomInfo := &amp;RoomInfo{PID: gameActorPID, PlayerCount: 1}
+        a.rooms[gameActorPID.String()] = roomInfo
+        a.mu.Unlock()
+        a.engine.Send(replyTo, AssignRoomResponse{RoomPID: gameActorPID}, a.selfPID)</span>
+}
+
+func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *bollywood.PID) <span class="cov0" title="0">{
+        if roomPID == nil </span><span class="cov0" title="0">{
+                return
+        }</span>
+        <span class="cov0" title="0">roomIDStr := roomPID.String()
+        a.mu.Lock()
+        _, exists := a.rooms[roomIDStr]
+        pidToStop := (*bollywood.PID)(nil)
+        if exists </span><span class="cov0" title="0">{
+                fmt.Printf("RoomManagerActor %s: Room %s reported empty. Removing and stopping.\n", a.selfPID, roomIDStr)
+                if roomInfo := a.rooms[roomIDStr]; roomInfo != nil &amp;&amp; roomInfo.PID != nil </span><span class="cov0" title="0">{
+                        pidToStop = roomInfo.PID
+                }</span>
+                <span class="cov0" title="0">delete(a.rooms, roomIDStr)</span>
+        } // Else: Already removed, ignore.
+        <span class="cov0" title="0">a.mu.Unlock()
+        if pidToStop != nil </span><span class="cov0" title="0">{
+                a.engine.Stop(pidToStop)
+        }</span>
+}
+
+// handleGetRoomList now uses ctx.Reply if the request came via Ask.
+func (a *RoomManagerActor) handleGetRoomList(ctx bollywood.Context) <span class="cov0" title="0">{
+        a.mu.RLock()
+        roomList := make(map[string]int)
+        for _, roomInfo := range a.rooms </span><span class="cov0" title="0">{
+                if roomInfo != nil &amp;&amp; roomInfo.PID != nil </span><span class="cov0" title="0">{
+                        // Use the PID string as the key for the response map
+                        roomList[roomInfo.PID.String()] = roomInfo.PlayerCount
+                }</span>
+        }
+        <span class="cov0" title="0">a.mu.RUnlock()
+
+        response := RoomListResponse{Rooms: roomList}
+
+        // Check if this was an Ask request and reply accordingly
+        if ctx.RequestID() != "" </span><span class="cov0" title="0">{
+                ctx.Reply(response)
+        }</span> else<span class="cov0" title="0"> {
+                // Fallback or error? This case shouldn't happen if HandleGetSit always uses Ask.
+                fmt.Printf("WARN: RoomManagerActor %s received GetRoomListRequest not via Ask.\n", a.selfPID)
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file15" style="display: none">// File: main.go
+package main
+
+import (
+        "fmt"
+        "net/http"
+        "os" // Import the os package
+        "time"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/game"
+        "github.com/lguibr/pongo/server"
+        "github.com/lguibr/pongo/utils"
+        "golang.org/x/net/websocket"
+)
+
+// Default port if PORT env var isn't set
+const defaultPort = "8080"
+
+func main() <span class="cov0" title="0">{
+        // 0. Load Configuration
+        cfg := utils.DefaultConfig()
+        fmt.Println("Configuration loaded (using defaults).")
+        fmt.Printf("Canvas Size: %d, Grid Size: %d, Tick Period: %v\n", cfg.CanvasSize, cfg.GridSize, cfg.GameTickPeriod)
+
+        // 1. Initialize Bollywood Engine
+        engine := bollywood.NewEngine()
+        fmt.Println("Bollywood Engine created.")
+
+        // 2. Spawn the RoomManagerActor, passing the config
+        roomManagerProps := bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)) // Pass cfg
+        roomManagerPID := engine.Spawn(roomManagerProps)
+        if roomManagerPID == nil </span><span class="cov0" title="0">{
+                panic("Failed to spawn RoomManagerActor")</span>
+        }
+        <span class="cov0" title="0">fmt.Printf("RoomManagerActor spawned with PID: %s\n", roomManagerPID)
+
+        // Allow RoomManagerActor to start
+        time.Sleep(50 * time.Millisecond)
+
+        // 3. Create the HTTP/WebSocket Server
+        websocketServer := server.New(engine, roomManagerPID) // Pass RoomManager PID
+        fmt.Println("WebSocket Server created.")
+
+        // 4. Setup Handlers
+        http.HandleFunc("/", server.HandleHealthCheck())                                // Simple health check at root
+        http.HandleFunc("/health-check/", server.HandleHealthCheck())                   // Explicit health check endpoint
+        http.HandleFunc("/rooms/", websocketServer.HandleGetRooms())                    // Get room list
+        http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe())) // WebSocket connections
+
+        // 5. Determine Port and Start Server
+        port := os.Getenv("PORT")
+        if port == "" </span><span class="cov0" title="0">{
+                port = defaultPort
+                fmt.Printf("PORT environment variable not set, defaulting to %s\n", port)
+        }</span>
+
+        <span class="cov0" title="0">listenAddr := ":" + port
+        fmt.Printf("Server starting on address %s\n", listenAddr) // Use listenAddr which includes ":"
+        err := http.ListenAndServe(listenAddr, nil)               // Use listenAddr
+        if err != nil </span><span class="cov0" title="0">{
+                // Handle shutdown gracefully
+                fmt.Println("Server stopped:", err)
+                fmt.Println("Shutting down engine...")
+                engine.Shutdown(5 * time.Second) // Allow actors time to stop
+                fmt.Println("Engine shutdown complete.")
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file16" style="display: none">// File: server/connection_handler.go
+package server
+
+import (
+        "encoding/json"
+        "errors" // Import errors
+        "fmt"
+        "net"     // Import net package
+        "reflect" // Import reflect
+        "runtime/debug"
+        "time"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/game"
+        "golang.org/x/net/websocket"
+)
+
+// errActorStopping is a specific error used to signal cleanup due to actor stopping.
+var errActorStopping = errors.New("connection handler actor stopping")
+
+// ConnectionHandlerActor manages a single WebSocket connection lifecycle.
+type ConnectionHandlerActor struct {
+        conn           *websocket.Conn
+        engine         *bollywood.Engine
+        roomManagerPID *bollywood.PID
+        gameActorPID   *bollywood.PID // PID of the assigned GameActor
+        selfPID        *bollywood.PID
+        connAddr       string
+        stopReadLoop   chan struct{} // Channel to signal readLoop to stop
+        readLoopExited chan struct{} // Channel to signal readLoop has exited
+        done           chan struct{} // Channel to signal handler completion
+        isAssigned     bool          // Flag to track if assigned to a GameActor
+}
+
+// ConnectionHandlerArgs holds arguments for creating the actor.
+type ConnectionHandlerArgs struct {
+        Conn           *websocket.Conn
+        Engine         *bollywood.Engine
+        RoomManagerPID *bollywood.PID
+        Done           chan struct{} // Add done channel
+}
+
+// NewConnectionHandlerProducer creates a producer for ConnectionHandlerActor.
+func NewConnectionHandlerProducer(args ConnectionHandlerArgs) bollywood.Producer <span class="cov1" title="1">{
+        return func() bollywood.Actor </span><span class="cov1" title="1">{
+                addr := "unknown"
+                if args.Conn != nil </span><span class="cov1" title="1">{
+                        addr = args.Conn.RemoteAddr().String()
+                }</span>
+                <span class="cov1" title="1">return &amp;ConnectionHandlerActor{
+                        conn:           args.Conn,
+                        engine:         args.Engine,
+                        roomManagerPID: args.RoomManagerPID,
+                        connAddr:       addr,
+                        stopReadLoop:   make(chan struct{}),
+                        readLoopExited: make(chan struct{}),
+                        done:           args.Done, // Store done channel
+                        isAssigned:     false,     // Initialize as not assigned
+                }</span>
+        }
+}
+
+// Receive handles messages for the ConnectionHandlerActor.
+func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) <span class="cov10" title="5">{
+        defer func() </span><span class="cov10" title="5">{
+                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("PANIC recovered in ConnectionHandlerActor %s Receive: %v\nStack trace:\n%s\n", a.connAddr, r, string(debug.Stack()))
+                        a.cleanup(ctx, fmt.Errorf("panic in Receive: %v", r))
+                }</span>
+        }()
+
+        <span class="cov10" title="5">if a.selfPID == nil </span><span class="cov1" title="1">{
+                a.selfPID = ctx.Self()
+        }</span>
+
+        <span class="cov10" title="5">switch msg := ctx.Message().(type) </span>{
+        case bollywood.Started:<span class="cov1" title="1">
+                if a.roomManagerPID != nil </span><span class="cov1" title="1">{
+                        // Use engine.Send directly here as well for consistency
+                        a.engine.Send(a.roomManagerPID, game.FindRoomRequest{ReplyTo: a.selfPID}, nil)
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("ERROR: ConnectionHandlerActor %s: No RoomManagerPID. Stopping.\n", a.connAddr)
+                        a.cleanup(ctx, fmt.Errorf("missing RoomManagerPID"))
+                }</span>
+
+        case game.AssignRoomResponse:<span class="cov1" title="1">
+                if msg.RoomPID == nil </span><span class="cov0" title="0">{
+                        fmt.Printf("ConnectionHandlerActor %s: Received nil RoomPID assignment. Closing connection.\n", a.connAddr)
+                        a.cleanup(ctx, fmt.Errorf("room assignment failed (nil PID)"))
+                        return
+                }</span>
+                <span class="cov1" title="1">a.gameActorPID = msg.RoomPID
+                a.isAssigned = true // Mark as assigned *before* starting readLoop
+                // Use engine.Send
+                a.engine.Send(a.gameActorPID, game.AssignPlayerToRoom{WsConn: a.conn}, a.selfPID)
+                // Pass engine and selfPID explicitly to readLoop
+                go a.readLoop(a.engine, a.selfPID)</span> // Start readLoop *after* assignment is processed
+
+        case game.InternalReadLoopMsg:<span class="cov0" title="0">
+                // Add log here to see if this case is reached
+                fmt.Printf("ConnectionHandlerActor %s: Received InternalReadLoopMsg\n", a.connAddr)
+                if a.isAssigned &amp;&amp; a.gameActorPID != nil </span><span class="cov0" title="0">{ // Check if assigned before forwarding
+                        // Use engine.Send
+                        a.engine.Send(a.gameActorPID, game.ForwardedPaddleDirection{
+                                WsConn:    a.conn,
+                                Direction: msg.Payload,
+                        }, a.selfPID)
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("WARN: ConnectionHandlerActor %s received input before game assignment. Dropping.\n", a.connAddr)
+                }</span>
+
+        case *net.OpError:<span class="cov0" title="0">
+                fmt.Printf("ConnectionHandlerActor %s: Received *net.OpError: %v. Cleaning up.\n", a.connAddr, msg)
+                a.cleanup(ctx, msg)</span>
+
+        case error:<span class="cov1" title="1">
+                // Check if it's the specific "read loop exited" error to avoid redundant cleanup logs
+                if msg.Error() != "read loop exited" </span><span class="cov0" title="0">{
+                        fmt.Printf("ConnectionHandlerActor %s: Received error: %v. Cleaning up.\n", a.connAddr, msg)
+                }</span> else<span class="cov1" title="1"> {
+                        fmt.Printf("ConnectionHandlerActor %s: Received notification: %v. Cleaning up.\n", a.connAddr, msg)
+                }</span>
+                <span class="cov1" title="1">a.cleanup(ctx, msg)</span>
+
+        case bollywood.Stopping:<span class="cov1" title="1">
+                a.signalAndWaitForReadLoop()
+                a.performCleanupActions(ctx, errActorStopping)</span>
+
+        case bollywood.Stopped:<span class="cov1" title="1">
+                if a.done != nil </span><span class="cov1" title="1">{
+                        close(a.done)
+                        a.done = nil
+                }</span>
+
+        default:<span class="cov0" title="0">
+                fmt.Printf("ConnectionHandlerActor %s: Received unexpected message type in Receive: %T, Value: %+v\n", a.connAddr, msg, msg)
+                if val := reflect.ValueOf(msg); val.Kind() == reflect.Ptr </span><span class="cov0" title="0">{
+                        fmt.Printf("ConnectionHandlerActor %s: Underlying type: %T\n", a.connAddr, reflect.Indirect(val).Interface())
+                }</span>
+        }
+}
+
+// readLoop handles reading messages from the WebSocket connection.
+// Takes engine and selfPID as arguments.
+func (a *ConnectionHandlerActor) readLoop(engine *bollywood.Engine, selfPID *bollywood.PID) <span class="cov1" title="1">{
+        defer func() </span><span class="cov1" title="1">{
+                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("PANIC recovered in ConnectionHandlerActor %s readLoop: %v\nStack trace:\n%s\n", a.connAddr, r, string(debug.Stack()))
+                }</span>
+                <span class="cov1" title="1">close(a.readLoopExited)
+                fmt.Printf("ConnectionHandlerActor %s: Read loop finished.\n", a.connAddr)
+                // Send error back to the actor instance using the provided engine/PID
+                if engine != nil &amp;&amp; selfPID != nil </span><span class="cov1" title="1">{
+                        readLoopExitErr := errors.New("read loop exited")
+                        engine.Send(selfPID, readLoopExitErr, nil) // Use captured engine/pid
+                }</span>
+        }()
+
+        <span class="cov1" title="1">fmt.Printf("ConnectionHandlerActor %s: Read loop started.\n", a.connAddr)
+        for </span><span class="cov1" title="1">{
+                select </span>{
+                case &lt;-a.stopReadLoop:<span class="cov0" title="0">
+                        fmt.Printf("ConnectionHandlerActor %s: Read loop received stop signal.\n", a.connAddr)
+                        return</span>
+                default:<span class="cov1" title="1"></span>
+                }
+
+                <span class="cov1" title="1">var message json.RawMessage
+                readTimeout := 90 * time.Second
+                if a.conn == nil </span><span class="cov0" title="0">{
+                        fmt.Printf("ConnectionHandlerActor %s: Connection is nil in readLoop, exiting.\n", a.connAddr)
+                        return
+                }</span>
+                <span class="cov1" title="1">_ = a.conn.SetReadDeadline(time.Now().Add(readTimeout))
+                err := websocket.JSON.Receive(a.conn, &amp;message)
+                if a.conn != nil </span><span class="cov1" title="1">{
+                        _ = a.conn.SetReadDeadline(time.Time{})
+                }</span>
+
+                <span class="cov1" title="1">if err != nil </span><span class="cov1" title="1">{
+                        select </span>{
+                        case &lt;-a.stopReadLoop:<span class="cov0" title="0">
+                                fmt.Printf("ConnectionHandlerActor %s: Read loop exiting due to stop signal after read error (%v).\n", a.connAddr, err)</span>
+                        default:<span class="cov1" title="1">
+                                fmt.Printf("ConnectionHandlerActor %s: Read error: %v. Exiting read loop.\n", a.connAddr, err)</span>
+                        }
+                        <span class="cov1" title="1">return</span> // Exit loop on error
+                }
+
+                // Send message back to the actor instance using the provided engine/PID
+                <span class="cov0" title="0">if selfPID != nil &amp;&amp; engine != nil </span><span class="cov0" title="0">{
+                        // Use engine.Send directly, no need for mailbox check here
+                        engine.Send(selfPID, game.InternalReadLoopMsg{Payload: []byte(message)}, nil)
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("ERROR: ConnectionHandlerActor %s: Cannot send read message, engine or selfPID is nil in readLoop.\n", a.connAddr)
+                }</span>
+        }
+}
+
+// signalAndWaitForReadLoop tells the readLoop goroutine to exit and waits for confirmation.
+func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() <span class="cov4" title="2">{
+        select </span>{
+        case &lt;-a.stopReadLoop:<span class="cov1" title="1">
+                // Already closed or closing
+                return</span>
+        default:<span class="cov1" title="1">
+                // Close the channel to signal stop
+                close(a.stopReadLoop)</span>
+        }
+
+        // Close the connection to potentially unblock the readLoop's Receive call
+        <span class="cov1" title="1">if a.conn != nil </span><span class="cov1" title="1">{
+                _ = a.conn.Close()
+        }</span>
+
+        // Wait for the readLoop to signal it has exited
+        <span class="cov1" title="1">select </span>{
+        case &lt;-a.readLoopExited:<span class="cov1" title="1">
+                fmt.Printf("ConnectionHandlerActor %s: Read loop confirmed exited.\n", a.connAddr)</span>
+        case &lt;-time.After(2 * time.Second):<span class="cov0" title="0">
+                fmt.Printf("WARN: ConnectionHandlerActor %s: Timeout waiting for read loop to exit.\n", a.connAddr)</span>
+        }
+}
+
+// cleanup is called when the connection terminates (readLoop exits) or the actor stops.
+func (a *ConnectionHandlerActor) cleanup(ctx bollywood.Context, reason error) <span class="cov1" title="1">{
+        fmt.Printf("ConnectionHandlerActor %s: Initiating cleanup (Reason: %v).\n", a.connAddr, reason)
+        a.signalAndWaitForReadLoop()
+        a.performCleanupActions(ctx, reason)
+        // Only stop self if the cleanup wasn't triggered by the actor already stopping
+        if !errors.Is(reason, errActorStopping) </span><span class="cov1" title="1">{
+                if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov1" title="1">{
+                        a.engine.Stop(a.selfPID)
+                }</span>
+        }
+}
+
+// performCleanupActions sends disconnect and nils the connection reference.
+func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, reason error) <span class="cov4" title="2">{
+        connToDisconnect := a.conn // Capture connection before potentially nil-ing it
+
+        // Send PlayerDisconnect only if assigned, connection exists, and not already stopping
+        if a.isAssigned &amp;&amp; a.gameActorPID != nil &amp;&amp; connToDisconnect != nil &amp;&amp; !errors.Is(reason, errActorStopping) </span><span class="cov1" title="1">{
+                fmt.Printf("ConnectionHandlerActor %s: Sending PlayerDisconnect to %s.\n", a.connAddr, a.gameActorPID)
+                if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov1" title="1">{
+                        a.engine.Send(a.gameActorPID, game.PlayerDisconnect{WsConn: connToDisconnect}, a.selfPID)
+                }</span>
+        } else<span class="cov1" title="1"> if a.gameActorPID != nil </span><span class="cov1" title="1">{
+                // Log why disconnect wasn't sent
+                fmt.Printf("ConnectionHandlerActor %s: Not sending PlayerDisconnect to %s (Reason: %v, Assigned: %t, ConnNil: %t).\n",
+                        a.connAddr, a.gameActorPID, reason, a.isAssigned, connToDisconnect == nil)
+        }</span>
+
+        // Close and nil the connection reference
+        <span class="cov4" title="2">if a.conn != nil </span><span class="cov1" title="1">{
+                _ = a.conn.Close()
+                a.conn = nil
+        }</span>
+        <span class="cov4" title="2">a.isAssigned = false</span> // Mark as unassigned during cleanup
+}
+</pre>
+		
+		<pre class="file" id="file17" style="display: none">// File: server/handlers.go
+package server
+
+import (
+        "encoding/json"
+        "errors" // Import errors
+        "fmt"
+        "net/http"
+        "runtime/debug"
+        "time"
+
+        "github.com/lguibr/bollywood"
+        "github.com/lguibr/pongo/game"
+
+        "golang.org/x/net/websocket"
+)
+
+// HandleSubscribe sets up the WebSocket connection and spawns a ConnectionHandlerActor.
+func (s *Server) HandleSubscribe() func(ws *websocket.Conn) <span class="cov1" title="1">{
+        return func(ws *websocket.Conn) </span><span class="cov1" title="1">{
+                connectionAddr := ws.RemoteAddr().String()
+                fmt.Printf("HandleSubscribe: New connection attempt from %s\n", connectionAddr)
+
+                // Create a channel to signal when the handler actor is done
+                handlerDone := make(chan struct{})
+
+                defer func() </span><span class="cov1" title="1">{
+                        if r := recover(); r != nil </span><span class="cov0" title="0">{
+                                fmt.Printf("PANIC recovered in HandleSubscribe for %s: %v\nStack trace:\n%s\n", connectionAddr, r, string(debug.Stack()))
+                                // Ensure connection is closed on panic during setup
+                                _ = ws.Close()
+                                // Ensure the done channel is closed if panic happens before actor signals
+                                select </span>{
+                                case &lt;-handlerDone:<span class="cov0" title="0"></span> // Already closed
+                                default:<span class="cov0" title="0">
+                                        close(handlerDone)</span>
+                                }
+                        }
+                        <span class="cov1" title="1">fmt.Printf("HandleSubscribe: Handler finished for %s\n", connectionAddr)</span>
+                }()
+
+                <span class="cov1" title="1">engine := s.GetEngine()
+                managerPID := s.GetRoomManagerPID()
+                if engine == nil || managerPID == nil </span><span class="cov0" title="0">{
+                        fmt.Printf("HandleSubscribe: Server engine or RoomManagerPID is nil. Closing connection %s.\n", connectionAddr)
+                        _ = ws.Close()
+                        close(handlerDone) // Signal completion on error
+                        return
+                }</span>
+
+                // Spawn a ConnectionHandlerActor for this connection, passing the done channel
+                <span class="cov1" title="1">args := ConnectionHandlerArgs{
+                        Conn:           ws,
+                        Engine:         engine,
+                        RoomManagerPID: managerPID,
+                        Done:           handlerDone, // Pass the channel
+                }
+                handlerProps := bollywood.NewProps(NewConnectionHandlerProducer(args))
+                handlerPID := engine.Spawn(handlerProps)
+
+                if handlerPID == nil </span><span class="cov0" title="0">{
+                        fmt.Printf("HandleSubscribe: Failed to spawn ConnectionHandlerActor for %s. Closing connection.\n", connectionAddr)
+                        _ = ws.Close()
+                        close(handlerDone) // Signal completion on error
+                        return
+                }</span>
+
+                <span class="cov1" title="1">fmt.Printf("HandleSubscribe: Spawned ConnectionHandlerActor %s for %s. Waiting for completion...\n", handlerPID, connectionAddr)
+
+                // Wait here until the ConnectionHandlerActor signals it's done
+                &lt;-handlerDone</span>
+
+                // Now the handler can return, connection management is complete.
+        }
+}
+
+// HandleGetRooms provides room list information via HTTP GET by querying the RoomManager using Ask.
+func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) <span class="cov6" title="2">{
+        return func(w http.ResponseWriter, r *http.Request) </span><span class="cov6" title="2">{
+                defer func() </span><span class="cov6" title="2">{
+                        if rec := recover(); rec != nil </span><span class="cov0" title="0">{
+                                fmt.Printf("PANIC recovered in HandleGetRooms: %v\nStack trace:\n%s\n", rec, string(debug.Stack()))
+                                http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+                        }</span>
+                }()
+
+                <span class="cov6" title="2">if r.Method != http.MethodGet </span><span class="cov0" title="0">{
+                        http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+                        return
+                }</span>
+
+                <span class="cov6" title="2">engine := s.GetEngine()
+                managerPID := s.GetRoomManagerPID()
+                if engine == nil || managerPID == nil </span><span class="cov0" title="0">{
+                        http.Error(w, "Server not properly initialized", http.StatusInternalServerError)
+                        return
+                }</span>
+
+                // Use engine.Ask to query the RoomManager
+                <span class="cov6" title="2">askTimeout := 2 * time.Second
+                reply, err := engine.Ask(managerPID, game.GetRoomListRequest{}, askTimeout)
+
+                if err != nil </span><span class="cov1" title="1">{
+                        if errors.Is(err, bollywood.ErrTimeout) </span><span class="cov1" title="1">{
+                                fmt.Println("Timeout waiting for RoomManager response in HandleGetRooms")
+                                http.Error(w, "Timeout querying game state", http.StatusGatewayTimeout)
+                        }</span> else<span class="cov0" title="0"> {
+                                fmt.Printf("Error asking RoomManager: %v\n", err)
+                                http.Error(w, "Error querying game state", http.StatusInternalServerError)
+                        }</span>
+                        <span class="cov1" title="1">return</span>
+                }
+
+                // Process the reply
+                <span class="cov1" title="1">switch v := reply.(type) </span>{
+                case game.RoomListResponse:<span class="cov1" title="1">
+                        roomListData, marshalErr := json.Marshal(v)
+                        if marshalErr != nil </span><span class="cov0" title="0">{
+                                fmt.Println("Error marshalling room list data:", marshalErr)
+                                http.Error(w, "Error generating room list", http.StatusInternalServerError)
+                                return
+                        }</span>
+                        <span class="cov1" title="1">w.Header().Set("Content-Type", "application/json")
+                        w.WriteHeader(http.StatusOK)
+                        _, _ = w.Write(roomListData)</span>
+                case error:<span class="cov0" title="0"> // Handle case where RoomManager replied with an error
+                        fmt.Printf("RoomManager replied with error: %v\n", v)
+                        http.Error(w, "Error retrieving game state", http.StatusInternalServerError)</span>
+                default:<span class="cov0" title="0">
+                        fmt.Printf("Received unexpected reply type from RoomManager via Ask: %T\n", v)
+                        http.Error(w, "Internal server error processing reply", http.StatusInternalServerError)</span>
+                }
+        }
+}
+
+// HandleHealthCheck provides a simple health check endpoint.
+func HandleHealthCheck() func(w http.ResponseWriter, r *http.Request) <span class="cov10" title="3">{
+        return func(w http.ResponseWriter, r *http.Request) </span><span class="cov10" title="3">{
+                if r.Method != http.MethodGet </span><span class="cov1" title="1">{
+                        http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+                        return
+                }</span>
+                <span class="cov6" title="2">w.Header().Set("Content-Type", "application/json")
+                w.WriteHeader(http.StatusOK)
+                // Simple JSON response indicating success
+                _, _ = w.Write([]byte(`{"status": "ok"}`))</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file18" style="display: none">// File: server/websocket.go
+package server
+
+import (
+        "fmt"
+
+        "github.com/lguibr/bollywood"
+)
+
+// Server holds references needed for handling requests.
+type Server struct {
+        engine         *bollywood.Engine
+        roomManagerPID *bollywood.PID // Changed from gameActorPID
+}
+
+// New creates a new Server instance.
+func New(engine *bollywood.Engine, roomManagerPID *bollywood.PID) *Server <span class="cov10" title="3">{ // Changed parameter name
+        if engine == nil || roomManagerPID == nil </span><span class="cov0" title="0">{
+                panic("Server requires a valid engine and roomManagerPID")</span>
+        }
+        // fmt.Println("Creating new Server instance.") // Removed redundant log
+        <span class="cov10" title="3">return &amp;Server{
+                engine:         engine,
+                roomManagerPID: roomManagerPID, // Store RoomManager PID
+        }</span>
+}
+
+// GetRoomManagerPID returns the PID of the room manager actor.
+func (s *Server) GetRoomManagerPID() *bollywood.PID <span class="cov10" title="3">{
+        if s == nil </span><span class="cov0" title="0">{
+                fmt.Println("ERROR: GetRoomManagerPID called on nil Server")
+                return nil
+        }</span>
+        <span class="cov10" title="3">return s.roomManagerPID</span>
+}
+
+// GetEngine returns the Bollywood engine instance.
+func (s *Server) GetEngine() *bollywood.Engine <span class="cov10" title="3">{
+        if s == nil </span><span class="cov0" title="0">{
+                fmt.Println("ERROR: GetEngine called on nil Server")
+                return nil
+        }</span>
+        <span class="cov10" title="3">return s.engine</span>
+}
+</pre>
+		
+		<pre class="file" id="file19" style="display: none">// File: utils/config.go
+package utils
+
+import "time"
+
+// Config holds all configurable game parameters.
+type Config struct {
+        // Timing
+        GameTickPeriod time.Duration `json:"gameTickPeriod"` // Time between game state updates
+
+        // Score &amp; Player
+        InitialScore int `json:"initialScore"` // Starting score for players
+
+        // Canvas &amp; Grid
+        CanvasSize int `json:"canvasSize"` // Pixel dimensions of the square canvas (must be divisible by GridSize)
+        GridSize   int `json:"gridSize"`   // Number of cells along one dimension of the grid (must be divisible by 2)
+        CellSize   int `json:"cellSize"`   // Calculated: CanvasSize / GridSize
+
+        // Ball Physics &amp; Properties
+        MinBallVelocity          int           `json:"minBallVelocity"`          // Minimum speed component for a ball
+        MaxBallVelocity          int           `json:"maxBallVelocity"`          // Maximum speed component for a ball (at spawn)
+        BallMass                 int           `json:"ballMass"`                 // Default mass of a ball
+        BallRadius               int           `json:"ballRadius"`               // Default radius of a ball
+        BallPhasingTime          time.Duration `json:"ballPhasingTime"`          // How long a ball phases after collision
+        BallHitPaddleSpeedFactor float64       `json:"ballHitPaddleSpeedFactor"` // Multiplier for paddle velocity influence on ball speed
+        BallHitPaddleAngleFactor float64       `json:"ballHitPaddleAngleFactor"` // Multiplier for hit offset influence on angle (Pi / this value)
+
+        // Paddle Properties
+        PaddleLength   int `json:"paddleLength"`   // Length of the paddle along the wall
+        PaddleWidth    int `json:"paddleWidth"`    // Thickness of the paddle
+        PaddleVelocity int `json:"paddleVelocity"` // Base speed of the paddle movement
+
+        // Grid Generation (Procedural)
+        GridFillVectors    int `json:"gridFillVectors"`    // Number of vectors for grid generation per quarter
+        GridFillVectorSize int `json:"gridFillVectorSize"` // Max length of vectors for grid generation
+        GridFillWalkers    int `json:"gridFillWalkers"`    // Number of random walkers per quarter
+        GridFillSteps      int `json:"gridFillSteps"`      // Number of steps per random walker
+
+        // Power-ups
+        PowerUpChance           float64       `json:"powerUpChance"`           // Chance (0.0 to 1.0) to trigger power-up on brick break
+        PowerUpSpawnBallExpiry  time.Duration `json:"powerUpSpawnBallExpiry"`  // Duration after which spawned power-up balls expire (randomized around this)
+        PowerUpIncreaseMassAdd  int           `json:"powerUpIncreaseMassAdd"`  // Mass added by power-up
+        PowerUpIncreaseMassSize int           `json:"powerUpIncreaseMassSize"` // Radius added per mass point by power-up
+        PowerUpIncreaseVelRatio float64       `json:"powerUpIncreaseVelRatio"` // Velocity multiplier for power-up
+}
+
+// DefaultConfig returns a Config struct with default values.
+func DefaultConfig() Config <span class="cov0" title="0">{
+        canvasSize := 576
+        gridSize := 12
+        cellSize := canvasSize / gridSize
+
+        return Config{
+                // Timing
+                GameTickPeriod: 10 * time.Millisecond,
+
+                // Score &amp; Player
+                InitialScore: 0,
+
+                // Canvas &amp; Grid
+                CanvasSize: canvasSize,
+                GridSize:   gridSize,
+                CellSize:   cellSize,
+
+                // Ball Physics &amp; Properties
+                MinBallVelocity:          canvasSize / 200, // ~2.88
+                MaxBallVelocity:          canvasSize / 150, // ~3.84
+                BallMass:                 1,
+                BallRadius:               cellSize / 6, // 12
+                BallPhasingTime:          100 * time.Millisecond,
+                BallHitPaddleSpeedFactor: 0.3,
+                BallHitPaddleAngleFactor: 2.8, // Max ~64 degrees deflection (Pi / 2.8)
+
+                // Paddle Properties
+                PaddleLength:   cellSize * 3,  // 144
+                PaddleWidth:    cellSize / 2,  // 24
+                PaddleVelocity: cellSize / 10, // 8 (adjust as needed for responsiveness)
+
+                // Grid Generation
+                GridFillVectors:    gridSize * 2,
+                GridFillVectorSize: gridSize,
+                GridFillWalkers:    gridSize / 4,
+                GridFillSteps:      gridSize / 2,
+
+                // Power-ups
+                PowerUpChance:           0.25,            // 25% chance
+                PowerUpSpawnBallExpiry:  7 * time.Second, // Average expiry, will be randomized +/- 2s
+                PowerUpIncreaseMassAdd:  1,
+                PowerUpIncreaseMassSize: 2, // Radius increase per mass point
+                PowerUpIncreaseVelRatio: 1.1,
+        }
+}</span>
+
+// TODO: Add function to load config from file (e.g., JSON) if needed later.
+// func LoadConfigFromFile(path string) (Config, error) { ... }
+</pre>
+		
+		<pre class="file" id="file20" style="display: none">// File: utils/constants.go
+package utils
+
+import "time"
+
+// MaxPlayers remains a fundamental constant of the game structure.
+const MaxPlayers = 4
+
+// Deprecated constants below. Use values from config.DefaultConfig() instead.
+
+const (
+        // Deprecated: Use config.DefaultConfig().GameTickPeriod
+        Period = 24 * time.Millisecond
+
+        // Deprecated: Use config.DefaultConfig().InitialScore
+        InitialScore = 100
+
+        // Deprecated: Use config.DefaultConfig().CanvasSize
+        CanvasSize = 576 // Must be divisible by GridSize
+        // Deprecated: Use config.DefaultConfig().GridSize
+        GridSize = 12 // Must be divisible by 2
+
+        // Deprecated: Use config.DefaultConfig().CellSize
+        CellSize = CanvasSize / GridSize
+        // Deprecated: Use config.DefaultConfig().MinBallVelocity
+        MinVelocity = CanvasSize / 200
+        // Deprecated: Use config.DefaultConfig().MaxBallVelocity
+        MaxVelocity = CanvasSize / 150
+
+        // Deprecated: Use config.DefaultConfig().GridFillVectors
+        NumberOfVectors = GridSize * 2
+        // Deprecated: Use config.DefaultConfig().GridFillVectorSize
+        MaxVectorSize = GridSize
+        // Deprecated: Use config.DefaultConfig().GridFillWalkers
+        NumberOfRandomWalkers = GridSize / 4
+        // Deprecated: Use config.DefaultConfig().GridFillSteps
+        NumberOfRandomSteps = GridSize / 2
+
+        // Deprecated: Use config.DefaultConfig().BallMass
+        BallMass = 1
+        // Deprecated: Use config.DefaultConfig().BallRadius
+        BallSize = CellSize / 4 // Ball Radius
+        // Deprecated: Use config.DefaultConfig().PaddleLength
+        PaddleLength = CellSize * 3
+        // Deprecated: Use config.DefaultConfig().PaddleWidth
+        PaddleWeight = CellSize / 2 // Paddle Width/Thickness
+)
+
+// CellType remains as it defines fundamental grid states.
+type CellType int64
+
+const (
+        brick CellType = iota
+        block
+        empty
+)
+
+type cellTypes struct {
+        Brick CellType
+        Block CellType
+        Empty CellType
+}
+
+var Cells = cellTypes{
+        Brick: brick,
+        Block: block,
+        Empty: empty,
+}
+
+func (cellType CellType) String() string <span class="cov0" title="0">{
+        switch cellType </span>{
+        case brick:<span class="cov0" title="0">
+                return "Brick"</span>
+        case block:<span class="cov0" title="0">
+                return "Block"</span>
+        case empty:<span class="cov0" title="0">
+                return "Empty"</span>
+        default:<span class="cov0" title="0">
+                return "Unknown"</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file21" style="display: none">// File: utils/utils.go
+package utils
+
+import (
+        "encoding/json"
+        "fmt"
+        "math"
+        "math/rand"
+        "os"
+        "testing"
+        "time"
+)
+
+// Matrix operations
+func NewMatrixesOfRotation() [4][2][2]int <span class="cov2" title="2">{
+        return [4][2][2]int{
+                {{1, 0}, {0, 1}},
+                {{0, 1}, {-1, 0}},
+                {{-1, 0}, {0, -1}},
+                {{0, -1}, {1, 0}},
+        }
+}</span>
+
+func TransformMatrix(matrix [2][2]int, tMatrix [2][2]int) [2][2]int <span class="cov1" title="1">{
+        var transformedMatrix [2][2]int
+        for i := range matrix </span><span class="cov2" title="2">{
+                var vector [2]int
+                x, y := TransformVector(tMatrix, matrix[i][0], matrix[i][1])
+                vector = [2]int{x, y}
+                transformedMatrix[i] = vector
+        }</span>
+        <span class="cov1" title="1">return transformedMatrix</span>
+}
+
+var MatrixesOfRotation = NewMatrixesOfRotation()
+
+// Vector operations
+func TransformVector(tMatrix [2][2]int, x int, y int) (int, int) <span class="cov5" title="19">{
+        return tMatrix[0][0]*x + tMatrix[0][1]*y, tMatrix[1][0]*x + tMatrix[1][1]*y
+}</span>
+
+func RotateVector(index int, x int, y int, canvasWidth int, canvasHeight int) (int, int) <span class="cov4" title="8">{
+        return TransformVector(MatrixesOfRotation[index], x, y)
+}</span>
+
+func NewPositiveRandomVector(vectorMaxLen int) [2]int <span class="cov7" title="111">{
+        maxCoordinateSize := int(math.Max(float64(vectorMaxLen)/(2*math.Sqrt(2)), 1.0))
+        x := rand.Intn(maxCoordinateSize)
+        rand.Seed(time.Now().UnixNano())
+        y := rand.Intn(maxCoordinateSize)
+
+        return [2]int{x, y}
+}</span>
+
+func NewRandomVector(vectorMaxLen int) [2]int <span class="cov7" title="100">{
+        maxCoordinateSize := int((math.Max(float64(vectorMaxLen)/2*math.Sqrt(2), 1.0)))
+        x := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
+        rand.Seed(time.Now().UnixNano())
+        y := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
+        return [2]int{x, y}
+}</span>
+
+func CheckPointWithinBounds(x int, y int, topSide [2]int, bottomOppositeSide [2]int) bool <span class="cov0" title="0">{
+        return x &gt;= topSide[0] &amp;&amp; x &lt;= bottomOppositeSide[0] &amp;&amp; y &gt;= topSide[1] &amp;&amp; y &lt;= bottomOppositeSide[1]
+}</span>
+
+func SubtractVectors(vectorA [2]int, vectorB [2]int) [2]int <span class="cov2" title="3">{
+        return [2]int{vectorA[0] - vectorB[0], vectorA[1] - vectorB[1]}
+}</span>
+
+func SumVectors(vectorA [2]int, vectorB [2]int) [2]int <span class="cov2" title="3">{
+        return [2]int{vectorA[0] + vectorB[0], vectorA[1] + vectorB[1]}
+}</span>
+
+func MultiplyVectorByScalar(vectorA [2]int, scalar int) [2]int <span class="cov3" title="4">{
+        return [2]int{vectorA[0] * scalar, vectorA[1] * scalar}
+}</span>
+
+func DotProduct(vectorA, vectorB []int) int <span class="cov4" title="8">{
+        if len(vectorA) != len(vectorB) || len(vectorA) == 0 </span><span class="cov2" title="3">{
+                panic("vectors must have the same length")</span>
+        }
+        <span class="cov3" title="5">var result int
+        for i := range vectorA </span><span class="cov4" title="12">{
+                result += vectorA[i] * vectorB[i]
+        }</span>
+        <span class="cov3" title="5">return result</span>
+}
+
+func Equal(a, b []int) bool <span class="cov3" title="7">{
+        if len(a) != len(b) </span><span class="cov1" title="1">{
+                return false
+        }</span>
+        <span class="cov3" title="6">for i, v := range a </span><span class="cov5" title="16">{
+                if v != b[i] </span><span class="cov1" title="1">{
+                        return false
+                }</span>
+        }
+        <span class="cov3" title="5">return true</span>
+}
+
+func CrossProduct(vectorA, vectorB []int) []int <span class="cov3" title="5">{
+        if len(vectorA) != 3 || len(vectorB) != 3 </span><span class="cov2" title="2">{
+                panic("vectors must have length 3")</span>
+        }
+        <span class="cov2" title="3">return []int{
+                vectorA[1]*vectorB[2] - vectorA[2]*vectorB[1],
+                vectorA[2]*vectorB[0] - vectorA[0]*vectorB[2],
+                vectorA[0]*vectorB[1] - vectorA[1]*vectorB[0],
+        }</span>
+}
+
+func SwapVectorCoordinates(vector [2]int) [2]int <span class="cov3" title="4">{
+        return [2]int{vector[1], vector[0]}
+}</span>
+
+func NewRandomPositiveVectors(numberOfVectors, maxVectorSize int) [][2]int <span class="cov3" title="6">{
+        seedVectors := make([][2]int, numberOfVectors)
+        for index := range seedVectors </span><span class="cov7" title="111">{
+                currentLength := rand.Intn(maxVectorSize)
+                if currentLength == 0 || currentLength &gt; maxVectorSize </span><span class="cov2" title="2">{
+                        currentLength = maxVectorSize
+                }</span>
+                <span class="cov7" title="110">seedVectors[index] = NewPositiveRandomVector(currentLength)</span>
+        }
+        <span class="cov3" title="5">return seedVectors</span>
+}
+
+func Distance(x1, y1, x2, y2 int) float64 <span class="cov0" title="0">{
+        deltaX := x2 - x1
+        deltaY := y2 - y1
+
+        return math.Sqrt(math.Pow(float64(deltaX), 2) + math.Pow(float64(deltaY), 2))
+}</span>
+
+// Number operations
+func RandomNumber(amplitude int) int <span class="cov2" title="3">{
+        return rand.Intn(amplitude*2) - amplitude
+}</span>
+
+var randomNumberN func(amplitude int) int
+
+func RandomNumberN(amplitude int) int <span class="cov10" title="458">{
+        randomNumberN = func(amplitude int) int </span><span class="cov10" title="458">{
+                value := rand.Intn(amplitude*2) - amplitude
+                if value == 0 </span><span class="cov8" title="158">{
+                        value = RandomNumberN(amplitude)
+                }</span>
+                <span class="cov10" title="458">return value</span>
+        }
+        <span class="cov10" title="458">return randomNumberN(amplitude)</span>
+}
+
+func Abs(x int) int <span class="cov2" title="3">{
+        if x &lt; 0 </span><span class="cov1" title="1">{
+                return -x
+        }</span>
+        <span class="cov2" title="2">return x</span>
+}
+
+// MaxInt returns the greater of two integers.
+func MaxInt(a, b int) int <span class="cov0" title="0">{
+        if a &gt; b </span><span class="cov0" title="0">{
+                return a
+        }</span>
+        <span class="cov0" title="0">return b</span>
+}
+
+// MinInt returns the smaller of two integers.
+func MinInt(a, b int) int <span class="cov0" title="0">{
+        if a &lt; b </span><span class="cov0" title="0">{
+                return a
+        }</span>
+        <span class="cov0" title="0">return b</span>
+}
+
+// String conversion
+// DirectionFromString converts frontend direction strings ("ArrowLeft", "ArrowRight", "Stop")
+// to internal representations ("left", "right", "").
+func DirectionFromString(direction string) string <span class="cov3" title="4">{
+        switch direction </span>{
+        case "ArrowLeft":<span class="cov1" title="1">
+                return "left"</span>
+        case "ArrowRight":<span class="cov1" title="1">
+                return "right"</span>
+        case "Stop":<span class="cov0" title="0"> // Explicitly handle "Stop"
+                return ""</span> // Map "Stop" to empty string to halt movement
+        default:<span class="cov2" title="2">
+                return ""</span> // Default to empty string (no movement) for unknown inputs
+        }
+}
+
+// Color generation
+func NewRandomColor() [3]int <span class="cov7" title="100">{
+        return [3]int{rand.Intn(255), rand.Intn(255), rand.Intn(255)}
+}</span>
+
+// Testing helpers
+func AssertPanics(t *testing.T, testingFunction func(), message string) (panics bool, errorMessage string) <span class="cov4" title="8">{
+
+        panics = false
+        errorMessage = ""
+
+        // Define the defer function
+        deferFunc := func() </span><span class="cov4" title="8">{
+                if r := recover(); r != nil </span><span class="cov3" title="7">{
+                        panics = true
+                        // Try to convert recover() result to string
+                        switch v := r.(type) </span>{
+                        case string:<span class="cov3" title="7">
+                                errorMessage = v</span>
+                        case error:<span class="cov0" title="0">
+                                errorMessage = v.Error()</span>
+                        default:<span class="cov0" title="0">
+                                errorMessage = fmt.Sprintf("%v", v)</span>
+                        }
+                }
+        }
+
+        // Anonymous function to execute the test function with the defer
+        <span class="cov4" title="8">func() </span><span class="cov4" title="8">{
+                defer deferFunc() // Correct: Call the defer function
+                testingFunction()
+        }</span>()
+
+        <span class="cov4" title="8">return panics, errorMessage</span>
+}
+
+// Logging helpers
+type JSONable interface {
+        ToJson() []byte
+}
+
+func JsonLogger(filePath string, data interface{}) error <span class="cov0" title="0">{
+        file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov0" title="0">defer file.Close()
+
+        encoder := json.NewEncoder(file)
+        if err := encoder.Encode(data); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+func Logger(filePath string, data string) error <span class="cov0" title="0">{
+        file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to open log file: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer file.Close()
+        if _, err := file.Write([]byte(data)); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write to log file: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
