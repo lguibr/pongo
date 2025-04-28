@@ -10,7 +10,9 @@ import (
 	"github.com/lguibr/pongo/utils"
 )
 
-const maxRooms = 10 // Limit the number of concurrent rooms
+// Increase maxRooms significantly to support ~200 players (200 / 4 = 50 rooms)
+// Add some buffer.
+const maxRooms = 75 // Limit the number of concurrent rooms
 
 // RoomInfo holds information about an active game room.
 type RoomInfo struct {

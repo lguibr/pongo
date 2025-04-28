@@ -34,6 +34,11 @@ type GameActor struct {
 	broadcasterPID *bollywood.PID // PID of the dedicated broadcaster actor
 	connToIndex    map[*websocket.Conn]int
 	playerConns    [utils.MaxPlayers]*websocket.Conn
+
+	// Performance Metrics
+	tickDurationSum time.Duration
+	tickCount       int64
+	metricsMu       sync.Mutex // Protect metrics during updates
 }
 
 // playerInfo holds state associated with a connected player/websocket.
@@ -66,6 +71,9 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 			connToIndex:    make(map[*websocket.Conn]int),
 			playerConns:    [utils.MaxPlayers]*websocket.Conn{},
 			roomManagerPID: roomManagerPID,
+			// Initialize metrics
+			tickDurationSum: 0,
+			tickCount:       0,
 		}
 		return ga
 	}
@@ -88,6 +96,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 			}
 			// Ensure tickers are stopped on panic
 			a.stopTickers()
+			// Log metrics on panic as well
+			a.logPerformanceMetrics()
 		}
 	}()
 
@@ -112,6 +122,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.startTickers(ctx) // Start tickers after actor is fully started
 
 	case GameTick: // Physics tick - Process directly
+		start := time.Now() // Start timer
+
 		// fmt.Printf("GameActor %s: Received GameTick\n", a.selfPID) // Optional: Add log
 		updateCmd := UpdatePositionCommand{}
 		// Collect PIDs without lock
@@ -132,6 +144,13 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		}
 		// Detect collisions (operates on actor state directly now)
 		a.detectCollisions(ctx)
+
+		// Update metrics
+		duration := time.Since(start)
+		a.metricsMu.Lock()
+		a.tickDurationSum += duration
+		a.tickCount++
+		a.metricsMu.Unlock()
 
 	case BroadcastTick: // Broadcast tick - Process directly
 		// fmt.Printf("GameActor %s: Received BroadcastTick\n", a.selfPID) // Optional: Add log
@@ -159,12 +178,28 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		fmt.Printf("GameActor %s: Stopping.\n", a.selfPID)
 		a.stopTickers()
 		a.cleanupChildActorsAndConnections()
+		// Log metrics before fully stopped
+		a.logPerformanceMetrics()
 
 	case bollywood.Stopped:
 		fmt.Printf("GameActor %s: Stopped.\n", a.selfPID)
+		// Metrics are logged in Stopping phase
 
 	default:
 		fmt.Printf("GameActor %s: Received unknown message type: %T\n", a.selfPID, m)
+	}
+}
+
+// logPerformanceMetrics calculates and prints the average tick duration.
+func (a *GameActor) logPerformanceMetrics() {
+	a.metricsMu.Lock()
+	defer a.metricsMu.Unlock()
+
+	if a.tickCount > 0 {
+		avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
+		fmt.Printf("PERF_METRIC GameActor %s: Avg Tick Duration: %v (%d ticks)\n", a.selfPID, avgDuration, a.tickCount)
+	} else {
+		fmt.Printf("PERF_METRIC GameActor %s: No ticks processed.\n", a.selfPID)
 	}
 }
 
@@ -220,9 +255,10 @@ func (a *GameActor) startTickers(ctx bollywood.Context) {
 
 	// Broadcast Ticker
 	if a.bcastTicker == nil {
-		broadcastInterval := 30 * time.Millisecond
+		// Increase broadcast interval slightly
+		broadcastInterval := 50 * time.Millisecond // Increased from 30ms
 		if broadcastInterval < a.cfg.GameTickPeriod {
-			broadcastInterval = a.cfg.GameTickPeriod
+			broadcastInterval = a.cfg.GameTickPeriod // Ensure it's not faster than physics tick
 		}
 		a.bcastTicker = time.NewTicker(broadcastInterval)
 		// Ensure stop channel is fresh if restarting

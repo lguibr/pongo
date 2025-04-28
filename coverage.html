@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/lguibr/pongo/game/ball.go (69.6%)</option>
+				<option value="file0">github.com/lguibr/pongo/game/ball.go (68.8%)</option>
 				
 				<option value="file1">github.com/lguibr/pongo/game/ball_actor.go (67.7%)</option>
 				
@@ -87,7 +87,7 @@
 				
 				<option value="file15">github.com/lguibr/pongo/main.go (0.0%)</option>
 				
-				<option value="file16">github.com/lguibr/pongo/server/connection_handler.go (72.2%)</option>
+				<option value="file16">github.com/lguibr/pongo/server/connection_handler.go (74.2%)</option>
 				
 				<option value="file17">github.com/lguibr/pongo/server/handlers.go (58.3%)</option>
 				
@@ -194,7 +194,7 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
         switch ownerIndex </span>{
         case 0:<span class="cov5" title="3">
                 angle += math.Pi / 2
-                if rand.Intn(2) == 0 </span><span class="cov1" title="1">{
+                if rand.Intn(2) == 0 </span><span class="cov3" title="2">{
                         angle += math.Pi
                 }</span>
         case 1:<span class="cov3" title="2">
@@ -203,7 +203,7 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
                         angle += math.Pi / 2
                 }</span>
         case 2:<span class="cov1" title="1">
-                if rand.Intn(2) == 0 </span><span class="cov1" title="1">{
+                if rand.Intn(2) == 0 </span><span class="cov0" title="0">{
                         angle += 3 * math.Pi / 2
                 }</span>
         case 3:<span class="cov0" title="0">
@@ -224,7 +224,7 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
                 if vx == 0 </span><span class="cov0" title="0">{
                         vx = int(math.Copysign(1.0, vxFloat))
                 }</span>
-                <span class="cov8" title="6">if vy == 0 </span><span class="cov1" title="1">{
+                <span class="cov8" title="6">if vy == 0 </span><span class="cov3" title="2">{
                         vy = int(math.Copysign(1.0, vyFloat))
                 }</span>
         }
@@ -915,6 +915,11 @@ type GameActor struct {
         broadcasterPID *bollywood.PID // PID of the dedicated broadcaster actor
         connToIndex    map[*websocket.Conn]int
         playerConns    [utils.MaxPlayers]*websocket.Conn
+
+        // Performance Metrics
+        tickDurationSum time.Duration
+        tickCount       int64
+        metricsMu       sync.Mutex // Protect metrics during updates
 }
 
 // playerInfo holds state associated with a connected player/websocket.
@@ -947,6 +952,9 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
                         connToIndex:    make(map[*websocket.Conn]int),
                         playerConns:    [utils.MaxPlayers]*websocket.Conn{},
                         roomManagerPID: roomManagerPID,
+                        // Initialize metrics
+                        tickDurationSum: 0,
+                        tickCount:       0,
                 }
                 return ga
         }</span>
@@ -968,7 +976,9 @@ func (a *GameActor) Receive(ctx bollywood.Context) <span class="cov0" title="0">
                                 a.engine.Stop(a.broadcasterPID)
                         }</span>
                         // Ensure tickers are stopped on panic
-                        <span class="cov0" title="0">a.stopTickers()</span>
+                        <span class="cov0" title="0">a.stopTickers()
+                        // Log metrics on panic as well
+                        a.logPerformanceMetrics()</span>
                 }
         }()
 
@@ -993,6 +1003,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) <span class="cov0" title="0">
                 a.startTickers(ctx)</span> // Start tickers after actor is fully started
 
         case GameTick:<span class="cov0" title="0"> // Physics tick - Process directly
+                start := time.Now() // Start timer
+
                 // fmt.Printf("GameActor %s: Received GameTick\n", a.selfPID) // Optional: Add log
                 updateCmd := UpdatePositionCommand{}
                 // Collect PIDs without lock
@@ -1012,7 +1024,14 @@ func (a *GameActor) Receive(ctx bollywood.Context) <span class="cov0" title="0">
                         a.engine.Send(pid, updateCmd, a.selfPID)
                 }</span>
                 // Detect collisions (operates on actor state directly now)
-                <span class="cov0" title="0">a.detectCollisions(ctx)</span>
+                <span class="cov0" title="0">a.detectCollisions(ctx)
+
+                // Update metrics
+                duration := time.Since(start)
+                a.metricsMu.Lock()
+                a.tickDurationSum += duration
+                a.tickCount++
+                a.metricsMu.Unlock()</span>
 
         case BroadcastTick:<span class="cov0" title="0"> // Broadcast tick - Process directly
                 // fmt.Printf("GameActor %s: Received BroadcastTick\n", a.selfPID) // Optional: Add log
@@ -1039,14 +1058,30 @@ func (a *GameActor) Receive(ctx bollywood.Context) <span class="cov0" title="0">
         case bollywood.Stopping:<span class="cov0" title="0">
                 fmt.Printf("GameActor %s: Stopping.\n", a.selfPID)
                 a.stopTickers()
-                a.cleanupChildActorsAndConnections()</span>
+                a.cleanupChildActorsAndConnections()
+                // Log metrics before fully stopped
+                a.logPerformanceMetrics()</span>
 
         case bollywood.Stopped:<span class="cov0" title="0">
                 fmt.Printf("GameActor %s: Stopped.\n", a.selfPID)</span>
+                // Metrics are logged in Stopping phase
 
         default:<span class="cov0" title="0">
                 fmt.Printf("GameActor %s: Received unknown message type: %T\n", a.selfPID, m)</span>
         }
+}
+
+// logPerformanceMetrics calculates and prints the average tick duration.
+func (a *GameActor) logPerformanceMetrics() <span class="cov0" title="0">{
+        a.metricsMu.Lock()
+        defer a.metricsMu.Unlock()
+
+        if a.tickCount &gt; 0 </span><span class="cov0" title="0">{
+                avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
+                fmt.Printf("PERF_METRIC GameActor %s: Avg Tick Duration: %v (%d ticks)\n", a.selfPID, avgDuration, a.tickCount)
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Printf("PERF_METRIC GameActor %s: No ticks processed.\n", a.selfPID)
+        }</span>
 }
 
 // startTickers starts the physics and broadcast tickers.
@@ -1101,9 +1136,10 @@ func (a *GameActor) startTickers(ctx bollywood.Context) <span class="cov0" title
 
         // Broadcast Ticker
         if a.bcastTicker == nil </span><span class="cov0" title="0">{
-                broadcastInterval := 30 * time.Millisecond
+                // Increase broadcast interval slightly
+                broadcastInterval := 50 * time.Millisecond // Increased from 30ms
                 if broadcastInterval &lt; a.cfg.GameTickPeriod </span><span class="cov0" title="0">{
-                        broadcastInterval = a.cfg.GameTickPeriod
+                        broadcastInterval = a.cfg.GameTickPeriod // Ensure it's not faster than physics tick
                 }</span>
                 <span class="cov0" title="0">a.bcastTicker = time.NewTicker(broadcastInterval)
                 // Ensure stop channel is fresh if restarting
@@ -2222,7 +2258,7 @@ func (grid Grid) LineIntersectedCellIndices(cellSize int, line [2][2]int) [][2]i
         var intersects [][2]int
         for i := range grid </span><span class="cov8" title="74008">{
                 for j := range grid[i] </span><span class="cov10" title="1820016">{
-                        if line[0][0] &lt;= i &amp;&amp; i &lt;= line[1][0] &amp;&amp; line[0][1] &lt;= j &amp;&amp; j &lt;= line[1][1] </span><span class="cov6" title="6582">{
+                        if line[0][0] &lt;= i &amp;&amp; i &lt;= line[1][0] &amp;&amp; line[0][1] &lt;= j &amp;&amp; j &lt;= line[1][1] </span><span class="cov6" title="6440">{
                                 intersects = append(intersects, [2]int{i, j})
                         }</span>
                 }
@@ -2259,13 +2295,13 @@ func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) <span
                 indexes = append(indexes, grid.LineIntersectedCellIndices(utils.CellSize, line)...)
         }</span>
 
-        <span class="cov5" title="700">for _, index := range indexes </span><span class="cov6" title="6573">{
-                if grid[index[0]][index[1]].Data.Type == utils.Cells.Brick </span><span class="cov6" title="4805">{
+        <span class="cov5" title="700">for _, index := range indexes </span><span class="cov6" title="6431">{
+                if grid[index[0]][index[1]].Data.Type == utils.Cells.Brick </span><span class="cov6" title="4732">{
                         grid[index[0]][index[1]].Data.Life = grid[index[0]][index[1]].Data.Life + 1
                         continue</span>
                 }
 
-                <span class="cov5" title="1768">grid[index[0]][index[1]] = Cell{
+                <span class="cov5" title="1699">grid[index[0]][index[1]] = Cell{
                         X: index[0],
                         Y: index[1],
                         Data: &amp;BrickData{
@@ -2344,9 +2380,9 @@ func (grid Grid) RandomWalker(numberOfSteps int) <span class="cov5" title="803">
         for i := 0; i &lt; stepsResting; i++ </span><span class="cov5" title="1907">{
                 nextPoint := getNextPoint(startPoint)
                 nextCell := grid[nextPoint[0]][nextPoint[1]]
-                if nextCell.Data.Type == utils.Cells.Brick </span><span class="cov5" title="1175">{
+                if nextCell.Data.Type == utils.Cells.Brick </span><span class="cov5" title="1191">{
                         nextCell.Data.Life++
-                }</span> else<span class="cov5" title="732"> {
+                }</span> else<span class="cov5" title="716"> {
                         nextCell.Data.Type = utils.Cells.Brick
                         nextCell.Data.Life = 1
                 }</span>
@@ -2707,7 +2743,9 @@ import (
         "github.com/lguibr/pongo/utils"
 )
 
-const maxRooms = 10 // Limit the number of concurrent rooms
+// Increase maxRooms significantly to support ~200 players (200 / 4 = 50 rooms)
+// Add some buffer.
+const maxRooms = 75 // Limit the number of concurrent rooms
 
 // RoomInfo holds information about an active game room.
 type RoomInfo struct {
@@ -3013,7 +3051,7 @@ func NewConnectionHandlerProducer(args ConnectionHandlerArgs) bollywood.Producer
 // Receive handles messages for the ConnectionHandlerActor.
 func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) <span class="cov10" title="5">{
         defer func() </span><span class="cov10" title="5">{
-                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                if r := recover(); r != nil </span><span class="cov1" title="1">{
                         fmt.Printf("PANIC recovered in ConnectionHandlerActor %s Receive: %v\nStack trace:\n%s\n", a.connAddr, r, string(debug.Stack()))
                         a.cleanup(ctx, fmt.Errorf("panic in Receive: %v", r))
                 }</span>
@@ -3148,9 +3186,9 @@ func (a *ConnectionHandlerActor) readLoop(engine *bollywood.Engine, selfPID *bol
 }
 
 // signalAndWaitForReadLoop tells the readLoop goroutine to exit and waits for confirmation.
-func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() <span class="cov4" title="2">{
+func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() <span class="cov7" title="3">{
         select </span>{
-        case &lt;-a.stopReadLoop:<span class="cov1" title="1">
+        case &lt;-a.stopReadLoop:<span class="cov4" title="2">
                 // Already closed or closing
                 return</span>
         default:<span class="cov1" title="1">
@@ -3173,20 +3211,20 @@ func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() <span class="cov4" t
 }
 
 // cleanup is called when the connection terminates (readLoop exits) or the actor stops.
-func (a *ConnectionHandlerActor) cleanup(ctx bollywood.Context, reason error) <span class="cov1" title="1">{
+func (a *ConnectionHandlerActor) cleanup(ctx bollywood.Context, reason error) <span class="cov4" title="2">{
         fmt.Printf("ConnectionHandlerActor %s: Initiating cleanup (Reason: %v).\n", a.connAddr, reason)
         a.signalAndWaitForReadLoop()
         a.performCleanupActions(ctx, reason)
         // Only stop self if the cleanup wasn't triggered by the actor already stopping
-        if !errors.Is(reason, errActorStopping) </span><span class="cov1" title="1">{
-                if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov1" title="1">{
+        if !errors.Is(reason, errActorStopping) </span><span class="cov4" title="2">{
+                if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov4" title="2">{
                         a.engine.Stop(a.selfPID)
                 }</span>
         }
 }
 
 // performCleanupActions sends disconnect and nils the connection reference.
-func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, reason error) <span class="cov4" title="2">{
+func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, reason error) <span class="cov7" title="3">{
         connToDisconnect := a.conn // Capture connection before potentially nil-ing it
 
         // Send PlayerDisconnect only if assigned, connection exists, and not already stopping
@@ -3195,18 +3233,18 @@ func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, re
                 if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov1" title="1">{
                         a.engine.Send(a.gameActorPID, game.PlayerDisconnect{WsConn: connToDisconnect}, a.selfPID)
                 }</span>
-        } else<span class="cov1" title="1"> if a.gameActorPID != nil </span><span class="cov1" title="1">{
+        } else<span class="cov4" title="2"> if a.gameActorPID != nil </span><span class="cov4" title="2">{
                 // Log why disconnect wasn't sent
                 fmt.Printf("ConnectionHandlerActor %s: Not sending PlayerDisconnect to %s (Reason: %v, Assigned: %t, ConnNil: %t).\n",
                         a.connAddr, a.gameActorPID, reason, a.isAssigned, connToDisconnect == nil)
         }</span>
 
         // Close and nil the connection reference
-        <span class="cov4" title="2">if a.conn != nil </span><span class="cov1" title="1">{
+        <span class="cov7" title="3">if a.conn != nil </span><span class="cov1" title="1">{
                 _ = a.conn.Close()
                 a.conn = nil
         }</span>
-        <span class="cov4" title="2">a.isAssigned = false</span> // Mark as unassigned during cleanup
+        <span class="cov7" title="3">a.isAssigned = false</span> // Mark as unassigned during cleanup
 }
 </pre>
 		
@@ -3709,15 +3747,15 @@ func RandomNumber(amplitude int) int <span class="cov2" title="3">{
 
 var randomNumberN func(amplitude int) int
 
-func RandomNumberN(amplitude int) int <span class="cov10" title="460">{
-        randomNumberN = func(amplitude int) int </span><span class="cov10" title="460">{
+func RandomNumberN(amplitude int) int <span class="cov10" title="433">{
+        randomNumberN = func(amplitude int) int </span><span class="cov10" title="433">{
                 value := rand.Intn(amplitude*2) - amplitude
-                if value == 0 </span><span class="cov8" title="160">{
+                if value == 0 </span><span class="cov8" title="133">{
                         value = RandomNumberN(amplitude)
                 }</span>
-                <span class="cov10" title="460">return value</span>
+                <span class="cov10" title="433">return value</span>
         }
-        <span class="cov10" title="460">return randomNumberN(amplitude)</span>
+        <span class="cov10" title="433">return randomNumberN(amplitude)</span>
 }
 
 func Abs(x int) int <span class="cov2" title="3">{
