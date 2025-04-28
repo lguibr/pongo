@@ -1,17 +1,20 @@
 # github.com/davecgh/go-spew v1.1.1
 ## explicit
 github.com/davecgh/go-spew/spew
+# github.com/google/uuid v1.6.0
+## explicit
+github.com/google/uuid
 # github.com/lguibr/asciiring v0.0.0-20230807134012-b571572dd6ee
 ## explicit; go 1.20
 github.com/lguibr/asciiring/types
-# github.com/lguibr/bollywood v0.1.0
+# github.com/lguibr/bollywood v0.1.1
 ## explicit; go 1.19
 github.com/lguibr/bollywood
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/stretchr/testify v1.8.4
-## explicit; go 1.20
+# github.com/stretchr/testify v1.9.0
+## explicit; go 1.17
 github.com/stretchr/testify/assert
 # golang.org/x/net v0.14.0
 ## explicit; go 1.17

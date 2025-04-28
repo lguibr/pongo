@@ -4,49 +4,38 @@ package server
 import (
 	"fmt"
 
-	"github.com/lguibr/bollywood" // Import bollywood
-	// "golang.org/x/net/websocket" // No longer needed here
+	"github.com/lguibr/bollywood"
 )
 
 // Server holds references needed for handling requests.
 type Server struct {
-	engine       *bollywood.Engine
-	gameActorPID *bollywood.PID
-	// connections map removed
-	// mu removed (no longer managing shared map)
+	engine         *bollywood.Engine
+	roomManagerPID *bollywood.PID // Changed from gameActorPID
 }
-
-// connectionInfo removed
 
 // New creates a new Server instance.
-func New(engine *bollywood.Engine, gameActorPID *bollywood.PID) *Server {
-	if engine == nil || gameActorPID == nil {
-		panic("Server requires a valid engine and gameActorPID")
+func New(engine *bollywood.Engine, roomManagerPID *bollywood.PID) *Server { // Changed parameter name
+	if engine == nil || roomManagerPID == nil {
+		panic("Server requires a valid engine and roomManagerPID")
 	}
-	fmt.Println("Creating new Server instance.")
+	// fmt.Println("Creating new Server instance.") // Removed redundant log
 	return &Server{
-		engine:       engine,
-		gameActorPID: gameActorPID,
+		engine:         engine,
+		roomManagerPID: roomManagerPID, // Store RoomManager PID
 	}
 }
 
-// OpenConnection REMOVED - No longer managed by Server struct.
-
-// CloseConnection REMOVED - Cleanup handled by GameActor.
-
-// GetGameActorPID returns the PID of the main game actor.
-func (s *Server) GetGameActorPID() *bollywood.PID {
-	// Add nil check for safety, although New should prevent this
+// GetRoomManagerPID returns the PID of the room manager actor.
+func (s *Server) GetRoomManagerPID() *bollywood.PID {
 	if s == nil {
-		fmt.Println("ERROR: GetGameActorPID called on nil Server")
+		fmt.Println("ERROR: GetRoomManagerPID called on nil Server")
 		return nil
 	}
-	return s.gameActorPID
+	return s.roomManagerPID
 }
 
 // GetEngine returns the Bollywood engine instance.
 func (s *Server) GetEngine() *bollywood.Engine {
-	// Add nil check for safety
 	if s == nil {
 		fmt.Println("ERROR: GetEngine called on nil Server")
 		return nil

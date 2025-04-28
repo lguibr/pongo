@@ -4,72 +4,96 @@ package game
 import (
 	"time"
 
-	"golang.org/x/net/websocket" // Import websocket
+	"github.com/lguibr/bollywood"
+	"golang.org/x/net/websocket"
 )
 
-// --- Messages TO GameActor ---
+// --- Messages TO/FROM RoomManager ---
+type FindRoomRequest struct {
+	ReplyTo *bollywood.PID
+}
+type AssignRoomResponse struct {
+	RoomPID *bollywood.PID
+}
+type GameRoomEmpty struct {
+	RoomPID *bollywood.PID
+}
+type GetRoomListRequest struct {
+	// ReplyTo is implicit when using Ask
+}
+type RoomListResponse struct {
+	Rooms map[string]int // Key is Room PID string
+}
 
-type PlayerConnectRequest struct {
+// --- Messages TO GameActor ---
+type AssignPlayerToRoom struct {
 	WsConn *websocket.Conn
 }
-
 type PlayerDisconnect struct {
-	PlayerIndex int
-	WsConn      *websocket.Conn
+	WsConn *websocket.Conn
 }
-
 type ForwardedPaddleDirection struct {
 	WsConn    *websocket.Conn
 	Direction []byte
 }
-
 type DestroyExpiredBall struct {
 	BallID int
 }
-
-// --- Messages Between GameActor and Child Actors ---
-
-// (PaddlePositionMessage, BallPositionMessage defined in paddle.go/ball.go)
-
-// --- Commands TO BallActor ---
-
-type SetPhasingCommand struct {
-	ExpireIn time.Duration // DEPRECATED: Duration now comes from config in GameActor physics
-}
-
-type IncreaseVelocityCommand struct {
-	Ratio float64 // DEPRECATED: Ratio now comes from config in GameActor physics
-}
-
-type IncreaseMassCommand struct {
-	Additional int // DEPRECATED: Amount now comes from config in GameActor physics
-}
-
-type ReflectVelocityCommand struct {
-	Axis string // "X" or "Y"
-}
-
-type SetVelocityCommand struct {
-	Vx int
-	Vy int
-}
-
-type DestroyBallCommand struct{}
-
-// --- Commands TO PaddleActor ---
-
-// (PaddleDirectionMessage defined in paddle.go)
-
-// --- Internal Actor Messages ---
-
-type GameTick struct{}
-
-type internalTick struct{}
-
-// SpawnBallCommand tells GameActor to spawn a new ball
 type SpawnBallCommand struct {
 	OwnerIndex  int
 	X, Y        int
-	ExpireIn    time.Duration // Average duration, will be randomized in handler
-	IsPermanent bool          // Add flag to indicate if the ball should be permanent
+	ExpireIn    time.Duration
+	IsPermanent bool
 }
+
+// --- Messages Between GameActor and Child Actors ---
+type UpdatePositionCommand struct{}
+type GetPositionRequest struct{}
+type PositionResponse struct {
+	X        int
+	Y        int
+	Vx       int
+	Vy       int
+	Radius   int
+	Width    int
+	Height   int
+	Phasing  bool
+	IsMoving bool
+}
+
+// --- Commands TO BallActor ---
+type SetPhasingCommand struct{}
+type IncreaseVelocityCommand struct{ Ratio float64 }
+type IncreaseMassCommand struct{ Additional int }
+type ReflectVelocityCommand struct{ Axis string }
+type SetVelocityCommand struct{ Vx, Vy int }
+type DestroyBallCommand struct{}
+
+// --- Commands TO PaddleActor ---
+type PaddleDirectionMessage struct{ Direction []byte }
+
+// --- Messages TO/FROM BroadcasterActor ---
+
+// AddClient tells the BroadcasterActor to start sending updates to a connection.
+type AddClient struct {
+	Conn *websocket.Conn
+}
+
+// RemoveClient tells the BroadcasterActor to stop sending updates to a connection.
+type RemoveClient struct {
+	Conn *websocket.Conn
+}
+
+// BroadcastStateCommand carries the state snapshot to be broadcasted.
+type BroadcastStateCommand struct {
+	State GameState // Changed from StateJSON []byte
+}
+
+// --- Internal Actor Messages ---
+
+type GameTick struct{}      // Sent to GameActor by its physics ticker
+type BroadcastTick struct{} // Sent to GameActor by its broadcast ticker
+
+// --- Internal Connection Handler Messages ---
+// Exported types for use in server package
+type InternalReadLoopMsg struct{ Payload []byte }

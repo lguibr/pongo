@@ -16,9 +16,9 @@ const (
 	InitialScore = 100
 
 	// Deprecated: Use config.DefaultConfig().CanvasSize
-	CanvasSize = 576 //INFO Must be divisible by GridSize
+	CanvasSize = 576 // Must be divisible by GridSize
 	// Deprecated: Use config.DefaultConfig().GridSize
-	GridSize = 12 //INFO Must be divisible by 2
+	GridSize = 12 // Must be divisible by 2
 
 	// Deprecated: Use config.DefaultConfig().CellSize
 	CellSize = CanvasSize / GridSize

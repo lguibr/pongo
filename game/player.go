@@ -1,3 +1,4 @@
+// File: game/player.go
 package game
 
 import (
@@ -11,12 +12,12 @@ type Player struct {
 	Index int    `json:"index"`
 	Id    string `json:"id"`
 	Color [3]int `json:"color"`
-	Score int    `json:"score"`
+	Score int32  `json:"score"` // Changed to int32 for atomic operations
 }
 
 // NewPlayerChannel is DEPRECATED.
 func NewPlayerChannel() /* chan PlayerMessage */ interface{} { // Return interface{} to avoid type error
-	fmt.Println("WARNING: NewPlayerChannel() is deprecated.")
+	// fmt.Println("WARNING: NewPlayerChannel() is deprecated.")
 	return nil
 }
 
@@ -26,16 +27,16 @@ func NewPlayer(canvas *Canvas, index int) *Player {
 		Index: index,
 		Id:    "player" + fmt.Sprint(index),
 		Color: utils.NewRandomColor(),
-		Score: utils.InitialScore,
+		Score: int32(utils.InitialScore), // Cast initial score to int32
 	}
 }
 
 // Connect is DEPRECATED. GameActor handles connection logic.
 func (player *Player) Connect() {
-	fmt.Printf("WARNING: player.Connect() for player %d is deprecated. GameActor handles connection.\n", player.Index)
+	// fmt.Printf("WARNING: player.Connect() for player %d is deprecated. GameActor handles connection.\n", player.Index)
 }
 
 // Disconnect is DEPRECATED. Connection handler sends PlayerDisconnect to GameActor.
 func (player *Player) Disconnect() {
-	fmt.Printf("WARNING: player.Disconnect() for player %d is deprecated. Connection handler sends message.\n", player.Index)
+	// fmt.Printf("WARNING: player.Disconnect() for player %d is deprecated. Connection handler sends message.\n", player.Index)
 }

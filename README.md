@@ -1,72 +1,384 @@
-# File: README.md
+[![Coverage](https://img.shields.io/badge/Coverage-TBD%25-lightgrey)](./README.md) [![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)](https://github.com/lguibr/pongo/actions/workflows/test.yml) [![Building](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build)](https://github.com/lguibr/pongo/actions/workflows/build.yml) [![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)](https://github.com/lguibr/pongo/actions/workflows/lint.yml)
 
-[![Coverage](https://img.shields.io/badge/Coverage-70%25+-yellow)](./README.md) [![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)](https://github.com/lguibr/pongo/actions/workflows/test.yml) [![Building](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build)](https://github.com/lguibr/pongo/actions/workflows/build.yml) [![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)](https://github.com/lguibr/pongo/actions/workflows/lint.yml)
-
-# PonGo
+# PonGo: Multi-Room Pong/Breakout Hybrid
 
 <p align="center">
   <img src="bitmap.png" alt="Logo" width="300"/>
 </p>
 
-# PonGo Game: Detailed Rules, Gameplay, and Architecture
+Welcome to PonGo, a real-time multiplayer game combining elements of Pong and Breakout. This project features a Go backend built with a custom actor model library ([Bollywood](https://github.com/lguibr/bollywood)) designed for concurrency and scalability, supporting multiple independent game rooms.
 
-This document details the workings of the PonGo game, a Pong/Breakout hybrid, based on the provided Go source code and configuration files. The game features a Go backend utilizing a custom actor model library (`Bollywood`) for concurrency and state management. Key game parameters are now configurable in `utils/config.go`.
+## Table of Contents
 
-*... (rest of the README, update gameplay rules for permanent ball and paddle stop)* ...*
+- [PonGo: Multi-Room Pong/Breakout Hybrid](#pongo-multi-room-pongbreakout-hybrid)
+  - [Table of Contents](#table-of-contents)
+  - [1. Overview](#1-overview)
+  - [2. Gameplay Rules](#2-gameplay-rules)
+    - [2.1 Objective](#21-objective)
+    - [2.2 Joining a Game](#22-joining-a-game)
+    - [2.3 Paddle Control](#23-paddle-control)
+    - [2.4 Balls](#24-balls)
+    - [2.5 Collisions \& Scoring](#25-collisions--scoring)
+    - [2.6 Bricks \& Power-ups](#26-bricks--power-ups)
+    - [2.7 Winning/Losing](#27-winninglosing)
+  - [3. Architecture](#3-architecture)
+    - [3.1 Actor Model (Bollywood)](#31-actor-model-bollywood)
+    - [3.2 Connection Handling (`ConnectionHandlerActor`)](#32-connection-handling-connectionhandleractor)
+    - [3.3 Room Management (`RoomManagerActor`)](#33-room-management-roommanageractor)
+    - [3.4 Game Room (`GameActor`)](#34-game-room-gameactor)
+    - [3.5 Broadcasting (`BroadcasterActor`)](#35-broadcasting-broadcasteractor)
+    - [3.6 Entity Actors (`PaddleActor`, `BallActor`)](#36-entity-actors-paddleactor-ballactor)
+    - [3.7 Communication Flow (Diagram)](#37-communication-flow-diagram)
+  - [4. Key Game Parameters](#4-key-game-parameters)
+  - [5. Setup \& Running](#5-setup--running)
+    - [5.1 Prerequisites](#51-prerequisites)
+    - [5.2 Backend](#52-backend)
+    - [5.3 Frontend](#53-frontend)
+    - [5.4 Docker](#54-docker)
+  - [6. Testing](#6-testing)
+  - [7. API Endpoints](#7-api-endpoints)
+  - [8. Submodules](#8-submodules)
+  - [9. Contributing](#9-contributing)
+  - [10. License](#10-license)
 
-### 3.1. Paddle Movement
+## 1. Overview
 
--   Each paddle is oriented along one edge of the arena:
-    -   Player 0 (Right) & Player 2 (Left) have **vertical** paddles moving **Up/Down**.
-    -   Player 1 (Top) & Player 3 (Bottom) have **horizontal** paddles moving **Left/Right**.
--   Input commands (`ArrowLeft`, `ArrowRight`, `Stop`) are interpreted relative to the paddle's orientation:
-    -   For **vertical** paddles (Index 0, 2):
-        -   `"ArrowLeft"` (internal: `"left"`) means move **Up**.
-        -   `"ArrowRight"` (internal: `"right"`) means move **Down**.
-    -   For **horizontal** paddles (Index 1, 3):
-        -   `"ArrowLeft"` (internal: `"left"`) means move **Left**.
-        -   `"ArrowRight"` (internal: `"right"`) means move **Right**.
-    -   `"Stop"` (internal: `""`) means **stop moving**.
--   Paddles are constrained within the boundaries of their assigned edge and move at a fixed velocity defined in the config. Releasing keys sends a "Stop" command.
+PonGo pits up to four players against each other in a square arena filled with destructible bricks. Each player controls a paddle on one edge of the arena, defending their side and attempting to score points by hitting opponents' walls or destroying bricks. The game utilizes WebSockets for real-time communication and Go's concurrency features managed by the Bollywood actor library to handle game state and player interactions efficiently across multiple game rooms.
 
-### 3.2. Balls & Collisions
+## 2. Gameplay Rules
 
-1.  **Spawning**: Each player gets one **permanent** ball upon joining. This ball is never removed for hitting an empty wall or expiring. More temporary balls can be spawned via power-ups. Balls have varying velocity, radius, and mass. Initial balls spawn with a **random velocity vector**.
-2.  **Movement**: Balls move based on their `Vx`, `Vy` velocity vector, updated at regular intervals (ticks).
-3.  **Wall Collision**:
-    *   When a ball hits an edge of the canvas (a "wall"):
-        *   Its velocity is reflected on the appropriate axis.
-        *   **Scoring:** (Same as before)
-        *   **Ball Removal:** If the wall belongs to an **unoccupied player slot**, the ball is removed *only if it is not a permanent ball*. Permanent balls are reflected instead.
-        *   The ball enters a brief `Phasing` state.
+### 2.1 Objective
 
-*... (rest of the README)* ...*
+The primary goal is to achieve the highest score by hitting opponent walls, destroying bricks, and outlasting other players. Players lose points when a ball hits their assigned wall.
 
-## 10. Key Game Parameters
+### 2.2 Joining a Game
 
-*(Default values now sourced from `utils/config.go` - see `DefaultConfig()`)*
+-   Players connect via WebSocket to the server.
+-   The server's **Room Manager** assigns the player to the first available game room (up to 4 players per room).
+-   If all existing rooms are full, the Room Manager automatically creates a new room for the player.
+-   Upon joining, the player is assigned an index (0-3), a paddle, a color, an initial score, and one **permanent ball**.
 
-*   `GameTickPeriod`: 24ms
-*   `InitialScore`: 100
-*   `CanvasSize`: 576
-*   `GridSize`: 12
-*   `CellSize`: 48
-*   `BallMass`: 1
-*   `BallRadius`: 12
-*   `PaddleLength`: 144
-*   `PaddleWidth`: 24
-*   `PaddleVelocity`: 8 (Example, check config)
-*   `MinBallVelocity`: ~2.88
-*   `MaxBallVelocity`: ~3.84
-*   `PowerUpChance`: 0.25 (25%)
-*   *(See `utils/config.go` for all parameters)*
+### 2.3 Paddle Control
 
-*... (rest of the README)* ...*
+-   Each player controls a paddle fixed to one edge:
+    -   Player 0 (Right Edge): Vertical Paddle (Moves Up/Down)
+    -   Player 1 (Top Edge): Horizontal Paddle (Moves Left/Right)
+    -   Player 2 (Left Edge): Vertical Paddle (Moves Up/Down)
+    -   Player 3 (Bottom Edge): Horizontal Paddle (Moves Left/Right)
+-   Input commands (`ArrowLeft`, `ArrowRight`, `Stop`) control paddle movement *relative to its orientation*:
+    -   **Vertical Paddles (0 & 2):**
+        -   `ArrowLeft` -> Move **Up**
+        -   `ArrowRight` -> Move **Down**
+    -   **Horizontal Paddles (1 & 3):**
+        -   `ArrowLeft` -> Move **Left**
+        -   `ArrowRight` -> Move **Right**
+    -   `Stop` (or releasing movement keys) -> **Stop** movement immediately.
+-   Paddles are confined to their assigned edge and move at a configured velocity (`PaddleVelocity`).
 
-## 14. Submodules
+### 2.4 Balls
 
-*   [Game Logic](./game/README.md)
-*   [Server](./server/README.md)
-*   [Bollywood Actor Library](./bollywood/README.md)
-*   [Utilities](./utils/README.md) (Contains `config.go`)
-*   [Frontend](./frontend/README.md)
+1.  **Permanent Ball:** Each player receives one **permanent ball** upon joining. This ball is associated with the player but is never removed from the game if it hits an empty wall (it reflects instead). Its ownership might change if another player hits it.
+2.  **Temporary Balls:** Additional balls can be spawned through power-ups. These balls *are* removed if they hit a wall belonging to an empty player slot. They also expire after a randomized duration.
+3.  **Initial Spawn:** Permanent balls spawn near their owner's paddle with a randomized initial velocity vector.
+4.  **Movement:** Balls move according to their velocity vector (`Vx`, `Vy`), updated each game tick.
+5.  **Ownerless Ball:** If the last player in a room disconnects, one of their balls (preferably permanent) will be kept in play, marked as ownerless (`OwnerIndex = -1`) and permanent, ensuring the game always has at least one ball if players remain.
+
+### 2.5 Collisions & Scoring
+
+1.  **Wall Collision:**
+    *   **Reflection:** The ball's velocity component perpendicular to the wall is reversed.
+    *   **Active Player Wall:** If the wall belongs to a connected player (the "conceder"):
+        *   The conceder loses 1 point.
+        *   The player who last hit the ball (the "scorer", if different from the conceder and still connected) gains 1 point.
+        *   Ownerless balls hitting an active player's wall cause the wall owner to lose 1 point.
+    *   **Empty Player Slot Wall:**
+        *   If the ball is **permanent**, it reflects as normal (no scoring).
+        *   If the ball is **temporary**, it is removed from the game.
+    *   **Phasing:** After any wall collision, the ball enters a brief "phasing" state where it cannot collide with bricks immediately.
+
+2.  **Paddle Collision:**
+    *   **Dynamic Reflection:** The ball reflects off the paddle. The reflection angle depends on *where* the ball hits the paddle surface (center hits reflect more directly, edge hits deflect more sharply).
+    *   **Speed Influence:** The paddle's current velocity component *along* the ball's reflection path influences the ball's resulting speed (moving paddle adds speed, stationary/opposing subtracts).
+    *   **Ownership:** The player whose paddle was hit becomes the new owner of the ball.
+    *   **Phasing:** The ball enters the phasing state.
+
+3.  **Brick Collision:**
+    *   **Damage:** The brick's `Life` decreases by 1.
+    *   **Reflection:** The ball reflects off the brick surface (axis determined by impact angle).
+    *   **Destruction:** If `Life` reaches 0:
+        *   The brick is removed (`Type` becomes `Empty`).
+        *   The ball's current owner (if valid and connected) gains points equal to the brick's initial `Level`.
+        *   There's a chance (`PowerUpChance`) to trigger a random power-up.
+    *   **Phasing:** The ball enters the phasing state. Bricks cannot be hit by phasing balls.
+
+### 2.6 Bricks & Power-ups
+
+-   **Bricks:** Occupy cells in the central grid. They have `Life` (hit points) and `Level` (points awarded on destruction). The grid is procedurally generated when a room is created.
+-   **Power-ups:** Triggered randomly when a brick is destroyed. Effects apply to the ball that broke the brick or spawn new entities:
+    -   **Spawn Ball:** Creates a new temporary ball near the broken brick, owned by the player who broke the brick.
+    -   **Increase Mass:** Increases the mass and radius of the ball that broke the brick.
+    -   **Increase Velocity:** Increases the speed of the ball that broke the brick.
+
+### 2.7 Winning/Losing
+
+-   The game continues as long as players are connected. There isn't an explicit win condition defined by score in the current rules, but players aim to maximize their score.
+-   Players effectively "lose" if they disconnect.
+-   If all players disconnect, the room becomes empty and is eventually cleaned up by the Room Manager.
+
+## 3. Architecture
+
+PonGo uses an Actor Model architecture facilitated by the [Bollywood](https://github.com/lguibr/bollywood) library. This promotes concurrency and isolates state management.
+
+### 3.1 Actor Model (Bollywood)
+
+-   Actors are independent units of computation with private state.
+-   They communicate solely through asynchronous messages (`Send`) or synchronous request/reply (`Ask`).
+-   The `Engine` manages actor lifecycles (spawning, stopping) and message routing.
+-   Actors use the `Context` provided in `Receive` to interact, including `ctx.Reply()` for `Ask` responses.
+
+### 3.2 Connection Handling (`ConnectionHandlerActor`)
+
+-   A dedicated, short-lived actor spawned by the server for each new WebSocket connection.
+-   **Responsibilities:**
+    -   Asks the `RoomManagerActor` for a game room assignment (`FindRoomRequest`).
+    -   Receives the assigned `GameActor` PID (`AssignRoomResponse`).
+    -   Sends `AssignPlayerToRoom` *directly* to the assigned `GameActor`.
+    -   Manages the `readLoop` for the WebSocket connection.
+    -   Forwards player input (`ForwardedPaddleDirection`) *directly* to the assigned `GameActor`.
+    -   Sends `PlayerDisconnect` *directly* to the assigned `GameActor` upon connection error or closure.
+    -   Stops itself when the connection terminates.
+
+### 3.3 Room Management (`RoomManagerActor`)
+
+-   A central actor managing the list of active game rooms.
+-   **Responsibilities:**
+    -   Handles `FindRoomRequest` from `ConnectionHandlerActor`.
+    -   Finds an existing `GameActor` (room) with space or spawns a new one (up to a limit).
+    -   Replies to `ConnectionHandlerActor` with the assigned `GameActor` PID (`AssignRoomResponse`).
+    -   Receives notifications (`GameRoomEmpty`) from `GameActors` when they become empty.
+    -   Stops empty `GameActors` and removes them from the active list.
+    -   Handles requests for the list of active rooms (`GetRoomListRequest` from HTTP handler via `Ask`) and replies using `ctx.Reply()`.
+    -   **Does NOT directly interact with WebSockets or handle player input.**
+
+### 3.4 Game Room (`GameActor`)
+
+-   Each instance represents a single, independent game room (max 4 players).
+-   **Responsibilities:**
+    -   Manages the core state of a specific game: Canvas, Grid, Players, Scores.
+    -   Handles player connections/disconnections (`AssignPlayerToRoom`, `PlayerDisconnect`) *initiated by ConnectionHandlerActor*.
+    -   Spawns and supervises child actors (`PaddleActor`, `BallActor`) and a `BroadcasterActor`.
+    -   Drives child actor updates via `UpdatePositionCommand`.
+    -   Queries child actor state (`GetPositionRequest`) for collision detection using `Engine.Ask`.
+    -   Performs all collision detection and physics calculations.
+    -   Updates scores and grid state.
+    -   Handles power-up logic.
+    -   Implements the "persistent ball" logic on player disconnect.
+    -   Periodically creates a `GameState` snapshot and sends it (`BroadcastStateCommand`) to its `BroadcasterActor`.
+    -   Notifies the `RoomManagerActor` when it becomes empty (`GameRoomEmpty`).
+
+### 3.5 Broadcasting (`BroadcasterActor`)
+
+-   A dedicated actor spawned by each `GameActor`.
+-   **Responsibilities:**
+    -   Maintains the list of active WebSocket connections for its specific room (`AddClient`, `RemoveClient`).
+    -   Receives `GameState` snapshots (`BroadcastStateCommand`) from its parent `GameActor`.
+    -   Marshals the state to JSON.
+    -   Sends the JSON payload to all connected clients in its room.
+    -   Handles WebSocket write errors and notifies the `GameActor` of disconnections detected during broadcast.
+
+### 3.6 Entity Actors (`PaddleActor`, `BallActor`)
+
+-   **`PaddleActor`:** Manages the state (position, velocity, direction) of a single paddle. Updates state on `UpdatePositionCommand`. Responds to `GetPositionRequest` (via `ctx.Reply()`). Handles `PaddleDirectionMessage` from `GameActor`.
+-   **`BallActor`:** Manages the state (position, velocity, phasing) of a single ball. Updates state on `UpdatePositionCommand`. Responds to `GetPositionRequest` (via `ctx.Reply()`). Handles commands (`SetVelocity`, `ReflectVelocity`, etc.) from `GameActor`.
+
+### 3.7 Communication Flow (Diagram)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ServerHandler
+    participant ConnectionHandlerActor
+    participant RoomManagerActor
+    participant GameActor
+    participant BroadcasterActor
+    participant PaddleActor
+    participant BallActor
+
+    Client->>+ServerHandler: WebSocket Connect (/subscribe)
+    ServerHandler->>+ConnectionHandlerActor: Spawn(WsConn, Engine, RoomManagerPID)
+    ConnectionHandlerActor->>+RoomManagerActor: FindRoomRequest {ReplyTo: SelfPID}
+    alt Room Found/Created
+        RoomManagerActor-->>-ConnectionHandlerActor: AssignRoomResponse {RoomPID}
+        ConnectionHandlerActor->>+GameActor: AssignPlayerToRoom {WsConn}
+        GameActor->>+BroadcasterActor: AddClient {WsConn}
+        GameActor->>+PaddleActor: Spawn PaddleActor
+        GameActor->>+BallActor: Spawn BallActor (Permanent)
+        %% ConnectionHandlerActor starts readLoop (internal)
+    else No Room Available / Error
+        RoomManagerActor-->>-ConnectionHandlerActor: AssignRoomResponse {RoomPID: nil}
+        ConnectionHandlerActor->>ConnectionHandlerActor: Cleanup (Close WsConn, Stop Self)
+    end
+    ServerHandler-->>-Client: (Connection stays open if successful)
+
+
+    loop Game Loop (GameActor Physics Tick)
+        GameActor->>GameActor: GameTick (Internal Timer)
+        GameActor->>PaddleActor: UpdatePositionCommand
+        GameActor->>BallActor: UpdatePositionCommand
+        %% Children update internally
+
+        GameActor->>GameActor: detectCollisions()
+        Note over GameActor: Queries child positions via Engine.Ask(GetPositionRequest -> PositionResponse)
+        opt Collision Detected
+            GameActor->>BallActor: ReflectVelocityCommand / SetVelocityCommand / etc.
+            GameActor->>GameActor: Update Score / Grid
+            opt PowerUp Triggered
+                 GameActor->>GameActor: SpawnBallCommand / IncreaseMassCommand / etc.
+            end
+        end
+    end
+
+    loop Broadcast Loop (GameActor Broadcast Tick)
+        GameActor->>GameActor: BroadcastTick (Internal Timer)
+        GameActor->>GameActor: createGameStateSnapshot()
+        GameActor->>+BroadcasterActor: BroadcastStateCommand {State}
+        BroadcasterActor->>BroadcasterActor: Marshal State to JSON
+        BroadcasterActor->>Client: Send GameState JSON (to all clients in room)
+        opt Send Error
+            BroadcasterActor->>BroadcasterActor: Mark client disconnected
+            BroadcasterActor->>GameActor: PlayerDisconnect {WsConn}
+        end
+    end
+
+
+    Client->>+ConnectionHandlerActor: Send Input (e.g., {"direction":"ArrowLeft"}) (via readLoop)
+    ConnectionHandlerActor->>+GameActor: ForwardedPaddleDirection {WsConn, Data}
+    GameActor->>PaddleActor: PaddleDirectionMessage {Data}
+
+
+    Client->>-ConnectionHandlerActor: WebSocket Disconnect (detected by readLoop)
+    ConnectionHandlerActor->>+GameActor: PlayerDisconnect {WsConn}
+    GameActor->>GameActor: Handle Disconnect (Stop Actors, Persistent Ball Logic)
+    GameActor->>+BroadcasterActor: RemoveClient {WsConn}
+    opt Last Player Left
+        GameActor->>+RoomManagerActor: GameRoomEmpty {RoomPID}
+        RoomManagerActor->>GameActor: Stop Actor (via Engine)
+    end
+    ConnectionHandlerActor->>ConnectionHandlerActor: Stop Self
+
+    %% HTTP Request for Room List
+    participant HTTPClient
+    HTTPClient->>+ServerHandler: GET /
+    ServerHandler->>+RoomManagerActor: Ask(GetRoomListRequest)
+    RoomManagerActor-->>-ServerHandler: Reply(RoomListResponse)
+    ServerHandler-->>-HTTPClient: JSON Response
+
+```
+
+## 4. Key Game Parameters
+
+All major game parameters are configurable in `utils/config.go`. See the `DefaultConfig()` function for default values. Key parameters include:
+
+-   `GameTickPeriod`: (Default: 10ms)
+-   `CanvasSize`, `GridSize`, `CellSize`
+-   `InitialScore`
+-   `PaddleLength`, `PaddleWidth`, `PaddleVelocity`
+-   `MinBallVelocity`, `MaxBallVelocity`, `BallRadius`, `BallMass`, `BallPhasingTime`
+-   Paddle/Ball collision physics factors (`BallHitPaddleSpeedFactor`, `BallHitPaddleAngleFactor`)
+-   Grid generation parameters
+-   Power-up chances and parameters (`PowerUpChance`, `PowerUpSpawnBallExpiry`, etc.)
+
+## 5. Setup & Running
+
+### 5.1 Prerequisites
+
+-   Go (version 1.19 or later recommended)
+-   Git
+-   Docker (Optional, for containerized deployment)
+-   Node.js/npm (For running the frontend)
+
+### 5.2 Backend
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/lguibr/pongo.git
+    cd pongo
+    ```
+2.  **Fetch dependencies:**
+    ```bash
+    go mod tidy
+    ```
+3.  **Run the server:**
+    ```bash
+    go run main.go
+    ```
+    The backend server will start, typically on `http://localhost:3001`.
+
+### 5.3 Frontend
+
+1.  **Navigate to the frontend directory:**
+    ```bash
+    cd frontend
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+3.  **Start the development server:**
+    ```bash
+    npm run dev
+    ```
+    The frontend will usually be available at `http://localhost:5173` (or similar, check console output). Open this URL in your browser.
+
+### 5.4 Docker
+
+1.  **Build the backend image:**
+    ```bash
+    docker build -t pongo-backend .
+    ```
+2.  **Run the backend container:**
+    ```bash
+    docker run -p 3001:3001 pongo-backend
+    ```
+    (Ensure the frontend is configured to connect to the backend at the correct address if running separately).
+
+## 6. Testing
+
+-   **Unit Tests:** Run standard Go tests.
+    ```bash
+    go test ./...
+    ```
+-   **Linting:** Uses `golangci-lint`. Ensure it's installed or run via CI.
+    ```bash
+    golangci-lint run ./...
+    ```
+-   **End-to-End (E2E) Tests:** Located in the `test/` directory. These simulate client connections and interactions.
+    ```bash
+    go test ./test -v -run E2E
+    ```
+-   **Coverage:** Generate coverage reports.
+    ```bash
+    go test -coverprofile=coverage.out ./...
+    go tool cover -html=coverage.out
+    ```
+
+## 7. API Endpoints
+
+-   **`ws://<host>:3001/subscribe`**: The primary WebSocket endpoint for game clients to connect.
+-   **`http://<host>:3001/`**: HTTP GET endpoint. Returns a JSON object listing active game rooms (by PID) and their current player counts (e.g., `{"actor-1": 2, "actor-3": 4}`).
+
+## 8. Submodules
+
+*   [Game Logic](./game/README.md): Core gameplay, actor implementations (GameActor, PaddleActor, BallActor), Room Manager.
+*   [Server](./server/README.md): HTTP/WebSocket connection handling, interaction with Room Manager.
+*   [Bollywood Actor Library](./bollywood/README.md): External actor library dependency.
+*   [Utilities](./utils/README.md): Configuration (`config.go`), constants, helper functions.
+*   [Frontend](./frontend/README.md): Svelte frontend application.
+
+## 9. Contributing
+
+Contributions are welcome! Please follow standard Go practices, ensure tests pass, and update documentation as needed. Open an issue to discuss major changes.
+
+## 10. License
+
+(Specify your license, e.g., MIT, Apache 2.0, or leave as TBD)

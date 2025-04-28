@@ -16,10 +16,8 @@ type BallActor struct {
 	state *Ball        // Use a pointer to the Ball state
 	cfg   utils.Config // Store config
 
-	gameActorPID *bollywood.PID // PID of the GameActor to send position updates
-	ticker       *time.Ticker
-	stopTickerCh chan struct{}
-	phasingTimer *time.Timer // Timer for phasing effect
+	gameActorPID *bollywood.PID // PID of the GameActor (parent)
+	phasingTimer *time.Timer    // Timer for phasing effect
 }
 
 // NewBallActorProducer creates a Producer for BallActor.
@@ -28,15 +26,13 @@ func NewBallActorProducer(initialState Ball, gameActorPID *bollywood.PID, cfg ut
 		stateCopy := initialState // Make a copy for the actor
 		return &BallActor{
 			state:        &stateCopy,
-			cfg:          cfg,                 // Store config
-			stopTickerCh: make(chan struct{}), // Initialize the channel
-			gameActorPID: gameActorPID,        // Store GameActor PID
+			cfg:          cfg,
+			gameActorPID: gameActorPID,
 		}
 	}
 }
 
 // --- Messages Specific to BallActor ---
-// Using messages defined in messages.go and ball.go
 
 // stopPhasingCommand internal message from timer.
 type stopPhasingCommand struct{}
@@ -46,19 +42,27 @@ type stopPhasingCommand struct{}
 func (a *BallActor) Receive(ctx bollywood.Context) {
 	switch msg := ctx.Message().(type) {
 	case bollywood.Started:
-		// fmt.Printf("BallActor %d (owner %d) started.\n", a.state.Id, a.state.OwnerIndex) // Reduce noise
-		a.ticker = time.NewTicker(a.cfg.GameTickPeriod) // Use config for period
-		go a.runTicker(ctx)                             // Start ticker goroutine
-		if a.gameActorPID != nil {
-			snapshot := *a.state
-			ctx.Engine().Send(a.gameActorPID, BallPositionMessage{Ball: &snapshot}, ctx.Self())
-		}
+		// Actor started
 
-	case *internalTick:
+	case UpdatePositionCommand:
 		a.state.Move()
-		if a.gameActorPID != nil {
-			snapshot := *a.state
-			ctx.Engine().Send(a.gameActorPID, BallPositionMessage{Ball: &snapshot}, ctx.Self())
+
+	case GetPositionRequest:
+		// Reply immediately with current state using ctx.Reply if it's an Ask request
+		if ctx.RequestID() != "" {
+			response := PositionResponse{
+				X:       a.state.X,
+				Y:       a.state.Y,
+				Vx:      a.state.Vx,
+				Vy:      a.state.Vy,
+				Radius:  a.state.Radius,
+				Phasing: a.state.Phasing,
+				// Include other fields if needed, e.g., Mass, IsPermanent
+			}
+			ctx.Reply(response)
+		} else {
+			// This case should ideally not happen if GameActor always uses Ask for GetPositionRequest
+			fmt.Printf("WARN: BallActor %d received GetPositionRequest not via Ask.\n", a.state.Id)
 		}
 
 	case ReflectVelocityCommand:
@@ -68,70 +72,47 @@ func (a *BallActor) Receive(ctx bollywood.Context) {
 	case SetPhasingCommand:
 		a.state.Phasing = true
 		if a.phasingTimer != nil {
-			a.phasingTimer.Stop()
+			a.phasingTimer.Stop() // Stop existing timer if any
 		}
 		// Use config for phasing time
 		a.phasingTimer = time.AfterFunc(a.cfg.BallPhasingTime, func() {
-			engine := ctx.Engine()
-			selfPID := ctx.Self()
+			// Need engine and self PID to send message back to self
+			engine := ctx.Engine() // Capture engine from context
+			selfPID := ctx.Self()  // Capture self PID from context
 			if engine != nil && selfPID != nil {
+				// Send message back to the actor's own mailbox
 				engine.Send(selfPID, stopPhasingCommand{}, nil)
+			} else {
+				// This case should be rare but log if it happens
+				fmt.Printf("ERROR: BallActor %d phasing timer fired but engine or selfPID is nil.\n", a.state.Id)
 			}
 		})
 	case stopPhasingCommand:
 		a.state.Phasing = false
-		a.phasingTimer = nil
+		a.phasingTimer = nil // Clear the timer reference
 	case IncreaseVelocityCommand:
 		a.state.IncreaseVelocity(msg.Ratio) // Ratio comes from GameActor physics now
 	case IncreaseMassCommand:
 		a.state.IncreaseMass(a.cfg, msg.Additional) // Pass config
 	case DestroyBallCommand:
 		// Let the Stopping message handle the actual cleanup
+		ctx.Engine().Stop(ctx.Self()) // Initiate stop process
+
 	case bollywood.Stopping:
-		if a.ticker != nil {
-			a.ticker.Stop()
-		}
-		select {
-		case <-a.stopTickerCh:
-		default:
-			close(a.stopTickerCh)
-		}
+		// Stop the phasing timer if it's running
 		if a.phasingTimer != nil {
 			a.phasingTimer.Stop()
 			a.phasingTimer = nil
 		}
+
 	case bollywood.Stopped:
-		// fmt.Printf("BallActor %d stopped.\n", a.state.Id) // Reduce noise
+		// Actor stopped
+
 	default:
 		fmt.Printf("BallActor %d received unknown message: %T\n", a.state.Id, msg)
-	}
-}
-
-// --- Ticker Goroutine ---
-
-// runTicker is the internal loop that sends tick messages to the actor's mailbox.
-func (a *BallActor) runTicker(ctx bollywood.Context) {
-	engine := ctx.Engine()
-	selfPID := ctx.Self()
-
-	if engine == nil || selfPID == nil {
-		fmt.Printf("ERROR: BallActor %d ticker cannot start, invalid engine/PID.\n", a.state.Id)
-		return
-	}
-
-	tickMsg := &internalTick{}
-
-	for {
-		select {
-		case <-a.stopTickerCh:
-			return
-		case <-a.ticker.C:
-			select {
-			case <-a.stopTickerCh:
-				return
-			default:
-				engine.Send(selfPID, tickMsg, nil)
-			}
+		// If it was an Ask, reply with error
+		if ctx.RequestID() != "" {
+			ctx.Reply(fmt.Errorf("ball actor received unknown message type: %T", msg))
 		}
 	}
 }

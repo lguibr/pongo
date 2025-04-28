@@ -14,11 +14,6 @@ type PaddlePositionMessage struct {
 	Paddle *Paddle // Pointer to a state snapshot
 }
 
-// PaddleDirectionMessage carries direction input (sent to PaddleActor).
-type PaddleDirectionMessage struct {
-	Direction []byte // Raw JSON bytes {"direction": "ArrowLeft/ArrowRight/Stop"}
-}
-
 // Direction struct for unmarshalling JSON from frontend
 type Direction struct {
 	Direction string `json:"direction"` // "ArrowLeft", "ArrowRight", "Stop"

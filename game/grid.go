@@ -1,3 +1,4 @@
+// File: game/grid.go
 package game
 
 import (
@@ -79,19 +80,19 @@ func (grid Grid) FillGridWithQuarterGrids(q1, q2, q3, q4 Grid) {
 
 	for i := 0; i < n/2; i++ {
 		for j := 0; j < m/2; j++ {
-			//INFO Filling quarter one of the grid
+			// Filling quarter one of the grid
 			grid[i][j] = q1[i][j]
-			grid[i][j].X = i //INFO Fixing the X value
-			grid[i][j].Y = j //INFO Fixing the Y value
-			//INFO Filling quarter two of the grid
+			grid[i][j].X = i // Fixing the X value
+			grid[i][j].Y = j // Fixing the Y value
+			// Filling quarter two of the grid
 			grid[i][m-1-j] = q2[i][j]
 			grid[i][m-1-j].X = i
 			grid[i][m-1-j].Y = m - 1 - j
-			//INFO Filling quarter three of the grid
+			// Filling quarter three of the grid
 			grid[n-1-i][j] = q3[i][j]
 			grid[n-1-i][j].X = n - 1 - i
 			grid[n-1-i][j].Y = j
-			//INFO Filling quarter four of the grid
+			// Filling quarter four of the grid
 			grid[n-1-i][m-1-j] = q4[i][j]
 			grid[n-1-i][m-1-j].X = n - 1 - i
 			grid[n-1-i][m-1-j].Y = m - 1 - j

@@ -23,8 +23,8 @@ type Ball struct {
 	Y  int `json:"y"`
 	Vx int `json:"vx"`
 	Vy int `json:"vy"`
-	// Ax         int  `json:"ax"` // Acceleration - removed
-	// Ay         int  `json:"ay"` // Acceleration - removed
+	// Ax int `json:"ax"` // Acceleration - removed
+	// Ay int `json:"ay"` // Acceleration - removed
 	Radius      int  `json:"radius"`
 	Id          int  `json:"id"`         // Unique ID (e.g., timestamp + index)
 	OwnerIndex  int  `json:"ownerIndex"` // Index of the player who last hit it
@@ -135,22 +135,14 @@ func (ball *Ball) Move() {
 
 	if ball.X < minCoord {
 		ball.X = minCoord
-		// Optional: Reflect velocity immediately if clamped (can sometimes help prevent sticking)
-		// if ball.Vx < 0 { ball.Vx = -ball.Vx }
 	} else if ball.X > maxCoord {
 		ball.X = maxCoord
-		// Optional: Reflect velocity immediately if clamped
-		// if ball.Vx > 0 { ball.Vx = -ball.Vx }
 	}
 
 	if ball.Y < minCoord {
 		ball.Y = minCoord
-		// Optional: Reflect velocity immediately if clamped
-		// if ball.Vy < 0 { ball.Vy = -ball.Vy }
 	} else if ball.Y > maxCoord {
 		ball.Y = maxCoord
-		// Optional: Reflect velocity immediately if clamped
-		// if ball.Vy > 0 { ball.Vy = -ball.Vy }
 	}
 }
 

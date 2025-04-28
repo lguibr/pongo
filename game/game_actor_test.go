@@ -1,4 +1,3 @@
-// File: game/game_actor_test.go
 package game
 
 import (
@@ -52,26 +51,29 @@ const waitForCloseTimeout = 5000 * time.Millisecond // Increased timeout to 5 se
 // Increased shutdown timeout for all tests
 const testShutdownTimeout = 8 * time.Second // Increased shutdown timeout
 
-// Explicitly skip tests that rely on MockWebSocket and PlayerConnection interface
-// These tests are difficult to implement correctly without extensive mocking of
-// the *websocket.Conn type or significant refactoring of GameActor's connection handling.
-// Connection/disconnection flow is covered by E2E tests and server handler tests.
+// Explicitly skip tests that rely on direct connection handling or GameActor state queries.
+// These tests need significant rework to mock the RoomManager interaction or should be
+// covered by E2E tests.
 func TestGameActor_PlayerConnect_FirstPlayer(t *testing.T) {
-	t.Skip("Skipping test: Requires complex mocking for *websocket.Conn or use E2E test.")
+	t.Skip("Skipping test: GameActor connection now initiated by RoomManager via AssignPlayerToRoom. Requires mocking RoomManager or use E2E test.")
 }
 
 func TestGameActor_PlayerConnect_ServerFull(t *testing.T) {
-	t.Skip("Skipping test: Requires complex mocking for *websocket.Conn or use E2E test.")
+	t.Skip("Skipping test: Room full logic now handled by RoomManager. Requires mocking RoomManager or use E2E test.")
 }
 
 func TestGameActor_PlayerDisconnect(t *testing.T) {
-	t.Skip("Skipping test: Requires complex mocking for *websocket.Conn or use E2E test.")
+	t.Skip("Skipping test: Disconnect logic modified (persistent ball, empty notification). Requires mocking RoomManager interaction or use E2E test.")
 }
 
 func TestGameActor_LastPlayerDisconnect(t *testing.T) {
-	t.Skip("Skipping test: Requires complex mocking for *websocket.Conn or use E2E test.")
+	t.Skip("Skipping test: Last player disconnect now notifies RoomManager. Requires mocking RoomManager interaction or use E2E test.")
 }
 
 func TestGameActor_PaddleMovementForwarding(t *testing.T) {
-	t.Skip("Skipping test: Requires complex mocking for *websocket.Conn or use E2E test.")
+	t.Skip("Skipping test: Input forwarding path changed (Client -> Handler -> RoomManager -> GameActor). Requires mocking RoomManager or use E2E test.")
 }
+
+// TODO: Add new unit tests for specific GameActor handlers if possible,
+// mocking the necessary inputs (like AssignPlayerToRoom, PlayerDisconnect)
+// and verifying outputs (like GameRoomEmpty sent to a mock RoomManager PID).
