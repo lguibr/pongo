@@ -1,4 +1,3 @@
-# File: pongo/server/README.md
 
 # Server Module
 
@@ -8,8 +7,9 @@ This module handles the initial setup of the HTTP server and WebSocket endpoint 
 
 -   **server/websocket.go**: Defines the Server struct which holds references to the actor Engine and the RoomManagerActor PID.
 -   **server/handlers.go**:
-    -   HandleSubscribe: Accepts new WebSocket connections. Spawns a ConnectionHandlerActor to manage the connection lifecycle.
-    -   HandleGetSit: Handles HTTP GET requests to /. Queries the RoomManagerActor using Engine.Ask to get a list of active rooms and their player counts, returning it as JSON.
+    -   `HandleSubscribe`: Accepts new WebSocket connections (`/subscribe`). Spawns a ConnectionHandlerActor to manage the connection lifecycle.
+    -   `HandleGetRooms`: Handles HTTP GET requests to `/rooms/`. Queries the RoomManagerActor using Engine.Ask to get a list of active rooms and their player counts, returning it as JSON.
+    -   `HandleHealthCheck`: Handles HTTP GET requests to `/` and `/health-check/`. Returns a simple `{"status": "ok"}` JSON response.
 -   **server/connection_handler.go**:
     -   Defines ConnectionHandlerActor, spawned per connection.
     -   On start, asks the RoomManagerActor for a room assignment (FindRoomRequest -> AssignRoomResponse).
@@ -26,7 +26,8 @@ This module handles the initial setup of the HTTP server and WebSocket endpoint 
 3.  **Player Assignment:** ConnectionHandlerActor -> AssignPlayerToRoom to assigned GameActor.
 4.  **Player Input:** Client sends input -> ConnectionHandlerActor's readLoop -> ForwardedPaddleDirection *directly* to assigned GameActor.
 5.  **Disconnect:** Connection closes/errors -> ConnectionHandlerActor's readLoop exits -> PlayerDisconnect *directly* to assigned GameActor -> ConnectionHandlerActor stops.
-6.  **HTTP State Query:** Client GET / -> HandleGetSit -> Engine.Ask(RoomManagerPID, GetRoomListRequest) -> RoomManagerActor replies -> JSON response to client.
+6.  **HTTP Room List Query:** Client GET `/rooms/` -> HandleGetRooms -> Engine.Ask(RoomManagerPID, GetRoomListRequest) -> RoomManagerActor replies -> JSON response to client.
+7.  **HTTP Health Check:** Client GET `/` or `/health-check/` -> HandleHealthCheck -> JSON response `{"status": "ok"}`.
 
 ## Related Modules
 

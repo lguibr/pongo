@@ -1,4 +1,3 @@
-# File: pongo/game/README.md
 
 # Game Logic Module
 
@@ -8,7 +7,7 @@ This module contains the core gameplay logic, state management, and actor implem
 
 The game logic is orchestrated by actors. A central RoomManagerActor manages multiple GameActor instances. A temporary ConnectionHandlerActor (in the Server module) manages each WebSocket connection. Each GameActor spawns child actors for game entities and a dedicated BroadcasterActor for state dissemination.
 
--   **RoomManagerActor**: Manages the lifecycle of GameActor instances. Handles requests (FindRoomRequest) from ConnectionHandlerActor to find or create rooms. Cleans up empty rooms (GameRoomEmpty). Responds to HTTP queries (GetRoomListRequest via Ask/Reply).
+-   **RoomManagerActor**: Manages the lifecycle of GameActor instances. Handles requests (FindRoomRequest) from ConnectionHandlerActor to find or create rooms. Cleans up empty rooms (GameRoomEmpty). Responds to HTTP queries for the room list (`/rooms/`) via GetRoomListRequest using Ask/Reply.
 -   **ConnectionHandlerActor (in Server module)**: Manages a single WebSocket connection. Asks RoomManagerActor for a room assignment. Once assigned, communicates *directly* with the designated GameActor to assign the player, forward input, and signal disconnection.
 -   **GameActor**: Represents a single game room (up to 4 players). Manages the core game state (canvas, grid, players, scores). Spawns and supervises child actors (PaddleActor, BallActor) and a BroadcasterActor. Drives child actor updates via UpdatePositionCommand. Queries child actor state (GetPositionRequest) for collision detection using Engine.Ask. Performs all collision detection and physics calculations. Updates scores and grid state. Handles power-up logic. Implements the "persistent ball" logic on player disconnect. Periodically creates a GameState snapshot and sends it (BroadcastStateCommand) to its BroadcasterActor. Notifies the RoomManagerActor when it becomes empty (GameRoomEmpty).
 -   **BroadcasterActor**: Spawned by GameActor. Maintains the list of active WebSocket connections for its specific room (AddClient, RemoveClient). Receives GameState snapshots (BroadcastStateCommand) from its parent GameActor. Marshals the state to JSON. Sends the JSON payload to all connected clients in its room asynchronously. Handles client send errors and notifies the GameActor of disconnections detected during broadcast.

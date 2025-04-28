@@ -163,7 +163,7 @@ func TestReadLoop_SendsDisconnectToManagerOnClose(t *testing.T) {
 	t.Skip("Skipping test: Disconnect now goes directly to GameActor, not RoomManager.")
 }
 
-func TestHandleGetSit_QueriesManagerAndReturnsList(t *testing.T) {
+func TestHandleGetRooms_QueriesManagerAndReturnsList(t *testing.T) {
 	server, engine, mockManager, _ := setupServerWithMockManager(t) // Use underscore for managerPID if not needed directly
 	defer engine.Shutdown(2 * time.Second)
 
@@ -176,11 +176,11 @@ func TestHandleGetSit_QueriesManagerAndReturnsList(t *testing.T) {
 	mockManager.ShouldReply = true
 	mockManager.mu.Unlock()
 
-	req, err := http.NewRequest("GET", "/", nil)
+	req, err := http.NewRequest("GET", "/rooms/", nil) // Use correct path
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(server.HandleGetSit())
+	handler := http.HandlerFunc(server.HandleGetRooms()) // Use correct handler
 
 	handler.ServeHTTP(rr, req)
 
@@ -198,7 +198,7 @@ func TestHandleGetSit_QueriesManagerAndReturnsList(t *testing.T) {
 	assert.JSONEq(t, string(expectedBody), rr.Body.String(), "Handler returned unexpected body")
 }
 
-func TestHandleGetSit_HandlesManagerTimeout(t *testing.T) {
+func TestHandleGetRooms_HandlesManagerTimeout(t *testing.T) {
 	server, engine, mockManager, _ := setupServerWithMockManager(t) // Use underscore for managerPID if not needed directly
 	// Use a shorter shutdown to speed up test end
 	defer engine.Shutdown(1 * time.Second)
@@ -207,11 +207,11 @@ func TestHandleGetSit_HandlesManagerTimeout(t *testing.T) {
 	mockManager.ShouldReply = false // Configure mock to not reply
 	mockManager.mu.Unlock()
 
-	req, err := http.NewRequest("GET", "/", nil)
+	req, err := http.NewRequest("GET", "/rooms/", nil) // Use correct path
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(server.HandleGetSit())
+	handler := http.HandlerFunc(server.HandleGetRooms()) // Use correct handler
 
 	// Run the handler in a goroutine so we can timeout waiting for it
 	handlerDone := make(chan bool)
@@ -232,4 +232,44 @@ func TestHandleGetSit_HandlesManagerTimeout(t *testing.T) {
 	// Check that the manager still received the request
 	_, found := waitForManagerMessage(t, mockManager, game.GetRoomListRequest{}, 1*time.Second)
 	assert.True(t, found, "MockRoomManager should have received GetRoomListRequest even if not replying")
+}
+
+func TestHandleHealthCheck(t *testing.T) {
+	req, err := http.NewRequest("GET", "/health-check/", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(HandleHealthCheck())
+
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "Health check handler returned wrong status code")
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"), "Health check handler returned wrong content type")
+	assert.JSONEq(t, `{"status": "ok"}`, rr.Body.String(), "Health check handler returned unexpected body")
+}
+
+func TestHandleHealthCheck_RootPath(t *testing.T) {
+	req, err := http.NewRequest("GET", "/", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(HandleHealthCheck()) // Same handler used for both paths
+
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "Root health check handler returned wrong status code")
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"), "Root health check handler returned wrong content type")
+	assert.JSONEq(t, `{"status": "ok"}`, rr.Body.String(), "Root health check handler returned unexpected body")
+}
+
+func TestHandleHealthCheck_WrongMethod(t *testing.T) {
+	req, err := http.NewRequest("POST", "/health-check/", nil)
+	assert.NoError(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(HandleHealthCheck())
+
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, rr.Code, "Health check handler should return 405 for wrong method")
 }

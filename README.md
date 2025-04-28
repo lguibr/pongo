@@ -1,4 +1,5 @@
-[![Coverage](https://img.shields.io/badge/Coverage-TBD%25-lightgrey)](./README.md) [![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)](https://github.com/lguibr/pongo/actions/workflows/test.yml) [![Building](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build)](https://github.com/lguibr/pongo/actions/workflows/build.yml) [![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)](https://github.com/lguibr/pongo/actions/workflows/lint.yml)
+
+[![Coverage](https://img.shields.io/badge/Coverage-TBD%25-lightgrey)](./README.md) [![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)](https://github.com/lguibr/pongo/actions/workflows/test.yml) [![Build & Push](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build%20%26%20Push)](https://github.com/lguibr/pongo/actions/workflows/build.yml) [![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)](https://github.com/lguibr/pongo/actions/workflows/lint.yml) [![Docker Image](https://img.shields.io/docker/pulls/lguibr/pongo.svg?label=Docker%20Pulls)](https://hub.docker.com/r/lguibr/pongo) <!-- Replace lguibr with your Docker Hub username -->
 
 # PonGo: Multi-Room Pong/Breakout Hybrid
 
@@ -35,11 +36,12 @@ Welcome to PonGo, a real-time multiplayer game combining elements of Pong and Br
     - [5.2 Backend](#52-backend)
     - [5.3 Frontend](#53-frontend)
     - [5.4 Docker](#54-docker)
+      - [5.4.1 Building Locally](#541-building-locally)
+      - [5.4.2 Running Pre-built Image (Docker Hub)](#542-running-pre-built-image-docker-hub)
   - [6. Testing](#6-testing)
   - [7. API Endpoints](#7-api-endpoints)
   - [8. Submodules](#8-submodules)
   - [9. Contributing](#9-contributing)
-  - [10. License](#10-license)
 
 ## 1. Overview
 
@@ -332,6 +334,8 @@ All major game parameters are configurable in `utils/config.go`. See the `Defaul
 
 ### 5.4 Docker
 
+#### 5.4.1 Building Locally
+
 1.  **Build the backend image:**
     ```bash
     docker build -t pongo-backend .
@@ -341,6 +345,20 @@ All major game parameters are configurable in `utils/config.go`. See the `Defaul
     docker run -p 3001:3001 pongo-backend
     ```
     (Ensure the frontend is configured to connect to the backend at the correct address if running separately).
+
+#### 5.4.2 Running Pre-built Image (Docker Hub)
+
+A pre-built image is automatically pushed to Docker Hub from the `main` branch. Replace `lguibr` with the correct Docker Hub username if it differs.
+
+1.  **Pull the latest image:**
+    ```bash
+    docker pull lguibr/pongo:latest
+    ```
+2.  **Run the container:**
+    ```bash
+    docker run -d -p 3001:3001 --name pongo-server lguibr/pongo:latest
+    ```
+    This runs the container in detached mode (`-d`) and maps port 3001. The frontend should be configured to connect to `ws://<your-docker-host-ip>:3001/subscribe`.
 
 ## 6. Testing
 
@@ -378,7 +396,3 @@ All major game parameters are configurable in `utils/config.go`. See the `Defaul
 ## 9. Contributing
 
 Contributions are welcome! Please follow standard Go practices, ensure tests pass, and update documentation as needed. Open an issue to discuss major changes.
-
-## 10. License
-
-(Specify your license, e.g., MIT, Apache 2.0, or leave as TBD)

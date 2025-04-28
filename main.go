@@ -42,8 +42,10 @@ func main() {
 	fmt.Println("WebSocket Server created.")
 
 	// 4. Setup Handlers (pass engine and roomManagerPID via server instance)
-	http.HandleFunc("/", websocketServer.HandleGetSit())                            // HandleGetSit now queries RoomManager
-	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe())) // HandleSubscribe now talks to RoomManager
+	http.HandleFunc("/", server.HandleHealthCheck())                                // Simple health check at root
+	http.HandleFunc("/health-check/", server.HandleHealthCheck())                   // Explicit health check endpoint
+	http.HandleFunc("/rooms/", websocketServer.HandleGetRooms())                    // Get room list
+	http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe())) // WebSocket connections
 
 	// 5. Start Server
 	fmt.Println("Server starting on port", port)

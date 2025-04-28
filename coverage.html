@@ -55,7 +55,7 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">github.com/lguibr/pongo/game/ball.go (68.8%)</option>
+				<option value="file0">github.com/lguibr/pongo/game/ball.go (69.6%)</option>
 				
 				<option value="file1">github.com/lguibr/pongo/game/ball_actor.go (67.7%)</option>
 				
@@ -87,9 +87,9 @@
 				
 				<option value="file15">github.com/lguibr/pongo/main.go (0.0%)</option>
 				
-				<option value="file16">github.com/lguibr/pongo/server/connection_handler.go (74.2%)</option>
+				<option value="file16">github.com/lguibr/pongo/server/connection_handler.go (72.2%)</option>
 				
-				<option value="file17">github.com/lguibr/pongo/server/handlers.go (58.3%)</option>
+				<option value="file17">github.com/lguibr/pongo/server/handlers.go (61.4%)</option>
 				
 				<option value="file18">github.com/lguibr/pongo/server/websocket.go (54.5%)</option>
 				
@@ -97,7 +97,7 @@
 				
 				<option value="file20">github.com/lguibr/pongo/utils/constants.go (0.0%)</option>
 				
-				<option value="file21">github.com/lguibr/pongo/utils/utils.go (71.0%)</option>
+				<option value="file21">github.com/lguibr/pongo/utils/utils.go (72.0%)</option>
 				
 				</select>
 			</div>
@@ -199,11 +199,11 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
                 }</span>
         case 1:<span class="cov3" title="2">
                 angle += math.Pi
-                if rand.Intn(2) == 0 </span><span class="cov1" title="1">{
+                if rand.Intn(2) == 0 </span><span class="cov0" title="0">{
                         angle += math.Pi / 2
                 }</span>
         case 2:<span class="cov1" title="1">
-                if rand.Intn(2) == 0 </span><span class="cov0" title="0">{
+                if rand.Intn(2) == 0 </span><span class="cov1" title="1">{
                         angle += 3 * math.Pi / 2
                 }</span>
         case 3:<span class="cov0" title="0">
@@ -221,10 +221,10 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
         vy := int(vyFloat)
 
         if speed &gt; 0 </span><span class="cov8" title="6">{
-                if vx == 0 </span><span class="cov0" title="0">{
+                if vx == 0 </span><span class="cov1" title="1">{
                         vx = int(math.Copysign(1.0, vxFloat))
                 }</span>
-                <span class="cov8" title="6">if vy == 0 </span><span class="cov3" title="2">{
+                <span class="cov8" title="6">if vy == 0 </span><span class="cov1" title="1">{
                         vy = int(math.Copysign(1.0, vyFloat))
                 }</span>
         }
@@ -2258,7 +2258,7 @@ func (grid Grid) LineIntersectedCellIndices(cellSize int, line [2][2]int) [][2]i
         var intersects [][2]int
         for i := range grid </span><span class="cov8" title="74008">{
                 for j := range grid[i] </span><span class="cov10" title="1820016">{
-                        if line[0][0] &lt;= i &amp;&amp; i &lt;= line[1][0] &amp;&amp; line[0][1] &lt;= j &amp;&amp; j &lt;= line[1][1] </span><span class="cov6" title="6440">{
+                        if line[0][0] &lt;= i &amp;&amp; i &lt;= line[1][0] &amp;&amp; line[0][1] &lt;= j &amp;&amp; j &lt;= line[1][1] </span><span class="cov6" title="6431">{
                                 intersects = append(intersects, [2]int{i, j})
                         }</span>
                 }
@@ -2295,13 +2295,13 @@ func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) <span
                 indexes = append(indexes, grid.LineIntersectedCellIndices(utils.CellSize, line)...)
         }</span>
 
-        <span class="cov5" title="700">for _, index := range indexes </span><span class="cov6" title="6431">{
-                if grid[index[0]][index[1]].Data.Type == utils.Cells.Brick </span><span class="cov6" title="4732">{
+        <span class="cov5" title="700">for _, index := range indexes </span><span class="cov6" title="6422">{
+                if grid[index[0]][index[1]].Data.Type == utils.Cells.Brick </span><span class="cov6" title="4725">{
                         grid[index[0]][index[1]].Data.Life = grid[index[0]][index[1]].Data.Life + 1
                         continue</span>
                 }
 
-                <span class="cov5" title="1699">grid[index[0]][index[1]] = Cell{
+                <span class="cov5" title="1697">grid[index[0]][index[1]] = Cell{
                         X: index[0],
                         Y: index[1],
                         Data: &amp;BrickData{
@@ -2380,9 +2380,9 @@ func (grid Grid) RandomWalker(numberOfSteps int) <span class="cov5" title="803">
         for i := 0; i &lt; stepsResting; i++ </span><span class="cov5" title="1907">{
                 nextPoint := getNextPoint(startPoint)
                 nextCell := grid[nextPoint[0]][nextPoint[1]]
-                if nextCell.Data.Type == utils.Cells.Brick </span><span class="cov5" title="1191">{
+                if nextCell.Data.Type == utils.Cells.Brick </span><span class="cov5" title="1176">{
                         nextCell.Data.Life++
-                }</span> else<span class="cov5" title="716"> {
+                }</span> else<span class="cov5" title="731"> {
                         nextCell.Data.Type = utils.Cells.Brick
                         nextCell.Data.Life = 1
                 }</span>
@@ -2970,8 +2970,10 @@ func main() <span class="cov0" title="0">{
         fmt.Println("WebSocket Server created.")
 
         // 4. Setup Handlers (pass engine and roomManagerPID via server instance)
-        http.HandleFunc("/", websocketServer.HandleGetSit())                            // HandleGetSit now queries RoomManager
-        http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe())) // HandleSubscribe now talks to RoomManager
+        http.HandleFunc("/", server.HandleHealthCheck())                                // Simple health check at root
+        http.HandleFunc("/health-check/", server.HandleHealthCheck())                   // Explicit health check endpoint
+        http.HandleFunc("/rooms/", websocketServer.HandleGetRooms())                    // Get room list
+        http.Handle("/subscribe", websocket.Handler(websocketServer.HandleSubscribe())) // WebSocket connections
 
         // 5. Start Server
         fmt.Println("Server starting on port", port)
@@ -3051,7 +3053,7 @@ func NewConnectionHandlerProducer(args ConnectionHandlerArgs) bollywood.Producer
 // Receive handles messages for the ConnectionHandlerActor.
 func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) <span class="cov10" title="5">{
         defer func() </span><span class="cov10" title="5">{
-                if r := recover(); r != nil </span><span class="cov1" title="1">{
+                if r := recover(); r != nil </span><span class="cov0" title="0">{
                         fmt.Printf("PANIC recovered in ConnectionHandlerActor %s Receive: %v\nStack trace:\n%s\n", a.connAddr, r, string(debug.Stack()))
                         a.cleanup(ctx, fmt.Errorf("panic in Receive: %v", r))
                 }</span>
@@ -3186,9 +3188,9 @@ func (a *ConnectionHandlerActor) readLoop(engine *bollywood.Engine, selfPID *bol
 }
 
 // signalAndWaitForReadLoop tells the readLoop goroutine to exit and waits for confirmation.
-func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() <span class="cov7" title="3">{
+func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() <span class="cov4" title="2">{
         select </span>{
-        case &lt;-a.stopReadLoop:<span class="cov4" title="2">
+        case &lt;-a.stopReadLoop:<span class="cov1" title="1">
                 // Already closed or closing
                 return</span>
         default:<span class="cov1" title="1">
@@ -3211,20 +3213,20 @@ func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() <span class="cov7" t
 }
 
 // cleanup is called when the connection terminates (readLoop exits) or the actor stops.
-func (a *ConnectionHandlerActor) cleanup(ctx bollywood.Context, reason error) <span class="cov4" title="2">{
+func (a *ConnectionHandlerActor) cleanup(ctx bollywood.Context, reason error) <span class="cov1" title="1">{
         fmt.Printf("ConnectionHandlerActor %s: Initiating cleanup (Reason: %v).\n", a.connAddr, reason)
         a.signalAndWaitForReadLoop()
         a.performCleanupActions(ctx, reason)
         // Only stop self if the cleanup wasn't triggered by the actor already stopping
-        if !errors.Is(reason, errActorStopping) </span><span class="cov4" title="2">{
-                if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov4" title="2">{
+        if !errors.Is(reason, errActorStopping) </span><span class="cov1" title="1">{
+                if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov1" title="1">{
                         a.engine.Stop(a.selfPID)
                 }</span>
         }
 }
 
 // performCleanupActions sends disconnect and nils the connection reference.
-func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, reason error) <span class="cov7" title="3">{
+func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, reason error) <span class="cov4" title="2">{
         connToDisconnect := a.conn // Capture connection before potentially nil-ing it
 
         // Send PlayerDisconnect only if assigned, connection exists, and not already stopping
@@ -3233,22 +3235,22 @@ func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, re
                 if a.engine != nil &amp;&amp; a.selfPID != nil </span><span class="cov1" title="1">{
                         a.engine.Send(a.gameActorPID, game.PlayerDisconnect{WsConn: connToDisconnect}, a.selfPID)
                 }</span>
-        } else<span class="cov4" title="2"> if a.gameActorPID != nil </span><span class="cov4" title="2">{
+        } else<span class="cov1" title="1"> if a.gameActorPID != nil </span><span class="cov1" title="1">{
                 // Log why disconnect wasn't sent
                 fmt.Printf("ConnectionHandlerActor %s: Not sending PlayerDisconnect to %s (Reason: %v, Assigned: %t, ConnNil: %t).\n",
                         a.connAddr, a.gameActorPID, reason, a.isAssigned, connToDisconnect == nil)
         }</span>
 
         // Close and nil the connection reference
-        <span class="cov7" title="3">if a.conn != nil </span><span class="cov1" title="1">{
+        <span class="cov4" title="2">if a.conn != nil </span><span class="cov1" title="1">{
                 _ = a.conn.Close()
                 a.conn = nil
         }</span>
-        <span class="cov7" title="3">a.isAssigned = false</span> // Mark as unassigned during cleanup
+        <span class="cov4" title="2">a.isAssigned = false</span> // Mark as unassigned during cleanup
 }
 </pre>
 		
-		<pre class="file" id="file17" style="display: none">// File: pongo/server/handlers.go
+		<pre class="file" id="file17" style="display: none">// File: server/handlers.go
 package server
 
 import (
@@ -3324,17 +3326,22 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) <span class="cov1" t
         }
 }
 
-// HandleGetSit provides room list information via HTTP GET by querying the RoomManager using Ask.
-func (s *Server) HandleGetSit() func(w http.ResponseWriter, r *http.Request) <span class="cov10" title="2">{
-        return func(w http.ResponseWriter, r *http.Request) </span><span class="cov10" title="2">{
-                defer func() </span><span class="cov10" title="2">{
+// HandleGetRooms provides room list information via HTTP GET by querying the RoomManager using Ask.
+func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) <span class="cov6" title="2">{
+        return func(w http.ResponseWriter, r *http.Request) </span><span class="cov6" title="2">{
+                defer func() </span><span class="cov6" title="2">{
                         if rec := recover(); rec != nil </span><span class="cov0" title="0">{
-                                fmt.Printf("PANIC recovered in HandleGetSit: %v\nStack trace:\n%s\n", rec, string(debug.Stack()))
+                                fmt.Printf("PANIC recovered in HandleGetRooms: %v\nStack trace:\n%s\n", rec, string(debug.Stack()))
                                 http.Error(w, "Internal Server Error", http.StatusInternalServerError)
                         }</span>
                 }()
 
-                <span class="cov10" title="2">engine := s.GetEngine()
+                <span class="cov6" title="2">if r.Method != http.MethodGet </span><span class="cov0" title="0">{
+                        http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+                        return
+                }</span>
+
+                <span class="cov6" title="2">engine := s.GetEngine()
                 managerPID := s.GetRoomManagerPID()
                 if engine == nil || managerPID == nil </span><span class="cov0" title="0">{
                         http.Error(w, "Server not properly initialized", http.StatusInternalServerError)
@@ -3342,12 +3349,12 @@ func (s *Server) HandleGetSit() func(w http.ResponseWriter, r *http.Request) <sp
                 }</span>
 
                 // Use engine.Ask to query the RoomManager
-                <span class="cov10" title="2">askTimeout := 2 * time.Second
+                <span class="cov6" title="2">askTimeout := 2 * time.Second
                 reply, err := engine.Ask(managerPID, game.GetRoomListRequest{}, askTimeout)
 
                 if err != nil </span><span class="cov1" title="1">{
                         if errors.Is(err, bollywood.ErrTimeout) </span><span class="cov1" title="1">{
-                                fmt.Println("Timeout waiting for RoomManager response in HandleGetSit")
+                                fmt.Println("Timeout waiting for RoomManager response in HandleGetRooms")
                                 http.Error(w, "Timeout querying game state", http.StatusGatewayTimeout)
                         }</span> else<span class="cov0" title="0"> {
                                 fmt.Printf("Error asking RoomManager: %v\n", err)
@@ -3375,6 +3382,20 @@ func (s *Server) HandleGetSit() func(w http.ResponseWriter, r *http.Request) <sp
                         fmt.Printf("Received unexpected reply type from RoomManager via Ask: %T\n", v)
                         http.Error(w, "Internal server error processing reply", http.StatusInternalServerError)</span>
                 }
+        }
+}
+
+// HandleHealthCheck provides a simple health check endpoint.
+func HandleHealthCheck() func(w http.ResponseWriter, r *http.Request) <span class="cov10" title="3">{
+        return func(w http.ResponseWriter, r *http.Request) </span><span class="cov10" title="3">{
+                if r.Method != http.MethodGet </span><span class="cov1" title="1">{
+                        http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+                        return
+                }</span>
+                <span class="cov6" title="2">w.Header().Set("Content-Type", "application/json")
+                w.WriteHeader(http.StatusOK)
+                // Simple JSON response indicating success
+                _, _ = w.Write([]byte(`{"status": "ok"}`))</span>
         }
 }
 </pre>
@@ -3725,7 +3746,7 @@ func NewRandomPositiveVectors(numberOfVectors, maxVectorSize int) [][2]int <span
         seedVectors := make([][2]int, numberOfVectors)
         for index := range seedVectors </span><span class="cov7" title="111">{
                 currentLength := rand.Intn(maxVectorSize)
-                if currentLength == 0 || currentLength &gt; maxVectorSize </span><span class="cov0" title="0">{
+                if currentLength == 0 || currentLength &gt; maxVectorSize </span><span class="cov2" title="2">{
                         currentLength = maxVectorSize
                 }</span>
                 <span class="cov7" title="110">seedVectors[index] = NewPositiveRandomVector(currentLength)</span>
@@ -3747,15 +3768,15 @@ func RandomNumber(amplitude int) int <span class="cov2" title="3">{
 
 var randomNumberN func(amplitude int) int
 
-func RandomNumberN(amplitude int) int <span class="cov10" title="433">{
-        randomNumberN = func(amplitude int) int </span><span class="cov10" title="433">{
+func RandomNumberN(amplitude int) int <span class="cov10" title="450">{
+        randomNumberN = func(amplitude int) int </span><span class="cov10" title="450">{
                 value := rand.Intn(amplitude*2) - amplitude
-                if value == 0 </span><span class="cov8" title="133">{
+                if value == 0 </span><span class="cov8" title="150">{
                         value = RandomNumberN(amplitude)
                 }</span>
-                <span class="cov10" title="433">return value</span>
+                <span class="cov10" title="450">return value</span>
         }
-        <span class="cov10" title="433">return randomNumberN(amplitude)</span>
+        <span class="cov10" title="450">return randomNumberN(amplitude)</span>
 }
 
 func Abs(x int) int <span class="cov2" title="3">{

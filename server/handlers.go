@@ -1,4 +1,4 @@
-// File: pongo/server/handlers.go
+// File: server/handlers.go
 package server
 
 import (
@@ -74,15 +74,20 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 	}
 }
 
-// HandleGetSit provides room list information via HTTP GET by querying the RoomManager using Ask.
-func (s *Server) HandleGetSit() func(w http.ResponseWriter, r *http.Request) {
+// HandleGetRooms provides room list information via HTTP GET by querying the RoomManager using Ask.
+func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				fmt.Printf("PANIC recovered in HandleGetSit: %v\nStack trace:\n%s\n", rec, string(debug.Stack()))
+				fmt.Printf("PANIC recovered in HandleGetRooms: %v\nStack trace:\n%s\n", rec, string(debug.Stack()))
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()
+
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
 		engine := s.GetEngine()
 		managerPID := s.GetRoomManagerPID()
@@ -97,7 +102,7 @@ func (s *Server) HandleGetSit() func(w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			if errors.Is(err, bollywood.ErrTimeout) {
-				fmt.Println("Timeout waiting for RoomManager response in HandleGetSit")
+				fmt.Println("Timeout waiting for RoomManager response in HandleGetRooms")
 				http.Error(w, "Timeout querying game state", http.StatusGatewayTimeout)
 			} else {
 				fmt.Printf("Error asking RoomManager: %v\n", err)
@@ -125,5 +130,19 @@ func (s *Server) HandleGetSit() func(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Received unexpected reply type from RoomManager via Ask: %T\n", v)
 			http.Error(w, "Internal server error processing reply", http.StatusInternalServerError)
 		}
+	}
+}
+
+// HandleHealthCheck provides a simple health check endpoint.
+func HandleHealthCheck() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Simple JSON response indicating success
+		_, _ = w.Write([]byte(`{"status": "ok"}`))
 	}
 }
