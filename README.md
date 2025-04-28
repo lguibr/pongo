@@ -314,7 +314,7 @@ All major game parameters are configurable in `utils/config.go`. See the `Defaul
     ```bash
     go run main.go
     ```
-    The backend server will start, typically on `http://localhost:3001`.
+    The backend server will start, typically on `http://localhost:8080`.
 
 ### 5.3 Frontend
 
@@ -342,7 +342,7 @@ All major game parameters are configurable in `utils/config.go`. See the `Defaul
     ```
 2.  **Run the backend container:**
     ```bash
-    docker run -p 3001:3001 pongo-backend
+    docker run -p 8080:8080 pongo-backend
     ```
     (Ensure the frontend is configured to connect to the backend at the correct address if running separately).
 
@@ -385,8 +385,8 @@ A pre-built image is automatically pushed to Docker Hub from the `main` branch. 
 
 ## 7. API Endpoints
 
--   **`ws://<host>:3001/subscribe`**: The primary WebSocket endpoint for game clients to connect.
--   **`http://<host>:3001/`**: HTTP GET endpoint. Returns a JSON object listing active game rooms (by PID) and their current player counts (e.g., `{"actor-1": 2, "actor-3": 4}`).
+-   **`ws://<host>:8080/subscribe`**: The primary WebSocket endpoint for game clients to connect.
+-   **`http://<host>:8080/`**: HTTP GET endpoint. Returns a JSON object listing active game rooms (by PID) and their current player counts (e.g., `{"actor-1": 2, "actor-3": 4}`).
 
 ## 8. Submodules
 
