@@ -1,3 +1,4 @@
+# File: Dockerfile
 # Start with the Go base image
 FROM golang:1.19 as builder
 
@@ -10,6 +11,8 @@ COPY go.sum .
 
 # Download the Go modules
 RUN go mod download
+# Ensure vendor directory isn't used if present from local builds
+RUN rm -rf vendor
 
 # Copy the rest of the source code
 COPY . .
@@ -29,8 +32,8 @@ WORKDIR /root/
 # Copy the statically-linked binary from the builder stage
 COPY --from=builder /app/pongo .
 
-# Expose port 3001
-EXPOSE 3001
+# Expose port 8080 (Cloud Run default)
+EXPOSE 8080
 
 # Define the executable to run when the container starts
 ENTRYPOINT ["./pongo"]

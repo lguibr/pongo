@@ -346,6 +346,7 @@ All major game parameters are configurable in `utils/config.go`. See the `Defaul
     ```
     (Ensure the frontend is configured to connect to the backend at the correct address if running separately).
 
+
 #### 5.4.2 Running Pre-built Image (Docker Hub)
 
 A pre-built image is automatically pushed to Docker Hub from the `main` branch. Replace `lguibr` with the correct Docker Hub username if it differs.
@@ -354,11 +355,13 @@ A pre-built image is automatically pushed to Docker Hub from the `main` branch. 
     ```bash
     docker pull lguibr/pongo:latest
     ```
-2.  **Run the container:**
+2.  **Run the container (mapping port 8080):**
     ```bash
-    docker run -d -p 3001:3001 --name pongo-server lguibr/pongo:latest
+    # Map host port 8080 to container port 8080
+    docker run -d -p 8080:8080 --name pongo-server lguibr/pongo:latest
     ```
-    This runs the container in detached mode (`-d`) and maps port 3001. The frontend should be configured to connect to `ws://<your-docker-host-ip>:3001/subscribe`.
+    This runs the container in detached mode (`-d`) and maps port 8080. The frontend should be configured to connect to `ws://<your-docker-host-ip>:8080/subscribe`.
+
 
 ## 6. Testing
 
