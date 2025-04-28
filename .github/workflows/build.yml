@@ -3,23 +3,23 @@ name: PonGo-Backend-Build-And-Push
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
     paths: # Only trigger on changes to Go files, mod/sum, Dockerfile, or this workflow
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Dockerfile'
-      - '.github/workflows/build.yml'
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "Dockerfile"
+      - ".github/workflows/build.yml"
     tags: # Trigger on version tags like v1.0.0, v0.1 etc.
-      - 'v*'
+      - "v*"
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
     paths: # Only trigger on changes to Go files, mod/sum, Dockerfile, or this workflow
-      - '**.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Dockerfile'
-      - '.github/workflows/build.yml'
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "Dockerfile"
+      - ".github/workflows/build.yml"
 
 jobs:
   build-and-push:
@@ -32,9 +32,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
           cache: true
-          cache-dependency-path: 'go.sum'
+          cache-dependency-path: "go.sum"
 
       - name: Verify dependencies
         run: go mod verify
@@ -62,12 +62,14 @@ jobs:
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/pongo # Your Docker Hub image name
           tags: |
-            # tag latest when pushing to main OR pushing a v* tag
-            # --- CORRECTED LINE: Removed {{ }} ---
-            type=raw,value=latest,enable=is_default_branch || startsWith(github.ref, 'refs/tags/v')
+            # Tag 'latest' if we are on the default branch (main)
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
-            # tag with the version number when pushing a v* tag (e.g. v1.2.3 -> 1.2.3)
+            # Tag with the version number when pushing a v* tag (e.g. v1.2.3 -> 1.0.0)
             type=ref,event=tag,pattern=v(.*)
+
+            # ALSO tag 'latest' when pushing a v* tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build and push Docker image
         # Run only if pushing a v* tag OR pushing to main branch
