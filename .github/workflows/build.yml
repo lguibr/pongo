@@ -37,6 +37,9 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
+      - name: Remove vendor directory if exists # Ensure module cache is used
+        run: rm -rf vendor
+
       - name: Build Go Application (for verification)
         run: go build -v ./... # Build all packages verbosely
 
