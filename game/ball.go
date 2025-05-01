@@ -1,4 +1,3 @@
-// File: game/ball.go
 package game
 
 import (
@@ -12,6 +11,7 @@ import (
 // --- Message Types for Ball Communication ---
 
 // BallPositionMessage signals the ball's current state (sent by BallActor).
+// DEPRECATED in favor of PositionUpdateMessage
 type BallPositionMessage struct {
 	Ball *Ball // Pointer to a state snapshot
 }
@@ -89,6 +89,8 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
 		if rand.Intn(2) == 0 {
 			angle += math.Pi / 2
 		}
+	default: // Handle case where ownerIndex might be -1 (e.g., ownerless ball spawn)
+		angle = rand.Float64() * 2 * math.Pi // Random angle if no owner
 	}
 
 	speed := float64(cfg.MinBallVelocity + rand.Intn(cfg.MaxBallVelocity-cfg.MinBallVelocity+1))
@@ -157,11 +159,12 @@ func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) {
 		fmt.Printf("WARN: getCenterIndex calculated cellSize = 0 (canvasSize=%d, gridSize=%d)\n", ball.canvasSize, cfg.GridSize)
 		return 0, 0
 	}
-	gridSize := ball.canvasSize / cellSize
+	gridSize := ball.canvasSize / cellSize // Recalculate actual grid size based on integer division
 
 	col = ball.X / cellSize
 	row = ball.Y / cellSize
 
+	// Clamp to valid grid indices
 	finalCol := utils.MaxInt(0, utils.MinInt(gridSize-1, col))
 	finalRow := utils.MaxInt(0, utils.MinInt(gridSize-1, row))
 

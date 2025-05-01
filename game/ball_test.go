@@ -1,3 +1,4 @@
+// File: game/ball_test.go
 package game
 
 import (
@@ -191,17 +192,17 @@ func TestBall_GetCenterIndex(t *testing.T) {
 		},
 		{
 			name:        "outside left",
-			ballX:       -10,
-			ballY:       120,
-			expectedCol: 0,
-			expectedRow: 2,
+			ballX:       -10, // X < 0
+			ballY:       120, // Y = 120 -> 120 / 64 = 1
+			expectedCol: 0,   // Clamped from -10/64=0
+			expectedRow: 1,   // Clamped from 120/64=1
 		},
 		{
 			name:        "outside bottom",
-			ballX:       168,
-			ballY:       canvasSize + 10,
-			expectedCol: 3,
-			expectedRow: gridSize - 1,
+			ballX:       168,             // X = 168 -> 168 / 64 = 2
+			ballY:       canvasSize + 10, // Y > canvasSize -> 1034 / 64 = 16
+			expectedCol: 2,               // Clamped from 168/64=2
+			expectedRow: gridSize - 1,    // Clamped from 16
 		},
 	}
 

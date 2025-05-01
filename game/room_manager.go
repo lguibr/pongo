@@ -107,16 +107,18 @@ func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
 
 func (a *RoomManagerActor) handleFindRoom(ctx bollywood.Context, replyTo *bollywood.PID) {
 	if replyTo == nil {
+		fmt.Printf("WARN: RoomManagerActor %s received FindRoomRequest with nil ReplyTo.\n", a.selfPID)
 		return
 	}
-	a.mu.Lock()
+	a.mu.Lock() // Lock for writing (potential room creation)
 
 	// Find existing room
-	for _, roomInfo := range a.rooms {
+	for _, roomInfo := range a.rooms { // Use _ for roomID as it's not needed here
 		if roomInfo.PID != nil && roomInfo.PlayerCount < utils.MaxPlayers {
 			roomInfo.PlayerCount++ // Increment approximate count
 			roomPID := roomInfo.PID
-			a.mu.Unlock()
+			a.mu.Unlock() // Unlock before sending reply
+			// fmt.Printf("RoomManagerActor %s: Assigning %s to existing room %s (Player count: %d)\n", a.selfPID, replyTo, roomPID.String(), roomInfo.PlayerCount) // Reduce noise
 			a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
 			return
 		}
@@ -131,20 +133,23 @@ func (a *RoomManagerActor) handleFindRoom(ctx bollywood.Context, replyTo *bollyw
 	}
 
 	// Create new room
-	roomIDStr := fmt.Sprintf("room-%d", a.nextRoomID)
-	a.nextRoomID++
+	// Use PID as the key directly for simplicity and uniqueness
 	gameActorProps := bollywood.NewProps(NewGameActorProducer(a.engine, a.cfg, a.selfPID))
 	gameActorPID := a.engine.Spawn(gameActorProps)
 	if gameActorPID == nil {
-		fmt.Printf("ERROR: RoomManagerActor %s: Failed to spawn GameActor for room %s. Replying nil to %s.\n", a.selfPID, roomIDStr, replyTo)
+		fmt.Printf("ERROR: RoomManagerActor %s: Failed to spawn GameActor. Replying nil to %s.\n", a.selfPID, replyTo)
 		a.mu.Unlock()
 		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID)
 		return
 	}
 
+	roomIDStr := gameActorPID.String()
 	roomInfo := &RoomInfo{PID: gameActorPID, PlayerCount: 1}
-	a.rooms[gameActorPID.String()] = roomInfo
-	a.mu.Unlock()
+	a.rooms[roomIDStr] = roomInfo
+	a.nextRoomID++ // Increment counter for potential future naming schemes
+	a.mu.Unlock()  // Unlock after modifying map
+
+	fmt.Printf("RoomManagerActor %s: Created new room %s for %s\n", a.selfPID, roomIDStr, replyTo)
 	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: gameActorPID}, a.selfPID)
 }
 
@@ -153,17 +158,18 @@ func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *b
 		return
 	}
 	roomIDStr := roomPID.String()
-	a.mu.Lock()
+	a.mu.Lock() // Lock for writing
 	_, exists := a.rooms[roomIDStr]
 	pidToStop := (*bollywood.PID)(nil)
 	if exists {
-		fmt.Printf("RoomManagerActor %s: Room %s reported empty. Removing and stopping.\n", a.selfPID, roomIDStr)
+		fmt.Printf("RoomManagerActor %s: Room %s reported empty/finished. Removing and stopping.\n", a.selfPID, roomIDStr)
 		if roomInfo := a.rooms[roomIDStr]; roomInfo != nil && roomInfo.PID != nil {
 			pidToStop = roomInfo.PID
 		}
 		delete(a.rooms, roomIDStr)
 	} // Else: Already removed, ignore.
-	a.mu.Unlock()
+	a.mu.Unlock() // Unlock before stopping actor
+
 	if pidToStop != nil {
 		a.engine.Stop(pidToStop)
 	}
@@ -171,12 +177,12 @@ func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *b
 
 // handleGetRoomList now uses ctx.Reply if the request came via Ask.
 func (a *RoomManagerActor) handleGetRoomList(ctx bollywood.Context) {
-	a.mu.RLock()
+	a.mu.RLock() // Read lock is sufficient
 	roomList := make(map[string]int)
-	for _, roomInfo := range a.rooms {
+	for roomID, roomInfo := range a.rooms {
 		if roomInfo != nil && roomInfo.PID != nil {
-			// Use the PID string as the key for the response map
-			roomList[roomInfo.PID.String()] = roomInfo.PlayerCount
+			// Use the PID string (roomID) as the key for the response map
+			roomList[roomID] = roomInfo.PlayerCount
 		}
 	}
 	a.mu.RUnlock()

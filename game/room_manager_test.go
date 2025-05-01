@@ -1,4 +1,3 @@
-// File: game/room_manager_test.go
 package game
 
 import (
@@ -30,7 +29,7 @@ func (a *MockManagedGameActor) Receive(ctx bollywood.Context) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.received = append(a.received, ctx.Message())
-	// fmt.Printf("MockManagedGameActor %s received: %T\n", ctx.Self(), ctx.Message())
+	// fmt.Printf("MockManagedGameActor %s received: %T\n", ctx.Self(), ctx.Message()) // Reduce noise
 
 	switch msg := ctx.Message().(type) {
 	case bollywood.Started:
@@ -38,23 +37,18 @@ func (a *MockManagedGameActor) Receive(ctx bollywood.Context) {
 	case AssignPlayerToRoom:
 		a.Ws = msg.WsConn
 		a.PlayerCount++
-		// fmt.Printf("MockManagedGameActor %s: Accepted player %s. Count: %d\n", a.PID, a.Ws.RemoteAddr(), a.PlayerCount) // Reduce noise
-		// Simulate sending state back (needed for current RoomManager logic)
-		// if a.RoomManagerPID != nil {
-		// 	ctx.Engine().Send(a.RoomManagerPID, GameState{ /* simplified state */ }, a.PID)
-		// }
+		// fmt.Printf("MockManagedGameActor %s: Accepted player. Count: %d\n", a.PID, a.PlayerCount) // Reduce noise
 
 	case PlayerDisconnect:
-		if msg.WsConn == a.Ws {
-			a.PlayerCount--
-			// fmt.Printf("MockManagedGameActor %s: Player %s disconnected. Count: %d\n", a.PID, a.Ws.RemoteAddr(), a.PlayerCount) // Reduce noise
-			a.Ws = nil
-			if a.PlayerCount <= 0 && a.RoomManagerPID != nil {
-				// fmt.Printf("MockManagedGameActor %s: Sending GameRoomEmpty to %s\n", a.PID, a.RoomManagerPID) // Reduce noise
-				ctx.Engine().Send(a.RoomManagerPID, GameRoomEmpty{RoomPID: a.PID}, a.PID)
-				a.ShouldStop = true
-			}
+		// Simplified: Assume any disconnect reduces count
+		a.PlayerCount--
+		// fmt.Printf("MockManagedGameActor %s: Player disconnected. Count: %d\n", a.PID, a.PlayerCount) // Reduce noise
+		if a.PlayerCount <= 0 && a.RoomManagerPID != nil {
+			// fmt.Printf("MockManagedGameActor %s: Sending GameRoomEmpty to %s\n", a.PID, a.RoomManagerPID) // Reduce noise
+			ctx.Engine().Send(a.RoomManagerPID, GameRoomEmpty{RoomPID: a.PID}, a.PID)
+			a.ShouldStop = true
 		}
+
 	case bollywood.Stopping:
 	case bollywood.Stopped:
 	}
@@ -95,13 +89,13 @@ func setupRoomManagerTest(t *testing.T) (*bollywood.Engine, *bollywood.PID, *Roo
 	cfg := utils.DefaultConfig()
 
 	producer := NewRoomManagerProducer(engine, cfg)
-	actorInstance := producer().(*RoomManagerActor)
+	actorInstance := producer().(*RoomManagerActor) // Get the instance
 
 	roomManagerPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return actorInstance }))
 
 	assert.NotNil(t, roomManagerPID, "RoomManager PID should not be nil")
-	time.Sleep(50 * time.Millisecond)
-	return engine, roomManagerPID, actorInstance
+	time.Sleep(50 * time.Millisecond)            // Allow actor to start
+	return engine, roomManagerPID, actorInstance // Return the instance
 }
 
 // Helper to find a message of a specific type in mock actor's received list
@@ -123,22 +117,48 @@ func TestRoomManager_StartsEmpty(t *testing.T) {
 
 	managerActor.mu.RLock()
 	assert.Empty(t, managerActor.rooms, "Room manager should start with no rooms")
-	// REMOVED: assert.Empty(t, managerActor.pendingConns, "Room manager should start with no pending connections")
 	managerActor.mu.RUnlock()
 }
 
 func TestRoomManager_CreatesFirstRoom(t *testing.T) {
-	t.Skip("Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.")
+	t.Skip("Skipping test due to limitations in mocking *websocket.Conn and actor interactions for assignment.")
 }
 
 func TestRoomManager_FillsRoomAndCreatesSecond(t *testing.T) {
-	t.Skip("Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.")
+	t.Skip("Skipping test due to limitations in mocking *websocket.Conn and actor interactions for assignment.")
 }
 
 func TestRoomManager_RemovesEmptyRoom(t *testing.T) {
-	t.Skip("Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.")
+	t.Skip("Skipping test due to complexity in mocking GameActor lifecycle and GameRoomEmpty message.")
 }
 
 func TestRoomManager_HandlesPendingDisconnect(t *testing.T) {
-	t.Skip("Skipping test due to limitations in mocking *websocket.Conn with MockRoomManagerWS.")
+	t.Skip("Skipping test: Pending connection logic removed from RoomManager.")
+}
+
+func TestRoomManager_GetRoomList(t *testing.T) {
+	engine, rmPID, managerActor := setupRoomManagerTest(t)
+	defer engine.Shutdown(1 * time.Second)
+
+	// Manually add some mock rooms to the manager's state for testing GetRoomList
+	mockRoomPID1 := &bollywood.PID{ID: "room-1"}
+	mockRoomPID2 := &bollywood.PID{ID: "room-2"}
+	managerActor.mu.Lock()
+	managerActor.rooms[mockRoomPID1.String()] = &RoomInfo{PID: mockRoomPID1, PlayerCount: 2}
+	managerActor.rooms[mockRoomPID2.String()] = &RoomInfo{PID: mockRoomPID2, PlayerCount: 4}
+	managerActor.mu.Unlock()
+
+	// Use Ask to get the room list
+	reply, err := engine.Ask(rmPID, GetRoomListRequest{}, 500*time.Millisecond)
+
+	assert.NoError(t, err, "Ask for room list should not error")
+	assert.NotNil(t, reply, "Reply should not be nil")
+
+	listResponse, ok := reply.(RoomListResponse)
+	assert.True(t, ok, "Reply should be of type RoomListResponse")
+	if ok {
+		assert.Len(t, listResponse.Rooms, 2, "Expected 2 rooms in the list")
+		assert.Equal(t, 2, listResponse.Rooms[mockRoomPID1.String()], "Player count for room-1 mismatch")
+		assert.Equal(t, 4, listResponse.Rooms[mockRoomPID2.String()], "Player count for room-2 mismatch")
+	}
 }

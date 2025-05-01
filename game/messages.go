@@ -1,4 +1,3 @@
-// File: game/messages.go
 package game
 
 import (
@@ -46,19 +45,36 @@ type SpawnBallCommand struct {
 	IsPermanent bool
 }
 
-// --- Messages Between GameActor and Child Actors ---
-type UpdatePositionCommand struct{}
-type GetPositionRequest struct{}
-type PositionResponse struct {
+// PositionUpdateMessage is sent by child actors (Ball, Paddle) to GameActor
+// after their position/state is updated.
+type PositionUpdateMessage struct {
+	PID      *bollywood.PID // PID of the sender (BallActor or PaddleActor)
+	ActorID  int            // Specific ID (BallID or PaddleIndex)
+	IsPaddle bool           // True if sender is PaddleActor, false if BallActor
 	X        int
 	Y        int
 	Vx       int
 	Vy       int
-	Radius   int
+	// Ball specific
+	Radius  int
+	Phasing bool
+	// Paddle specific
 	Width    int
 	Height   int
-	Phasing  bool
 	IsMoving bool
+}
+
+// --- Messages Between GameActor and Child Actors ---
+type UpdatePositionCommand struct{}
+
+// GetPositionRequest might still be useful for debugging or specific scenarios, keep for now.
+type GetPositionRequest struct{}
+
+// PositionResponse simplified, potentially deprecated if GetPositionRequest is removed later.
+type PositionResponse struct {
+	X int
+	Y int
+	// Other fields removed as they are now sent via PositionUpdateMessage
 }
 
 // --- Commands TO BallActor ---
@@ -87,6 +103,14 @@ type RemoveClient struct {
 // BroadcastStateCommand carries the state snapshot to be broadcasted.
 type BroadcastStateCommand struct {
 	State GameState // Changed from StateJSON []byte
+}
+
+// GameOverMessage is sent by GameActor via BroadcasterActor when the game ends.
+type GameOverMessage struct {
+	WinnerIndex int      `json:"winnerIndex"` // Index of the winning player (-1 if draw/no winner)
+	FinalScores [4]int32 `json:"finalScores"` // Final scores of all players
+	Reason      string   `json:"reason"`      // e.g., "All bricks destroyed"
+	RoomPID     string   `json:"roomPid"`     // PID of the game room that ended
 }
 
 // --- Specific Message TO Client ---

@@ -71,7 +71,7 @@ func TestGameActor_LastPlayerDisconnect(t *testing.T) {
 }
 
 func TestGameActor_PaddleMovementForwarding(t *testing.T) {
-	t.Skip("Skipping test: Input forwarding path changed (Client -> Handler -> RoomManager -> GameActor). Requires mocking RoomManager or use E2E test.")
+	t.Skip("Skipping test: Input forwarding path changed (Client -> Handler -> GameActor). Requires mocking ConnectionHandler or use E2E test.")
 }
 
 // TODO: Add new unit tests for specific GameActor handlers if possible,

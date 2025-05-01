@@ -4,72 +4,59 @@ import (
 	"testing"
 
 	"github.com/lguibr/pongo/utils"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewPlayer(t *testing.T) {
 	type NewPlayerTestCase struct {
-		canvas         *Canvas // Keep canvas for context if needed, but not stored in Player
-		index          int
-		id             string
-		expectedPlayer *Player
+		name          string
+		canvas        *Canvas // Keep canvas for context if needed, but not stored in Player
+		index         int
+		expectedID    string
+		expectedScore int32
 	}
 	canvasSize := 800
 	canvas := &Canvas{Width: canvasSize, Height: canvasSize}
-
-	// Expected player doesn't store canvas or channel anymore
-	expectedPlayer1 := &Player{
-		Score: utils.InitialScore,
-		Index: 1,
-		Id:    "player1",
-		Color: [3]int{0, 0, 0}, // We'll overwrite color below
-	}
-	expectedPlayer2 := &Player{
-		Score: utils.InitialScore,
-		Index: 2,
-		Id:    "player2",
-		Color: [3]int{0, 0, 0}, // We'll overwrite color below
-	}
+	cfg := utils.DefaultConfig()
 
 	testCases := []NewPlayerTestCase{
 		{
-			canvas:         canvas,
-			index:          1,
-			id:             "player1",
-			expectedPlayer: expectedPlayer1,
+			name:          "Player 1",
+			canvas:        canvas,
+			index:         1,
+			expectedID:    "player1",
+			expectedScore: int32(cfg.InitialScore),
 		},
 		{
-			canvas:         canvas,
-			index:          2,
-			id:             "player2",
-			expectedPlayer: expectedPlayer2,
+			name:          "Player 2",
+			canvas:        canvas,
+			index:         2,
+			expectedID:    "player2",
+			expectedScore: int32(cfg.InitialScore),
+		},
+		{
+			name:          "Player 0",
+			canvas:        canvas,
+			index:         0,
+			expectedID:    "player0",
+			expectedScore: int32(cfg.InitialScore),
 		},
 	}
 
 	for _, test := range testCases {
-		// Call NewPlayer with the current signature (no channel)
-		result := NewPlayer(test.canvas, test.index)
+		t.Run(test.name, func(t *testing.T) {
+			result := NewPlayer(test.canvas, test.index)
 
-		// Compare relevant fields
-		// We can't compare Color directly as it's random.
-		// Check other fields and that Color has 3 elements.
-		if result.Index != test.expectedPlayer.Index ||
-			result.Id != test.expectedPlayer.Id ||
-			result.Score != test.expectedPlayer.Score ||
-			len(result.Color) != 3 {
-			t.Errorf("Expected player %+v (ignoring color), got %+v", *(test.expectedPlayer), *result)
-		}
+			assert.Equal(t, test.index, result.Index)
+			assert.Equal(t, test.expectedID, result.Id)
+			assert.Equal(t, test.expectedScore, result.Score)
+			assert.Len(t, result.Color, 3, "Color should have 3 components")
 
-		// Optional: Check color values are within range
-		for _, c := range result.Color {
-			if c < 0 || c > 255 {
-				t.Errorf("Expected color component between 0 and 255, got %d", c)
+			// Optional: Check color values are within range
+			for _, c := range result.Color {
+				assert.GreaterOrEqual(t, c, 0, "Color component should be >= 0")
+				assert.LessOrEqual(t, c, 255, "Color component should be <= 255")
 			}
-		}
-
-		// Use DeepEqual only if we manually set the color for comparison (less ideal)
-		// test.expectedPlayer.Color = result.Color // Make colors match for DeepEqual
-		// if !reflect.DeepEqual(result, test.expectedPlayer) {
-		// 	t.Errorf("Expected player %v, got \n%v", test.expectedPlayer, result)
-		// }
+		})
 	}
 }

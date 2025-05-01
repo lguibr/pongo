@@ -7,12 +7,9 @@ import (
 	"github.com/lguibr/pongo/utils"
 )
 
-// TestPaddle_SetDirection removed as the method is deprecated and removed.
-
 func TestPaddle_Move(t *testing.T) {
-	// Initialize paddle with canvasSize
-	initialX, initialY := 10, 20
-	paddle := Paddle{X: initialX, Y: initialY, Width: 30, Height: 40, Velocity: 5, canvasSize: utils.CanvasSize}
+	cfg := utils.DefaultConfig()
+	initialX, initialY := 100, 200 // Use different initial values for clarity
 
 	testCases := []struct {
 		name       string
@@ -21,89 +18,117 @@ func TestPaddle_Move(t *testing.T) {
 		expectedX  int
 		expectedY  int
 		shouldMove bool
+		expectedVx int
+		expectedVy int
 	}{
-		// Test cases remain the same, but ensure initial paddle has canvasSize
-		{"H_Left", 3, "left", 5, 20, true},
-		{"H_Right", 3, "right", 10, 20, true}, // Start from X=5, move right by 5 -> 10
-		{"H_None", 3, "", 10, 20, false},      // Start from X=10, no move -> 10
-		{"H_Up", 3, "up", 10, 20, false},
-		{"H_Down", 3, "down", 10, 20, false},
-		{"H_Invalid", 3, "invalid", 10, 20, false},
-		{"V_Right(Down)", 2, "right", 10, 25, true},  // Start from Y=20, move down by 5 -> 25
-		{"V_Left(Up)", 2, "left", 10, 20, true},      // Start from Y=25, move up by 5 -> 20
-		{"V_None", 2, "", 10, 20, false},             // Start from Y=20, no move -> 20
-		{"V0_Left(Up)", 0, "left", 10, 15, true},     // Start from Y=20, move up by 5 -> 15
-		{"V0_Right(Down)", 0, "right", 10, 20, true}, // Start from Y=15, move down by 5 -> 20
-		{"H1_Left", 1, "left", 5, 20, true},          // Start from X=10, move left by 5 -> 5
-		{"H1_Right", 1, "right", 10, 20, true},       // Start from X=5, move right by 5 -> 10
-		{"V0_Invalid", 0, "invalid", 10, 20, false},
-		{"H1_Invalid", 1, "invalid", 10, 20, false},
+		// Recalculate expected values based on initialX/Y and cfg.PaddleVelocity
+		// cfg.PaddleVelocity = 16 (assuming default config: 1024/16/4)
+
+		// H paddle index 3 (Bottom)
+		{"H_Left", 3, "left", initialX - cfg.PaddleVelocity, initialY, true, -cfg.PaddleVelocity, 0},  // 100-16=84
+		{"H_Right", 3, "right", initialX + cfg.PaddleVelocity, initialY, true, cfg.PaddleVelocity, 0}, // 100+16=116
+		{"H_None", 3, "", initialX, initialY, false, 0, 0},
+		{"H_Up", 3, "up", initialX, initialY, false, 0, 0},
+		{"H_Down", 3, "down", initialX, initialY, false, 0, 0},
+		{"H_Invalid", 3, "invalid", initialX, initialY, false, 0, 0},
+
+		// V paddle index 2 (Left)
+		{"V_Right(Down)", 2, "right", initialX, initialY + cfg.PaddleVelocity, true, 0, cfg.PaddleVelocity}, // 200+16=216
+		{"V_Left(Up)", 2, "left", initialX, initialY - cfg.PaddleVelocity, true, 0, -cfg.PaddleVelocity},    // 200-16=184
+		{"V_None", 2, "", initialX, initialY, false, 0, 0},
+
+		// V paddle index 0 (Right)
+		{"V0_Left(Up)", 0, "left", initialX, initialY - cfg.PaddleVelocity, true, 0, -cfg.PaddleVelocity},    // 200-16=184
+		{"V0_Right(Down)", 0, "right", initialX, initialY + cfg.PaddleVelocity, true, 0, cfg.PaddleVelocity}, // 200+16=216
+
+		// H paddle index 1 (Top)
+		{"H1_Left", 1, "left", initialX - cfg.PaddleVelocity, initialY, true, -cfg.PaddleVelocity, 0},  // 100-16=84
+		{"H1_Right", 1, "right", initialX + cfg.PaddleVelocity, initialY, true, cfg.PaddleVelocity, 0}, // 100+16=116
+
+		{"V0_Invalid", 0, "invalid", initialX, initialY, false, 0, 0},
+		{"H1_Invalid", 1, "invalid", initialX, initialY, false, 0, 0},
 	}
 
-	currentX, currentY := initialX, initialY
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Set paddle state for this test case
-			paddle.X = currentX
-			paddle.Y = currentY
-			paddle.Index = tc.index
-			paddle.Direction = tc.direction
+			// Create a new paddle instance for each test case to ensure isolation
+			paddle := Paddle{
+				X:          initialX,
+				Y:          initialY,
+				Index:      tc.index,
+				Direction:  tc.direction,
+				Velocity:   cfg.PaddleVelocity,
+				canvasSize: cfg.CanvasSize,
+			}
+			// Set dimensions based on index
+			if tc.index == 0 || tc.index == 2 { // Vertical
+				paddle.Width = cfg.PaddleWidth
+				paddle.Height = cfg.PaddleLength
+			} else { // Horizontal
+				paddle.Width = cfg.PaddleLength
+				paddle.Height = cfg.PaddleWidth
+			}
 
 			// Perform the move
 			paddle.Move()
 
 			// Assert the outcome
-			if tc.shouldMove {
-				if paddle.X != tc.expectedX || paddle.Y != tc.expectedY {
-					t.Errorf("Expected paddle (Index %d, Dir %s) starting at (%d,%d) to move to (%d, %d) but got (%d, %d)",
-						tc.index, tc.direction, currentX, currentY, tc.expectedX, tc.expectedY, paddle.X, paddle.Y)
-				}
-				// Update current position for the next test if moved
-				currentX = paddle.X
-				currentY = paddle.Y
-			} else {
-				if paddle.X != currentX || paddle.Y != currentY {
-					t.Errorf("Expected paddle (Index %d, Dir %s) starting at (%d,%d) to remain but got (%d, %d)",
-						tc.index, tc.direction, currentX, currentY, paddle.X, paddle.Y)
-				}
-				// Position remains the same for the next test
+			if paddle.X != tc.expectedX || paddle.Y != tc.expectedY {
+				t.Errorf("Position Fail: Expected paddle (Index %d, Dir %s) starting at (%d,%d) to move to (%d, %d) but got (%d, %d)",
+					tc.index, tc.direction, initialX, initialY, tc.expectedX, tc.expectedY, paddle.X, paddle.Y)
+			}
+			if paddle.IsMoving != tc.shouldMove {
+				t.Errorf("IsMoving Fail: Expected IsMoving=%t but got %t", tc.shouldMove, paddle.IsMoving)
+			}
+			if paddle.Vx != tc.expectedVx || paddle.Vy != tc.expectedVy {
+				t.Errorf("Velocity Fail: Expected Vx=%d, Vy=%d but got Vx=%d, Vy=%d", tc.expectedVx, tc.expectedVy, paddle.Vx, paddle.Vy)
 			}
 		})
 	}
 
 	// --- Boundary Tests ---
 	t.Run("Boundaries", func(t *testing.T) {
-		// test case when paddle is at the boundary
+		// Create paddle specifically for boundary tests
+		paddle := Paddle{Velocity: cfg.PaddleVelocity, canvasSize: cfg.CanvasSize}
+
+		// Test case: Vertical paddle at bottom edge, try moving down
 		paddle.Index = 0 // Vertical paddle on right
-		paddle.X = utils.CanvasSize - paddle.Width
-		paddle.Y = utils.CanvasSize - paddle.Height
+		paddle.Width = cfg.PaddleWidth
+		paddle.Height = cfg.PaddleLength
+		paddle.X = cfg.CanvasSize - paddle.Width
+		paddle.Y = cfg.CanvasSize - paddle.Height
 		paddle.Direction = "right" // Try to move down
 		paddle.Move()
-		if paddle.X != utils.CanvasSize-paddle.Width || paddle.Y != utils.CanvasSize-paddle.Height {
-			t.Errorf("Boundary Test (Vertical Down): Expected paddle to remain at (%d, %d) but got (%d, %d)", utils.CanvasSize-paddle.Width, utils.CanvasSize-paddle.Height, paddle.X, paddle.Y)
+		if paddle.Y != cfg.CanvasSize-paddle.Height {
+			t.Errorf("Boundary Test (Vertical Down): Expected Y=%d but got %d", cfg.CanvasSize-paddle.Height, paddle.Y)
 		}
 
+		// Test case: Vertical paddle at top edge, try moving up
 		paddle.Y = 0
 		paddle.Direction = "left" // Try to move up
 		paddle.Move()
-		if paddle.X != utils.CanvasSize-paddle.Width || paddle.Y != 0 {
-			t.Errorf("Boundary Test (Vertical Up): Expected paddle to remain at (%d, %d) but got (%d, %d)", utils.CanvasSize-paddle.Width, 0, paddle.X, paddle.Y)
+		if paddle.Y != 0 {
+			t.Errorf("Boundary Test (Vertical Up): Expected Y=%d but got %d", 0, paddle.Y)
 		}
 
+		// Test case: Horizontal paddle at right edge, try moving right
 		paddle.Index = 3 // Horizontal paddle on bottom
-		paddle.X = utils.CanvasSize - paddle.Width
-		paddle.Y = utils.CanvasSize - paddle.Height
+		paddle.Width = cfg.PaddleLength
+		paddle.Height = cfg.PaddleWidth
+		paddle.X = cfg.CanvasSize - paddle.Width
+		paddle.Y = cfg.CanvasSize - paddle.Height
 		paddle.Direction = "right" // Try to move right
 		paddle.Move()
-		if paddle.X != utils.CanvasSize-paddle.Width || paddle.Y != utils.CanvasSize-paddle.Height {
-			t.Errorf("Boundary Test (Horizontal Right): Expected paddle to remain at (%d, %d) but got (%d, %d)", utils.CanvasSize-paddle.Width, utils.CanvasSize-paddle.Height, paddle.X, paddle.Y)
+		if paddle.X != cfg.CanvasSize-paddle.Width {
+			t.Errorf("Boundary Test (Horizontal Right): Expected X=%d but got %d", cfg.CanvasSize-paddle.Width, paddle.X)
 		}
 
+		// Test case: Horizontal paddle at left edge, try moving left
 		paddle.X = 0
 		paddle.Direction = "left" // Try to move left
 		paddle.Move()
-		if paddle.X != 0 || paddle.Y != utils.CanvasSize-paddle.Height {
-			t.Errorf("Boundary Test (Horizontal Left): Expected paddle to remain at (%d, %d) but got (%d, %d)", 0, utils.CanvasSize-paddle.Height, paddle.X, paddle.Y)
+		if paddle.X != 0 {
+			t.Errorf("Boundary Test (Horizontal Left): Expected X=%d but got %d", 0, paddle.X)
 		}
 	})
 }

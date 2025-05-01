@@ -1,4 +1,3 @@
-// File: pongo/game/paddle_actor.go
 package game
 
 import (
@@ -44,13 +43,13 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		// Actor started
 
 	case UpdatePositionCommand:
-		// fmt.Printf("PaddleActor %s (Index %d): Received UpdatePositionCommand, calling Move()\n", pidStr, a.state.Index) // Optional log
 		a.state.Move() // Move calculates Vx/Vy/IsMoving based on Direction
-
-	case GetPositionRequest:
-		// Reply immediately with current state using ctx.Reply if it's an Ask request
-		if ctx.RequestID() != "" {
-			response := PositionResponse{
+		// Send updated state back to GameActor
+		if a.gameActorPID != nil && a.selfPID != nil {
+			updateMsg := PositionUpdateMessage{
+				PID:      a.selfPID,
+				ActorID:  a.state.Index,
+				IsPaddle: true,
 				X:        a.state.X,
 				Y:        a.state.Y,
 				Vx:       a.state.Vx,
@@ -59,9 +58,19 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 				Height:   a.state.Height,
 				IsMoving: a.state.IsMoving,
 			}
+			ctx.Engine().Send(a.gameActorPID, updateMsg, a.selfPID)
+		}
+
+	case GetPositionRequest:
+		// Reply immediately with current state using ctx.Reply if it's an Ask request
+		if ctx.RequestID() != "" {
+			// Simplified response, as detailed state is pushed via PositionUpdateMessage
+			response := PositionResponse{
+				X: a.state.X,
+				Y: a.state.Y,
+			}
 			ctx.Reply(response)
 		} else {
-			// This case should ideally not happen if GameActor always uses Ask for GetPositionRequest
 			fmt.Printf("WARN: PaddleActor %s (Index %d) received GetPositionRequest not via Ask.\n", pidStr, a.state.Index)
 		}
 
@@ -70,11 +79,11 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		err := json.Unmarshal(msg.Direction, &receivedDirection)
 		if err == nil {
 			newInternalDirection := utils.DirectionFromString(receivedDirection.Direction)
-			fmt.Printf("PaddleActor %s (Index %d): Received direction '%s', internal: '%s'\n", pidStr, a.state.Index, receivedDirection.Direction, newInternalDirection) // Log direction
+			// fmt.Printf("PaddleActor %s (Index %d): Received direction '%s', internal: '%s'\n", pidStr, a.state.Index, receivedDirection.Direction, newInternalDirection) // Reduce log noise
 
 			// Update state only if direction actually changed
 			if a.state.Direction != newInternalDirection {
-				fmt.Printf("PaddleActor %s (Index %d): Direction changed from '%s' to '%s'\n", pidStr, a.state.Index, a.state.Direction, newInternalDirection) // Log change
+				// fmt.Printf("PaddleActor %s (Index %d): Direction changed from '%s' to '%s'\n", pidStr, a.state.Index, a.state.Direction, newInternalDirection) // Reduce log noise
 				a.state.Direction = newInternalDirection
 				a.state.IsMoving = (newInternalDirection != "") // Update IsMoving flag
 

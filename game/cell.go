@@ -16,7 +16,12 @@ type Cell struct {
 func (c *Cell) GetX() int           { return c.X }
 func (c *Cell) GetY() int           { return c.Y }
 func (c *Cell) GetData() *BrickData { return c.Data }
-func (c *Cell) GetType() int        { return int(c.Data.Type) }
+func (c *Cell) GetType() utils.CellType {
+	if c.Data == nil {
+		return utils.Cells.Empty // Treat nil Data as Empty
+	}
+	return c.Data.Type
+}
 
 func (b *BrickData) GetLife() int  { return b.Life }
 func (b *BrickData) GetLevel() int { return b.Level }
@@ -26,29 +31,34 @@ func NewCell(x, y, life int, typeOfCell utils.CellType) Cell {
 }
 
 func NewBrickData(typeOfCell utils.CellType, life int) *BrickData {
-	if typeOfCell == utils.Cells.Brick && life == 0 {
-		life = 1
+	if typeOfCell == utils.Cells.Brick && life <= 0 {
+		life = 1 // Bricks must have at least 1 life initially
 	}
 	if typeOfCell == utils.Cells.Empty {
-		life = 0
+		life = 0 // Empty cells always have 0 life
 	}
-	return &BrickData{Type: typeOfCell, Life: life, Level: life}
+	return &BrickData{Type: typeOfCell, Life: life, Level: life} // Level usually equals initial life
 }
 
 func (cell *Cell) Compare(comparedCell Cell) bool {
-	if cell.Data.Type != comparedCell.Data.Type {
-		return false
+	// Handle nil Data pointers
+	if cell.Data == nil && comparedCell.Data == nil {
+		return true // Both nil, considered equal
 	}
-	if cell.Data.Life != comparedCell.Data.Life {
-		return false
+	if cell.Data == nil || comparedCell.Data == nil {
+		return false // One is nil, the other isn't
 	}
-	if cell.Data.Level != comparedCell.Data.Level {
-		return false
-	}
-	return true
+	// If both are non-nil, compare the data
+	return cell.Data.Compare(comparedCell.Data)
 }
 
 func (data *BrickData) Compare(comparedData *BrickData) bool {
+	if data == nil && comparedData == nil {
+		return true
+	}
+	if data == nil || comparedData == nil {
+		return false
+	}
 	if data.Type != comparedData.Type {
 		return false
 	}

@@ -1,4 +1,3 @@
-// File: game/game_actor_broadcast.go
 package game
 
 import (
@@ -43,7 +42,6 @@ func deepCopyGrid(original Grid) Grid {
 func (a *GameActor) createGameStateSnapshot() GameState {
 	// --- Prepare the GameState snapshot ---
 	state := GameState{
-		// Canvas:  a.canvas, // Shallow copy - replaced below
 		Players: [utils.MaxPlayers]*Player{},
 		Paddles: [utils.MaxPlayers]*Paddle{},
 		Balls:   make([]*Ball, 0, len(a.balls)),
@@ -58,7 +56,7 @@ func (a *GameActor) createGameStateSnapshot() GameState {
 		state.Canvas = nil
 	}
 
-	// Copy player info
+	// Copy player info (using local playerInfo cache)
 	for i, pi := range a.players {
 		if pi != nil && pi.IsConnected {
 			// Create a copy of the player data, reading score atomically
@@ -73,8 +71,9 @@ func (a *GameActor) createGameStateSnapshot() GameState {
 		}
 	}
 
-	// Copy paddle info - Create a deep copy
+	// Copy paddle info - Create a deep copy (using local paddle cache)
 	for i, p := range a.paddles {
+		// Check if player exists and is connected for this paddle index
 		if p != nil && a.players[i] != nil && a.players[i].IsConnected {
 			paddleCopy := *p // Create a copy of the paddle struct
 			if paddleCopy.canvasSize == 0 && a.canvas != nil {
@@ -86,7 +85,7 @@ func (a *GameActor) createGameStateSnapshot() GameState {
 		}
 	}
 
-	// Copy ball info - Create a deep copy
+	// Copy ball info - Create a deep copy (using local ball cache)
 	for _, b := range a.balls {
 		if b != nil {
 			ballCopy := *b // Create a copy of the ball struct

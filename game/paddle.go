@@ -1,4 +1,3 @@
-// File: game/paddle.go
 package game
 
 import (
@@ -10,6 +9,7 @@ import (
 // --- Message Types for Paddle Communication ---
 
 // PaddlePositionMessage signals the paddle's current state (sent by PaddleActor).
+// DEPRECATED in favor of PositionUpdateMessage
 type PaddlePositionMessage struct {
 	Paddle *Paddle // Pointer to a state snapshot
 }
@@ -26,12 +26,12 @@ type Paddle struct {
 	Y          int    `json:"y"`
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
-	Index      int    `json:"index"`     // Player index (0-3)
-	Direction  string `json:"direction"` // Internal: "left", "right", or "" (stop)
-	Velocity   int    `json:"-"`         // Base velocity from config, not marshalled
-	Vx         int    `json:"vx"`        // Current horizontal velocity (for physics)
-	Vy         int    `json:"vy"`        // Current vertical velocity (for physics)
-	IsMoving   bool   `json:"isMoving"`  // Flag indicating if the paddle has active movement input
+	Index      int    `json:"index"`    // Player index (0-3)
+	Direction  string `json:"-"`        // Internal: "left", "right", or "" (stop), not marshalled
+	Velocity   int    `json:"-"`        // Base velocity from config, not marshalled
+	Vx         int    `json:"vx"`       // Current horizontal velocity (for physics)
+	Vy         int    `json:"vy"`       // Current vertical velocity (for physics)
+	IsMoving   bool   `json:"isMoving"` // Flag indicating if the paddle has active movement input
 	canvasSize int    // Store canvas size for boundary checks
 }
 

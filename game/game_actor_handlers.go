@@ -19,22 +19,14 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	if ws != nil {
 		remoteAddr = ws.RemoteAddr().String()
 	} else {
-		fmt.Printf("GameActor %s: Received connect assignment with nil connection.\n", a.selfPID)
+		fmt.Printf("ERROR: GameActor %s: Received connect assignment with nil connection.\n", a.selfPID)
 		return
 	}
 
-	// Check if connection is already mapped
-	if existingIndex, ok := a.connToIndex[ws]; ok {
-		if pInfo := a.players[existingIndex]; pInfo != nil && pInfo.IsConnected && pInfo.Ws == ws {
-			fmt.Printf("GameActor %s: Connection %s already associated with active player %d. Ignoring assignment.\n", a.selfPID, remoteAddr, existingIndex)
-			return
-		}
-		fmt.Printf("GameActor %s: Connection %s was previously mapped but inactive/mismatched. Cleaning up before reassignment.\n", a.selfPID, remoteAddr)
-		delete(a.connToIndex, ws)
-		if a.players[existingIndex] != nil {
-			a.players[existingIndex].IsConnected = false
-			a.playerConns[existingIndex] = nil
-		}
+	if _, ok := a.connToIndex[ws]; ok {
+		// Connection already mapped, potentially stale. Let disconnect handle cleanup if needed.
+		// fmt.Printf("GameActor %s: Connection %s already mapped. Ignoring assignment.\n", a.selfPID, remoteAddr) // Reduce noise
+		return
 	}
 
 	// Find the first available player slot
@@ -47,12 +39,12 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	}
 
 	if playerIndex == -1 {
-		fmt.Printf("GameActor %s: Room is full (%d players). Rejecting connection %s.\n", a.selfPID, utils.MaxPlayers, remoteAddr)
+		fmt.Printf("WARN: GameActor %s: Room is full (%d players). Rejecting connection %s.\n", a.selfPID, utils.MaxPlayers, remoteAddr)
 		_ = ws.Close()
 		return
 	}
 
-	fmt.Printf("GameActor %s: Assigning player index %d to %s\n", a.selfPID, playerIndex, remoteAddr)
+	// fmt.Printf("GameActor %s: Assigning player index %d to %s\n", a.selfPID, playerIndex, remoteAddr) // Reduce noise
 
 	// Check if this is the first player joining this specific room instance
 	isFirstPlayerInRoom := true
@@ -62,14 +54,14 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 			break
 		}
 	}
-	// Regenerate grid only if it's the very first player
 	if isFirstPlayerInRoom {
-		fmt.Printf("GameActor %s: First player joining this room, initializing grid.\n", a.selfPID)
-		if a.canvas == nil {
+		fmt.Printf("GameActor %s: First player joined. Initializing grid and starting tickers.\n", a.selfPID)
+		if a.canvas == nil { // Should exist from producer
 			a.canvas = NewCanvas(a.cfg.CanvasSize, a.cfg.GridSize)
 		}
-		a.canvas.Grid = NewGrid(a.cfg.GridSize)
+		a.canvas.Grid = NewGrid(a.cfg.GridSize) // Create new grid
 		a.canvas.Grid.Fill(a.cfg.GridFillVectors, a.cfg.GridFillVectorSize, a.cfg.GridFillWalkers, a.cfg.GridFillSteps)
+		a.startTickers(ctx) // Start tickers only when first player joins
 	}
 
 	// Create player info and paddle data
@@ -87,7 +79,7 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	a.playerConns[playerIndex] = ws // Map index back to connection
 
 	paddleData := NewPaddle(a.cfg, playerIndex)
-	a.paddles[playerIndex] = paddleData
+	a.paddles[playerIndex] = paddleData // Initialize cache
 
 	// Cache necessary variables
 	selfPID := a.selfPID
@@ -107,13 +99,11 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	paddlePID := engine.Spawn(bollywood.NewProps(paddleProducer))
 	if paddlePID == nil {
 		fmt.Printf("ERROR: GameActor %s failed to spawn PaddleActor for player %d\n", a.selfPID, playerIndex)
-		// Clean up player state if actor spawn failed (still within actor loop)
-		if pInfo := a.players[playerIndex]; pInfo != nil && pInfo.Ws == ws {
-			delete(a.connToIndex, ws)
-			a.players[playerIndex] = nil
-			a.paddles[playerIndex] = nil
-			a.playerConns[playerIndex] = nil
-		}
+		// Clean up player state if actor spawn failed
+		delete(a.connToIndex, ws)
+		a.players[playerIndex] = nil
+		a.paddles[playerIndex] = nil
+		a.playerConns[playerIndex] = nil
 		if broadcasterPID != nil {
 			engine.Send(broadcasterPID, RemoveClient{Conn: ws}, selfPID)
 		}
@@ -121,19 +111,19 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 		return
 	}
 
-	// Store Paddle Actor PID (still within actor loop)
+	// Store Paddle Actor PID
 	if pInfo := a.players[playerIndex]; pInfo != nil && pInfo.IsConnected && pInfo.Ws == ws {
 		a.paddleActors[playerIndex] = paddlePID
 	} else {
-		// Player disconnected very quickly? Should be rare now.
-		fmt.Printf("GameActor %s: Player %d (%s) disconnected before PaddleActor PID %s could be stored. Stopping actor.\n", a.selfPID, playerIndex, remoteAddr, paddlePID)
+		// Player disconnected very quickly?
+		fmt.Printf("WARN: GameActor %s: Player %d (%s) disconnected before PaddleActor PID %s could be stored. Stopping actor.\n", a.selfPID, playerIndex, remoteAddr, paddlePID)
 		if paddlePID != nil {
 			engine.Stop(paddlePID)
 		}
 		if broadcasterPID != nil {
 			engine.Send(broadcasterPID, RemoveClient{Conn: ws}, selfPID)
 		}
-		return
+		// Don't return, let disconnect logic handle full cleanup if needed
 	}
 
 	// Spawn initial Ball Actor
@@ -143,8 +133,6 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	assignmentMsg := PlayerAssignmentMessage{PlayerIndex: playerIndex}
 	err := websocket.JSON.Send(ws, assignmentMsg)
 	if err != nil {
-		// Log the error, but don't necessarily stop everything. The connection might already be closing.
-		// The PlayerDisconnect message will handle the cleanup if the connection is truly dead.
 		fmt.Printf("WARN: GameActor %s: Failed to send PlayerAssignmentMessage to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, err)
 		// If the error indicates a closed connection, trigger disconnect handling immediately
 		errStr := err.Error()
@@ -154,47 +142,41 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 			strings.Contains(errStr, "EOF") ||
 			strings.Contains(errStr, "write: connection timed out")
 		if isClosedErr {
-			// Trigger disconnect logic within the actor's context
 			a.handlePlayerDisconnect(ctx, ws)
 			return // Stop further processing for this connection
 		}
-	} else {
-		fmt.Printf("GameActor %s: Sent PlayerAssignmentMessage (Index: %d) to %s\n", a.selfPID, playerIndex, remoteAddr)
 	}
+	// fmt.Printf("GameActor %s: Sent PlayerAssignmentMessage (Index: %d) to %s\n", a.selfPID, playerIndex, remoteAddr) // Reduce noise
 
 	// Send initial state broadcast (to all players in the room via broadcaster)
 	initialSnapshot := a.createGameStateSnapshot()
 	currentBroadcasterPID := a.broadcasterPID // Re-fetch broadcaster PID
 
 	if currentBroadcasterPID != nil {
-		fmt.Printf("GameActor %s: Sending initial state broadcast after assigning player %d.\n", a.selfPID, playerIndex)
-		// Send the GameState struct directly
+		// fmt.Printf("GameActor %s: Sending initial state broadcast after assigning player %d.\n", a.selfPID, playerIndex) // Reduce noise
 		engine.Send(currentBroadcasterPID, BroadcastStateCommand{State: initialSnapshot}, selfPID)
 	} else {
 		fmt.Printf("WARN: GameActor %s: Broadcaster PID nil, cannot send initial state broadcast for player %d.\n", a.selfPID, playerIndex)
 	}
 
-	fmt.Printf("GameActor %s: Player %d setup complete.\n", a.selfPID, playerIndex)
+	// fmt.Printf("GameActor %s: Player %d setup complete.\n", a.selfPID, playerIndex) // Reduce noise
 }
 
 // handlePlayerDisconnect processes a player disconnection event.
 // Assumes called within the actor's message loop (no lock needed for main state).
 func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocket.Conn) {
 	if conn == nil {
-		fmt.Printf("GameActor %s: Received disconnect with nil connection.\n", a.selfPID)
+		// fmt.Printf("GameActor %s: Received disconnect with nil connection.\n", a.selfPID) // Reduce noise
 		return
 	}
-	connAddr := conn.RemoteAddr().String()
+	// connAddr := conn.RemoteAddr().String() // Reduce noise
 
 	playerIndex, playerFound := a.connToIndex[conn]
 
 	if !playerFound || playerIndex < 0 || playerIndex >= utils.MaxPlayers || a.players[playerIndex] == nil || a.players[playerIndex].Ws != conn {
+		// fmt.Printf("GameActor %s: Disconnect for %s - No valid player found. Ignoring.\n", a.selfPID, connAddr) // Reduce noise
 		if playerFound {
-			// Clean up stale mapping if found but player info doesn't match
-			fmt.Printf("GameActor %s: Disconnect for %s - Stale mapping found for index %d, removing.\n", a.selfPID, connAddr, playerIndex)
-			delete(a.connToIndex, conn)
-		} else {
-			fmt.Printf("GameActor %s: Disconnect for %s - No player found for this connection. Ignoring.\n", a.selfPID, connAddr)
+			delete(a.connToIndex, conn) // Clean stale mapping
 		}
 		return
 	}
@@ -202,19 +184,17 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	pInfo := a.players[playerIndex]
 
 	if !pInfo.IsConnected {
-		// Already handled disconnect for this player/connection
-		fmt.Printf("GameActor %s: Received duplicate disconnect for player %d (%s). Ignoring.\n", a.selfPID, playerIndex, connAddr)
+		// fmt.Printf("GameActor %s: Received duplicate disconnect for player %d (%s). Ignoring.\n", a.selfPID, playerIndex, connAddr) // Reduce noise
 		return
 	}
 
-	fmt.Printf("GameActor %s: Handling disconnect for player %d (%s)\n", a.selfPID, playerIndex, connAddr)
-
-	// Mark as disconnected
+	// fmt.Printf("GameActor %s: Handling disconnect for player %d (%s)\n", a.selfPID, playerIndex, connAddr) // Reduce noise
 	pInfo.IsConnected = false
 
 	// --- Stop Actors and Manage Persistent Ball ---
 	paddleToStop := a.paddleActors[playerIndex]
 	a.paddleActors[playerIndex] = nil
+	a.paddles[playerIndex] = nil // Clean paddle cache
 
 	ownedBallIDs := []int{}
 	ownedPermanentBallIDs := []int{}
@@ -248,14 +228,14 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 		} else {
 			ballToKeepID = ownedBallIDs[0]
 		}
-		fmt.Printf("GameActor %s: Player %d owned last ball(s). Keeping ball %d.\n", a.selfPID, playerIndex, ballToKeepID)
+		// fmt.Printf("GameActor %s: Player %d owned last ball(s). Keeping ball %d.\n", a.selfPID, playerIndex, ballToKeepID) // Reduce noise
 	}
 
 	ballsToStopPIDs := []*bollywood.PID{}
 	for _, ballID := range ownedBallIDs {
 		if ballID == ballToKeepID {
-			if keptBall, ok := a.balls[ballID]; ok {
-				fmt.Printf("GameActor %s: Making kept ball %d ownerless and permanent.\n", a.selfPID, ballID)
+			if keptBall, ok := a.balls[ballID]; ok && keptBall != nil {
+				// fmt.Printf("GameActor %s: Making kept ball %d ownerless and permanent.\n", a.selfPID, ballID) // Reduce noise
 				keptBall.OwnerIndex = -1
 				keptBall.IsPermanent = true
 			}
@@ -263,7 +243,7 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 			if pid, ok := a.ballActors[ballID]; ok && pid != nil {
 				ballsToStopPIDs = append(ballsToStopPIDs, pid)
 			}
-			delete(a.balls, ballID)
+			delete(a.balls, ballID) // Clean ball cache
 			delete(a.ballActors, ballID)
 		}
 	}
@@ -271,10 +251,8 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	// --- Clean up GameActor state ---
 	delete(a.connToIndex, conn)
 	a.players[playerIndex] = nil
-	a.paddles[playerIndex] = nil
 	a.playerConns[playerIndex] = nil
 
-	// Check if room is now empty
 	playersLeft := false
 	for _, p := range a.players {
 		if p != nil {
@@ -284,7 +262,6 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	}
 	roomIsEmpty := !playersLeft
 
-	// Cache PIDs needed outside actor loop
 	roomManagerPID := a.roomManagerPID
 	selfPID := a.selfPID
 	engine := a.engine
@@ -298,15 +275,14 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 		engine.Stop(pid)
 	}
 
-	// Tell broadcaster to remove the client
 	if broadcasterPID != nil {
 		engine.Send(broadcasterPID, RemoveClient{Conn: conn}, selfPID)
 	}
 
-	fmt.Printf("GameActor %s: Player %d disconnected and cleaned up.\n", a.selfPID, playerIndex)
+	// fmt.Printf("GameActor %s: Player %d disconnected and cleaned up.\n", a.selfPID, playerIndex) // Reduce noise
 
 	// --- Notify RoomManager if Empty ---
-	if roomIsEmpty {
+	if roomIsEmpty && !a.gameOver.Load() { // Only notify if not already game over
 		fmt.Printf("GameActor %s: Last player disconnected. Room is empty. Notifying RoomManager %s.\n", a.selfPID, roomManagerPID)
 		if roomManagerPID != nil && selfPID != nil {
 			engine.Send(roomManagerPID, GameRoomEmpty{RoomPID: selfPID}, nil)
@@ -316,6 +292,8 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 				engine.Stop(selfPID)
 			}
 		}
+	} else if roomIsEmpty && a.gameOver.Load() {
+		// fmt.Printf("GameActor %s: Last player disconnected after game over. Room already notified/stopping.\n", a.selfPID) // Reduce noise
 	}
 }
 
@@ -344,12 +322,12 @@ func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websock
 		a.engine.Send(pid, PaddleDirectionMessage{Direction: directionData}, ctx.Self())
 	} else {
 		// Log if input received for an unknown/disconnected player
-		connAddr := "unknown"
-		if wsConn != nil {
-			connAddr = wsConn.RemoteAddr().String()
-		}
-		fmt.Printf("WARN: GameActor %s: Received paddle input from invalid/unknown connection %s (Index: %d, Found: %t, Valid: %t). Dropping.\n",
-			a.selfPID, connAddr, playerIndex, playerFound, isValidPlayer)
+		// connAddr := "unknown"
+		// if wsConn != nil {
+		// 	connAddr = wsConn.RemoteAddr().String()
+		// }
+		// fmt.Printf("WARN: GameActor %s: Received paddle input from invalid/unknown connection %s (Index: %d, Found: %t, Valid: %t). Dropping.\n",
+		// 	a.selfPID, connAddr, playerIndex, playerFound, isValidPlayer) // Reduce noise
 	}
 }
 
@@ -362,10 +340,10 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 	}
 	cfg := a.cfg
 	selfPID := a.selfPID
-	engine := a.engine
+	engine := a.engine // Use the actor's engine field
 
 	if !ownerValidAndConnected {
-		fmt.Printf("GameActor %s: Cannot spawn ball for invalid or disconnected owner index %d\n", a.selfPID, ownerIndex)
+		// fmt.Printf("GameActor %s: Cannot spawn ball for invalid or disconnected owner index %d\n", a.selfPID, ownerIndex) // Reduce noise
 		return
 	}
 
@@ -374,7 +352,7 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 		return
 	}
 
-	ballID := time.Now().Nanosecond() + ownerIndex + rand.Intn(1000)
+	ballID := time.Now().Nanosecond() + ownerIndex + rand.Intn(1000) // Simple unique enough ID
 	ballData := NewBall(cfg, x, y, ownerIndex, ballID, isPermanent)
 
 	ballProducer := NewBallActorProducer(*ballData, selfPID, cfg)
@@ -385,13 +363,11 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 	}
 
 	// Re-verify owner is still connected with the *same* websocket connection before adding
-	// This check still needs to happen even within the actor loop, as the disconnect message
-	// might be processed between the start of this handler and now.
 	if pInfo := a.players[ownerIndex]; pInfo != nil && pInfo.IsConnected && pInfo.Ws == ownerWs {
-		a.balls[ballID] = ballData
+		a.balls[ballID] = ballData // Initialize cache
 		a.ballActors[ballID] = ballPID
 	} else {
-		fmt.Printf("GameActor %s: Owner %d disconnected/changed before ball %d could be added. Stopping spawned actor %s.\n", a.selfPID, ownerIndex, ballID, ballPID)
+		// fmt.Printf("GameActor %s: Owner %d disconnected/changed before ball %d could be added. Stopping spawned actor %s.\n", a.selfPID, ownerIndex, ballID, ballPID) // Reduce noise
 		engine.Stop(ballPID)
 		return
 	}
@@ -404,12 +380,13 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 		}
 
 		time.AfterFunc(actualExpireIn, func() {
-			currentSelfPID := a.selfPID
-			currentEngine := a.engine
+			// Use the captured engine and selfPID from the outer scope
+			currentSelfPID := selfPID
+			currentEngine := engine
 			if currentEngine != nil && currentSelfPID != nil {
 				currentEngine.Send(currentSelfPID, DestroyExpiredBall{BallID: ballID}, nil)
 			} else {
-				fmt.Printf("ERROR: Cannot send DestroyExpiredBall for %d, engine/selfPID invalid in timer.\n", ballID)
+				// fmt.Printf("ERROR: Cannot send DestroyExpiredBall for %d, engine/selfPID invalid in timer.\n", ballID) // Reduce noise
 			}
 		})
 	}
@@ -420,16 +397,38 @@ func (a *GameActor) handleDestroyExpiredBall(ctx bollywood.Context, ballID int) 
 	pidToStop, actorExists := a.ballActors[ballID]
 	ballState, stateExists := a.balls[ballID]
 
-	if stateExists && ballState.IsPermanent {
+	if stateExists && ballState != nil && ballState.IsPermanent {
+		return // Don't destroy permanent balls via expiry timer
+	}
+
+	// Use a.engine directly
+	currentEngine := a.engine
+	if currentEngine == nil {
+		fmt.Printf("ERROR: GameActor %s: Engine is nil in handleDestroyExpiredBall.\n", a.selfPID)
+		// Attempt cleanup without engine reference if possible
+		if stateExists {
+			delete(a.balls, ballID)
+		}
+		if actorExists {
+			delete(a.ballActors, ballID)
+		}
 		return
 	}
 
 	if actorExists && stateExists && pidToStop != nil {
-		delete(a.balls, ballID)
+		delete(a.balls, ballID) // Clean cache
 		delete(a.ballActors, ballID)
-		engine := a.engine
-		if engine != nil {
-			engine.Stop(pidToStop)
+		currentEngine.Stop(pidToStop) // Use a.engine
+	} else {
+		// Clean up potentially inconsistent state
+		if stateExists {
+			delete(a.balls, ballID)
+		}
+		if actorExists {
+			delete(a.ballActors, ballID)
+			if pidToStop != nil {
+				currentEngine.Stop(pidToStop) // Use a.engine
+			}
 		}
 	}
 }

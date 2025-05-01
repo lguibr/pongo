@@ -1,4 +1,3 @@
-
 [![Coverage](https://img.shields.io/badge/Coverage-TBD%25-lightgrey)](./README.md) [![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)](https://github.com/lguibr/pongo/actions/workflows/test.yml) [![Build & Push](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build%20%26%20Push)](https://github.com/lguibr/pongo/actions/workflows/build.yml) [![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)](https://github.com/lguibr/pongo/actions/workflows/lint.yml) [![Docker Image](https://img.shields.io/docker/pulls/lguibr/pongo.svg?label=Docker%20Pulls)](https://hub.docker.com/r/lguibr/pongo) <!-- Replace lguibr with your Docker Hub username -->
 
 # PonGo: Multi-Room Pong/Breakout Hybrid
@@ -88,38 +87,38 @@ The primary goal is to achieve the highest score by hitting opponent walls, dest
 ### 2.5 Collisions & Scoring
 
 1.  **Wall Collision:**
-    *   **Reflection:** The ball's velocity component perpendicular to the wall is reversed.
+    *   **Reflection:** The ball's velocity component perpendicular to the wall is reversed (command sent to `BallActor`).
     *   **Active Player Wall:** If the wall belongs to a connected player (the "conceder"):
         *   The conceder loses 1 point.
         *   The player who last hit the ball (the "scorer", if different from the conceder and still connected) gains 1 point.
         *   Ownerless balls hitting an active player's wall cause the wall owner to lose 1 point.
     *   **Empty Player Slot Wall:**
         *   If the ball is **permanent**, it reflects as normal (no scoring).
-        *   If the ball is **temporary**, it is removed from the game.
-    *   **Phasing:** After any wall collision, the ball enters a brief "phasing" state where it cannot collide with bricks immediately.
+        *   If the ball is **temporary**, it is removed from the game (`GameActor` stops the `BallActor`).
+    *   **Phasing:** After any wall collision, the ball enters a brief "phasing" state (command sent to `BallActor`).
 
 2.  **Paddle Collision:**
-    *   **Dynamic Reflection:** The ball reflects off the paddle. The reflection angle depends on *where* the ball hits the paddle surface (center hits reflect more directly, edge hits deflect more sharply).
-    *   **Speed Influence:** The paddle's current velocity component *along* the ball's reflection path influences the ball's resulting speed (moving paddle adds speed, stationary/opposing subtracts).
-    *   **Ownership:** The player whose paddle was hit becomes the new owner of the ball.
-    *   **Phasing:** The ball enters the phasing state.
+    *   **Dynamic Reflection:** The ball reflects off the paddle. The reflection angle depends on *where* the ball hits the paddle surface.
+    *   **Speed Influence:** The paddle's current velocity component *along* the ball's reflection path influences the ball's resulting speed.
+    *   **Ownership:** The player whose paddle was hit becomes the new owner of the ball (state updated in `GameActor`'s cache).
+    *   **Phasing:** The ball enters the phasing state (command sent to `BallActor`).
 
 3.  **Brick Collision:**
-    *   **Damage:** The brick's `Life` decreases by 1.
-    *   **Reflection:** The ball reflects off the brick surface (axis determined by impact angle).
+    *   **Damage:** The brick's `Life` decreases by 1 (state updated in `GameActor`).
+    *   **Reflection:** The ball reflects off the brick surface (command sent to `BallActor`).
     *   **Destruction:** If `Life` reaches 0:
         *   The brick is removed (`Type` becomes `Empty`).
         *   The ball's current owner (if valid and connected) gains points equal to the brick's initial `Level`.
         *   There's a chance (`PowerUpChance`) to trigger a random power-up.
-    *   **Phasing:** The ball enters the phasing state. Bricks cannot be hit by phasing balls.
+    *   **Phasing:** The ball enters the phasing state (command sent to `BallActor`). Bricks cannot be hit by phasing balls.
 
 ### 2.6 Bricks & Power-ups
 
 -   **Bricks:** Occupy cells in the central grid. They have `Life` (hit points) and `Level` (points awarded on destruction). The grid is procedurally generated when a room is created.
 -   **Power-ups:** Triggered randomly when a brick is destroyed. Effects apply to the ball that broke the brick or spawn new entities:
-    -   **Spawn Ball:** Creates a new temporary ball near the broken brick, owned by the player who broke the brick.
-    -   **Increase Mass:** Increases the mass and radius of the ball that broke the brick.
-    -   **Increase Velocity:** Increases the speed of the ball that broke the brick.
+    -   **Spawn Ball:** Creates a new temporary ball near the broken brick, owned by the player who broke the brick (`GameActor` spawns a new `BallActor`).
+    -   **Increase Mass:** Increases the mass and radius of the ball that broke the brick (command sent to `BallActor`).
+    -   **Increase Velocity:** Increases the speed of the ball that broke the brick (command sent to `BallActor`).
 
 ### 2.7 Winning/Losing
 
@@ -167,13 +166,15 @@ PonGo uses an Actor Model architecture facilitated by the [Bollywood](https://gi
 -   Each instance represents a single, independent game room (max 4 players).
 -   **Responsibilities:**
     -   Manages the core state of a specific game: Canvas, Grid, Players, Scores.
+    -   Maintains local caches of `Paddle` and `Ball` states.
     -   Handles player connections/disconnections (`AssignPlayerToRoom`, `PlayerDisconnect`) *initiated by ConnectionHandlerActor*.
     -   Spawns and supervises child actors (`PaddleActor`, `BallActor`) and a `BroadcasterActor`.
     -   Drives child actor updates via `UpdatePositionCommand`.
-    -   Queries child actor state (`GetPositionRequest`) for collision detection using `Engine.Ask`.
-    -   Performs all collision detection and physics calculations.
+    -   Receives `PositionUpdateMessage` from child actors and updates its local state cache.
+    -   Performs all collision detection and physics calculations using its cached state.
+    -   Sends commands (`SetVelocity`, `ReflectVelocity`, `SetPhasing`, etc.) to child actors based on collision results.
     -   Updates scores and grid state.
-    -   Handles power-up logic.
+    -   Handles power-up logic (spawning new balls, sending commands to existing balls).
     -   Implements the "persistent ball" logic on player disconnect.
     -   Periodically creates a `GameState` snapshot and sends it (`BroadcastStateCommand`) to its `BroadcasterActor`.
     -   Notifies the `RoomManagerActor` when it becomes empty (`GameRoomEmpty`).
@@ -190,8 +191,8 @@ PonGo uses an Actor Model architecture facilitated by the [Bollywood](https://gi
 
 ### 3.6 Entity Actors (`PaddleActor`, `BallActor`)
 
--   **`PaddleActor`:** Manages the state (position, velocity, direction) of a single paddle. Updates state on `UpdatePositionCommand`. Responds to `GetPositionRequest` (via `ctx.Reply()`). Handles `PaddleDirectionMessage` from `GameActor`.
--   **`BallActor`:** Manages the state (position, velocity, phasing) of a single ball. Updates state on `UpdatePositionCommand`. Responds to `GetPositionRequest` (via `ctx.Reply()`). Handles commands (`SetVelocity`, `ReflectVelocity`, etc.) from `GameActor`.
+-   **`PaddleActor`:** Manages the state (position, velocity, direction) of a single paddle. Updates state on `UpdatePositionCommand`. Sends `PositionUpdateMessage` to `GameActor` after update. Handles `PaddleDirectionMessage` from `GameActor`. Responds to `GetPositionRequest` (via `ctx.Reply()`) if needed.
+-   **`BallActor`:** Manages the state (position, velocity, phasing) of a single ball. Updates state on `UpdatePositionCommand`. Sends `PositionUpdateMessage` to `GameActor` after update. Handles commands (`SetVelocity`, `ReflectVelocity`, `SetPhasing`, etc.) from `GameActor`. Responds to `GetPositionRequest` (via `ctx.Reply()`) if needed.
 
 ### 3.7 Communication Flow (Diagram)
 
@@ -227,10 +228,13 @@ sequenceDiagram
         GameActor->>GameActor: GameTick (Internal Timer)
         GameActor->>PaddleActor: UpdatePositionCommand
         GameActor->>BallActor: UpdatePositionCommand
-        %% Children update internally
+        %% Children update internally and send state back
+        PaddleActor-->>GameActor: PositionUpdateMessage {State}
+        BallActor-->>GameActor: PositionUpdateMessage {State}
+        %% GameActor updates its internal cache upon receiving PositionUpdateMessage
 
         GameActor->>GameActor: detectCollisions()
-        Note over GameActor: Queries child positions via Engine.Ask(GetPositionRequest -> PositionResponse)
+        Note over GameActor: Uses internal state cache for detection
         opt Collision Detected
             GameActor->>BallActor: ReflectVelocityCommand / SetVelocityCommand / etc.
             GameActor->>GameActor: Update Score / Grid
@@ -260,7 +264,7 @@ sequenceDiagram
 
     Client->>-ConnectionHandlerActor: WebSocket Disconnect (detected by readLoop)
     ConnectionHandlerActor->>+GameActor: PlayerDisconnect {WsConn}
-    GameActor->>GameActor: Handle Disconnect (Stop Actors, Persistent Ball Logic)
+    GameActor->>GameActor: Handle Disconnect (Stop Actors, Persistent Ball Logic, Clean Cache)
     GameActor->>+BroadcasterActor: RemoveClient {WsConn}
     opt Last Player Left
         GameActor->>+RoomManagerActor: GameRoomEmpty {RoomPID}
@@ -270,7 +274,7 @@ sequenceDiagram
 
     %% HTTP Request for Room List
     participant HTTPClient
-    HTTPClient->>+ServerHandler: GET /
+    HTTPClient->>+ServerHandler: GET /rooms/
     ServerHandler->>+RoomManagerActor: Ask(GetRoomListRequest)
     RoomManagerActor-->>-ServerHandler: Reply(RoomListResponse)
     ServerHandler-->>-HTTPClient: JSON Response
@@ -281,7 +285,7 @@ sequenceDiagram
 
 All major game parameters are configurable in `utils/config.go`. See the `DefaultConfig()` function for default values. Key parameters include:
 
--   `GameTickPeriod`: (Default: 10ms)
+-   `GameTickPeriod`: (Default: 24ms)
 -   `CanvasSize`, `GridSize`, `CellSize`
 -   `InitialScore`
 -   `PaddleLength`, `PaddleWidth`, `PaddleVelocity`
@@ -386,7 +390,9 @@ A pre-built image is automatically pushed to Docker Hub from the `main` branch. 
 ## 7. API Endpoints
 
 -   **`ws://<host>:8080/subscribe`**: The primary WebSocket endpoint for game clients to connect.
--   **`http://<host>:8080/`**: HTTP GET endpoint. Returns a JSON object listing active game rooms (by PID) and their current player counts (e.g., `{"actor-1": 2, "actor-3": 4}`).
+-   **`http://<host>:8080/rooms/`**: HTTP GET endpoint. Returns a JSON object listing active game rooms (by PID string) and their current player counts (e.g., `{"actor-1": 2, "actor-3": 4}`).
+-   **`http://<host>:8080/`**: HTTP GET endpoint for health check. Returns `{"status": "ok"}`.
+-   **`http://<host>:8080/health-check/`**: Explicit health check endpoint. Returns `{"status": "ok"}`.
 
 ## 8. Submodules
 
@@ -399,3 +405,4 @@ A pre-built image is automatically pushed to Docker Hub from the `main` branch. 
 ## 9. Contributing
 
 Contributions are welcome! Please follow standard Go practices, ensure tests pass, and update documentation as needed. Open an issue to discuss major changes.
+

@@ -1,6 +1,8 @@
 package game
 
 import (
+	"fmt"
+
 	"github.com/lguibr/asciiring/types"
 	"github.com/lguibr/pongo/utils"
 )
@@ -21,13 +23,13 @@ func (c *Canvas) GetCellSize() int   { return c.CellSize }
 func NewCanvas(size, gridSize int) *Canvas {
 
 	if size == 0 {
-		size = utils.CanvasSize
+		size = utils.DefaultConfig().CanvasSize // Use default if 0
 	}
 	if gridSize == 0 {
-		gridSize = utils.GridSize
+		gridSize = utils.DefaultConfig().GridSize // Use default if 0
 	}
 	if size%gridSize != 0 {
-		panic("Size must be a multiple of gridSize")
+		panic(fmt.Sprintf("Canvas size (%d) must be a multiple of grid size (%d)", size, gridSize))
 	}
 
 	if gridSize < 6 {
@@ -35,7 +37,7 @@ func NewCanvas(size, gridSize int) *Canvas {
 	}
 
 	return &Canvas{
-		Grid:       NewGrid(gridSize),
+		Grid:       NewGrid(gridSize), // Grid starts empty, filled by GameActor later
 		Width:      size,
 		Height:     size,
 		GridSize:   gridSize,
@@ -61,11 +63,15 @@ func (canvas *Canvas) DrawGameOnRGBGrid(paddles [4]*Paddle, balls []*Ball) [][]t
 	for _, row := range canvas.GetGrid() {
 		for _, cell := range row {
 
-			if cell.Data.Life >= 1 {
+			if cell.Data != nil && cell.Data.Life >= 1 { // Check cell.Data is not nil
 				x, y := cell.GetX()*canvas.GetCellSize(), cell.GetY()*canvas.GetCellSize()
 				for i := 0; i < canvas.GetCellSize(); i++ {
 					for j := 0; j < canvas.GetCellSize(); j++ {
-						grid[x+i][y+j] = brickColor
+						// Boundary check for drawing pixels
+						pixelX, pixelY := x+i, y+j
+						if pixelX >= 0 && pixelX < canvas.GetCanvasSize() && pixelY >= 0 && pixelY < canvas.GetCanvasSize() {
+							grid[pixelX][pixelY] = brickColor
+						}
 					}
 				}
 			}
@@ -79,10 +85,10 @@ func (canvas *Canvas) DrawGameOnRGBGrid(paddles [4]*Paddle, balls []*Ball) [][]t
 		}
 		for i := paddle.GetX(); i < paddle.GetX()+paddle.GetWidth(); i++ {
 			for j := paddle.GetY(); j < paddle.GetY()+paddle.GetHeight(); j++ {
-				if i >= len(grid) || j >= len(grid[i]) {
-					continue
+				// Boundary check for drawing pixels
+				if i >= 0 && i < canvas.GetCanvasSize() && j >= 0 && j < canvas.GetCanvasSize() {
+					grid[i][j] = paddleColor
 				}
-				grid[i][j] = paddleColor
 			}
 		}
 	}
@@ -94,17 +100,18 @@ func (canvas *Canvas) DrawGameOnRGBGrid(paddles [4]*Paddle, balls []*Ball) [][]t
 		}
 
 		startX := ball.GetX() - ball.GetRadius()
-		if startX < 0 {
-			startX = 0
-		}
-
 		startY := ball.GetY() - ball.GetRadius()
-		if startY < 0 {
-			startY = 0
-		}
+		endX := ball.GetX() + ball.GetRadius()
+		endY := ball.GetY() + ball.GetRadius()
 
-		for i := startX; i <= ball.GetX()+ball.GetRadius() && i < len(grid); i++ {
-			for j := startY; j <= ball.GetY()+ball.GetRadius() && j < len(grid[i]); j++ {
+		// Clamp drawing bounds to canvas limits
+		startX = utils.MaxInt(0, startX)
+		startY = utils.MaxInt(0, startY)
+		endX = utils.MinInt(canvas.GetCanvasSize()-1, endX)
+		endY = utils.MinInt(canvas.GetCanvasSize()-1, endY)
+
+		for i := startX; i <= endX; i++ {
+			for j := startY; j <= endY; j++ {
 				// Check if the pixel lies inside the ball using the equation of a circle
 				if (i-ball.GetX())*(i-ball.GetX())+(j-ball.GetY())*(j-ball.GetY()) <= ball.GetRadius()*ball.GetRadius() {
 					grid[i][j] = ballColor

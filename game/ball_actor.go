@@ -18,6 +18,7 @@ type BallActor struct {
 
 	gameActorPID *bollywood.PID // PID of the GameActor (parent)
 	phasingTimer *time.Timer    // Timer for phasing effect
+	selfPID      *bollywood.PID // Store self PID
 }
 
 // NewBallActorProducer creates a Producer for BallActor.
@@ -40,35 +41,51 @@ type stopPhasingCommand struct{}
 // --- Receive Method ---
 
 func (a *BallActor) Receive(ctx bollywood.Context) {
+	if a.selfPID == nil {
+		a.selfPID = ctx.Self()
+	}
+
 	switch msg := ctx.Message().(type) {
 	case bollywood.Started:
 		// Actor started
 
 	case UpdatePositionCommand:
 		a.state.Move()
+		// Send updated state back to GameActor
+		if a.gameActorPID != nil && a.selfPID != nil {
+			updateMsg := PositionUpdateMessage{
+				PID:      a.selfPID,
+				ActorID:  a.state.Id,
+				IsPaddle: false,
+				X:        a.state.X,
+				Y:        a.state.Y,
+				Vx:       a.state.Vx,
+				Vy:       a.state.Vy,
+				Radius:   a.state.Radius,
+				Phasing:  a.state.Phasing,
+			}
+			ctx.Engine().Send(a.gameActorPID, updateMsg, a.selfPID)
+		}
 
 	case GetPositionRequest:
 		// Reply immediately with current state using ctx.Reply if it's an Ask request
 		if ctx.RequestID() != "" {
+			// Simplified response, as detailed state is pushed via PositionUpdateMessage
 			response := PositionResponse{
-				X:       a.state.X,
-				Y:       a.state.Y,
-				Vx:      a.state.Vx,
-				Vy:      a.state.Vy,
-				Radius:  a.state.Radius,
-				Phasing: a.state.Phasing,
-				// Include other fields if needed, e.g., Mass, IsPermanent
+				X: a.state.X,
+				Y: a.state.Y,
 			}
 			ctx.Reply(response)
 		} else {
-			// This case should ideally not happen if GameActor always uses Ask for GetPositionRequest
 			fmt.Printf("WARN: BallActor %d received GetPositionRequest not via Ask.\n", a.state.Id)
 		}
 
 	case ReflectVelocityCommand:
 		a.state.ReflectVelocity(msg.Axis)
+		// Optionally send update immediately if needed, or rely on next tick
 	case SetVelocityCommand:
 		a.state.SetVelocity(msg.Vx, msg.Vy)
+		// Optionally send update immediately if needed, or rely on next tick
 	case SetPhasingCommand:
 		a.state.Phasing = true
 		if a.phasingTimer != nil {
@@ -83,17 +100,20 @@ func (a *BallActor) Receive(ctx bollywood.Context) {
 				// Send message back to the actor's own mailbox
 				engine.Send(selfPID, stopPhasingCommand{}, nil)
 			} else {
-				// This case should be rare but log if it happens
 				fmt.Printf("ERROR: BallActor %d phasing timer fired but engine or selfPID is nil.\n", a.state.Id)
 			}
 		})
+		// Optionally send update immediately if needed, or rely on next tick
 	case stopPhasingCommand:
 		a.state.Phasing = false
 		a.phasingTimer = nil // Clear the timer reference
+		// Optionally send update immediately if needed, or rely on next tick
 	case IncreaseVelocityCommand:
 		a.state.IncreaseVelocity(msg.Ratio) // Ratio comes from GameActor physics now
+		// Optionally send update immediately if needed, or rely on next tick
 	case IncreaseMassCommand:
 		a.state.IncreaseMass(a.cfg, msg.Additional) // Pass config
+		// Optionally send update immediately if needed, or rely on next tick
 	case DestroyBallCommand:
 		// Let the Stopping message handle the actual cleanup
 		ctx.Engine().Stop(ctx.Self()) // Initiate stop process

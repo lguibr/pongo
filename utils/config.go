@@ -63,18 +63,18 @@ func DefaultConfig() Config {
 		CellSize:   cellSize,
 
 		// Ball Physics & Properties
-		MinBallVelocity:          canvasSize / 180, // ~2.88
-		MaxBallVelocity:          canvasSize / 90,  // ~3.84
+		MinBallVelocity:          canvasSize / 180, // ~5.68
+		MaxBallVelocity:          canvasSize / 90,  // ~11.37
 		BallMass:                 1,
-		BallRadius:               cellSize / 6, // 12
+		BallRadius:               cellSize / 6, // ~10.6
 		BallPhasingTime:          100 * time.Millisecond,
 		BallHitPaddleSpeedFactor: 0.3,
 		BallHitPaddleAngleFactor: 2.8, // Max ~64 degrees deflection (Pi / 2.8)
 
 		// Paddle Properties
-		PaddleLength:   cellSize * 3, // 144
-		PaddleWidth:    cellSize / 2, // 24
-		PaddleVelocity: cellSize / 4, // 8 (adjust as needed for responsiveness)
+		PaddleLength:   cellSize * 3, // 192
+		PaddleWidth:    cellSize / 2, // 32
+		PaddleVelocity: cellSize / 4, // 16
 
 		// Grid Generation
 		GridFillVectors:    gridSize * 2,
@@ -83,10 +83,50 @@ func DefaultConfig() Config {
 		GridFillSteps:      gridSize / 2,
 
 		// Power-ups
-		PowerUpChance:           0.6,             // 50% chance
-		PowerUpSpawnBallExpiry:  9 * time.Second, // Average expiry, will be randomized +/- 2s
+		PowerUpChance:           0.6,
+		PowerUpSpawnBallExpiry:  9 * time.Second,
 		PowerUpIncreaseMassAdd:  1,
-		PowerUpIncreaseMassSize: 2, // Radius increase per mass point
+		PowerUpIncreaseMassSize: 2,
 		PowerUpIncreaseVelRatio: 1.1,
 	}
+}
+
+// FastGameConfig returns a config optimized for rapid game completion (used for testing).
+func FastGameConfig() Config {
+	cfg := DefaultConfig() // Start with defaults
+
+	// Smaller grid, fewer bricks initially
+	cfg.CanvasSize = 512                         // Must be divisible by GridSize
+	cfg.GridSize = 8                             // Must be divisible by 2
+	cfg.CellSize = cfg.CanvasSize / cfg.GridSize // 64
+
+	// Fewer generation steps -> less dense grid
+	cfg.GridFillVectors = cfg.GridSize / 2    // 4
+	cfg.GridFillVectorSize = cfg.GridSize / 2 // 4
+	cfg.GridFillWalkers = cfg.GridSize / 4    // 2
+	cfg.GridFillSteps = cfg.GridSize / 4      // 2
+
+	// Faster game loop
+	cfg.GameTickPeriod = 16 * time.Millisecond // ~60 FPS physics
+
+	// Faster balls
+	cfg.MinBallVelocity = cfg.CanvasSize / 60 // ~8.5
+	cfg.MaxBallVelocity = cfg.CanvasSize / 40 // ~12.8
+	cfg.BallRadius = cfg.CellSize / 4         // 16
+
+	// Less phasing
+	cfg.BallPhasingTime = 50 * time.Millisecond
+
+	// Lower power-up chance to avoid too many balls complicating completion
+	cfg.PowerUpChance = 0.1
+	cfg.PowerUpSpawnBallExpiry = 5 * time.Second
+
+	// Faster paddles (though not actively used by clients in this test)
+	cfg.PaddleVelocity = cfg.CellSize / 2 // 32
+
+	// Adjust paddle size relative to new cell size
+	cfg.PaddleLength = cfg.CellSize * 2 // 128
+	cfg.PaddleWidth = cfg.CellSize / 3  // ~21
+
+	return cfg
 }

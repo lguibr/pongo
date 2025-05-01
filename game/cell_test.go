@@ -15,9 +15,10 @@ func TestNewBrickData(t *testing.T) {
 
 	testCases := []NewBrickDataTestCase{
 		{typeOfCell: utils.Cells.Brick, life: 0, expected: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}},
+		{typeOfCell: utils.Cells.Brick, life: -1, expected: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}, // Ensure negative life becomes 1
 		{typeOfCell: utils.Cells.Brick, life: 2, expected: &BrickData{Type: utils.Cells.Brick, Life: 2, Level: 2}},
 		{typeOfCell: utils.Cells.Empty, life: 0, expected: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}},
-		{typeOfCell: utils.Cells.Empty, life: 2, expected: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}},
+		{typeOfCell: utils.Cells.Empty, life: 2, expected: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}}, // Empty forces life to 0
 	}
 
 	for _, test := range testCases {
@@ -36,16 +37,20 @@ func TestBrickData_Compare(t *testing.T) {
 	}
 
 	testCases := []CompareBrickDataTestCase{
-		{&BrickData{Type: utils.Cells.Brick, Life: 1}, &BrickData{Type: utils.Cells.Brick, Life: 1}, true},
-		{&BrickData{Type: utils.Cells.Empty, Life: 0}, &BrickData{Type: utils.Cells.Empty, Life: 0}, true},
-		{&BrickData{Type: utils.Cells.Brick, Life: 2}, &BrickData{Type: utils.Cells.Brick, Life: 1}, false},
-		{&BrickData{Type: utils.Cells.Empty, Life: 0}, &BrickData{Type: utils.Cells.Brick, Life: 0}, false},
+		{&BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}, &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}, true},
+		{&BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}, &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}, true},
+		{&BrickData{Type: utils.Cells.Brick, Life: 2, Level: 2}, &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}, false}, // Diff Life/Level
+		{&BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}, &BrickData{Type: utils.Cells.Brick, Life: 0, Level: 0}, false}, // Diff Type
+		{&BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}, &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 2}, false}, // Diff Level
+		{nil, nil, true}, // Both nil
+		{&BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}, nil, false}, // One nil
+		{nil, &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}, false}, // One nil
 	}
 
 	for _, test := range testCases {
 		result := test.data.Compare(test.comparedData)
 		if result != test.expected {
-			t.Errorf("Expected CompareBrickData(%v, %v) to return %v, got %v", test.data, test.comparedData, test.expected, result)
+			t.Errorf("Expected CompareBrickData(%v, %v) to return %t, got %t", test.data, test.comparedData, test.expected, result)
 		}
 	}
 }
@@ -58,16 +63,19 @@ func TestCell_Compare(t *testing.T) {
 	}
 
 	testCases := []CompareCellsTestCase{
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, true},
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 1}}, false},
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 2}}, false},
-		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0}}, true},
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}, true},
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}}, false}, // Diff Type/Life/Level
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 2, Level: 2}}, false}, // Diff Life/Level
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Empty, Life: 0, Level: 0}}, true},
+		{Cell{X: 0, Y: 0, Data: nil}, Cell{X: 0, Y: 0, Data: nil}, true},                                                     // Both nil Data
+		{Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}, Cell{X: 0, Y: 0, Data: nil}, false}, // One nil Data
+		{Cell{X: 0, Y: 0, Data: nil}, Cell{X: 0, Y: 0, Data: &BrickData{Type: utils.Cells.Brick, Life: 1, Level: 1}}, false}, // One nil Data
 	}
 
 	for _, test := range testCases {
 		result := test.cell.Compare(test.comparedCell)
 		if result != test.expected {
-			t.Errorf("Expected CompareCells(%v, %v) to return %v, got %v", test.cell, test.comparedCell, test.expected, result)
+			t.Errorf("Expected CompareCells(%v, %v) to return %t, got %t", test.cell, test.comparedCell, test.expected, result)
 		}
 	}
 }

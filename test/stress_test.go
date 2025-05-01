@@ -39,8 +39,8 @@ func clientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin string, stopCh
 
 	// 1. Wait for initial state (optional but confirms assignment)
 	var initialState game.GameState
-	// Use the existing helper from e2e_test.go
-	err = readWsJSONMessage(t, ws, 15*time.Second, &initialState) // Generous timeout for initial state under load
+	// Use the existing helper from helpers.go (capitalized)
+	err = ReadWsJSONMessage(t, ws, 15*time.Second, &initialState) // Generous timeout for initial state under load
 	if err != nil {
 		t.Logf("Client failed to receive initial state (may be expected under load): %v", err)
 		// Continue anyway to send commands
