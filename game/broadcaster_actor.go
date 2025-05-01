@@ -91,9 +91,7 @@ func (a *BroadcasterActor) Receive(ctx bollywood.Context) {
 
 // broadcastState sends the GameState struct to all registered clients using JSON encoding.
 func (a *BroadcasterActor) broadcastState(ctx bollywood.Context, state GameState) {
-	if state.Canvas == nil {
-		// fmt.Printf("WARN: BroadcasterActor %s received GameState with nil Canvas to broadcast.\n", a.selfPID) // Reduce noise
-	}
+	// Removed check: if state.Canvas == nil { ... }
 
 	a.mu.RLock()
 	clientsToSend := make([]*websocket.Conn, 0, len(a.clients))

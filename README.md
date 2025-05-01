@@ -78,11 +78,11 @@ The primary goal is to achieve the highest score by hitting opponent walls, dest
 
 ### 2.4 Balls
 
-1.  **Permanent Ball:** Each player receives one **permanent ball** upon joining. This ball is associated with the player but is never removed from the game if it hits an empty wall (it reflects instead). Its ownership might change if another player hits it.
+1.  **Permanent Ball:** Each player receives one **permanent ball** upon joining. This ball is associated with the player but is never removed from the game if it hits an empty wall (it reflects instead). Its ownership might change if another player hits it or if it hits its owner's wall.
 2.  **Temporary Balls:** Additional balls can be spawned through power-ups. These balls *are* removed if they hit a wall belonging to an empty player slot. They also expire after a randomized duration.
 3.  **Initial Spawn:** Permanent balls spawn near their owner's paddle with a randomized initial velocity vector.
 4.  **Movement:** Balls move according to their velocity vector (`Vx`, `Vy`), updated each game tick.
-5.  **Ownerless Ball:** If the last player in a room disconnects, one of their balls (preferably permanent) will be kept in play, marked as ownerless (`OwnerIndex = -1`) and permanent, ensuring the game always has at least one ball if players remain.
+5.  **Ownerless Ball:** If the last player in a room disconnects, one of their balls (preferably permanent) will be kept in play, marked as ownerless (`OwnerIndex = -1`) and permanent, ensuring the game always has at least one ball if players remain. A ball also becomes ownerless if it hits its owner's wall.
 
 ### 2.5 Collisions & Scoring
 
@@ -90,18 +90,21 @@ The primary goal is to achieve the highest score by hitting opponent walls, dest
     *   **Reflection:** The ball's velocity component perpendicular to the wall is reversed (command sent to `BallActor`).
     *   **Active Player Wall:** If the wall belongs to a connected player (the "conceder"):
         *   The conceder loses 1 point.
-        *   The player who last hit the ball (the "scorer", if different from the conceder and still connected) gains 1 point.
+        *   The player who last hit the ball (the "scorer", if valid and connected) gains 1 point, *unless* the scorer is the same as the conceder.
+        *   **Hitting Own Wall:** If the ball's owner (`OwnerIndex`) is the same as the conceder index, the player loses 1 point, and the ball becomes ownerless (`OwnerIndex` is set to -1).
         *   Ownerless balls hitting an active player's wall cause the wall owner to lose 1 point.
     *   **Empty Player Slot Wall:**
         *   If the ball is **permanent**, it reflects as normal (no scoring).
         *   If the ball is **temporary**, it is removed from the game (`GameActor` stops the `BallActor`).
     *   **Phasing:** After any wall collision, the ball enters a brief "phasing" state (command sent to `BallActor`).
+    *   **Collision Flag:** The ball's `Collided` flag is set to `true` for one game tick.
 
 2.  **Paddle Collision:**
     *   **Dynamic Reflection:** The ball reflects off the paddle. The reflection angle depends on *where* the ball hits the paddle surface.
     *   **Speed Influence:** The paddle's current velocity component *along* the ball's reflection path influences the ball's resulting speed.
     *   **Ownership:** The player whose paddle was hit becomes the new owner of the ball (state updated in `GameActor`'s cache).
     *   **Phasing:** The ball enters the phasing state (command sent to `BallActor`).
+    *   **Collision Flag:** Both the ball's and the paddle's `Collided` flags are set to `true` for one game tick.
 
 3.  **Brick Collision:**
     *   **Damage:** The brick's `Life` decreases by 1 (state updated in `GameActor`).
@@ -111,6 +114,7 @@ The primary goal is to achieve the highest score by hitting opponent walls, dest
         *   The ball's current owner (if valid and connected) gains points equal to the brick's initial `Level`.
         *   There's a chance (`PowerUpChance`) to trigger a random power-up.
     *   **Phasing:** The ball enters the phasing state (command sent to `BallActor`). Bricks cannot be hit by phasing balls.
+    *   **Collision Flag:** The ball's `Collided` flag is set to `true` for one game tick.
 
 ### 2.6 Bricks & Power-ups
 
@@ -166,17 +170,17 @@ PonGo uses an Actor Model architecture facilitated by the [Bollywood](https://gi
 -   Each instance represents a single, independent game room (max 4 players).
 -   **Responsibilities:**
     -   Manages the core state of a specific game: Canvas, Grid, Players, Scores.
-    -   Maintains local caches of `Paddle` and `Ball` states.
+    -   Maintains local caches of `Paddle` and `Ball` states, including temporary `Collided` flags.
     -   Handles player connections/disconnections (`AssignPlayerToRoom`, `PlayerDisconnect`) *initiated by ConnectionHandlerActor*.
     -   Spawns and supervises child actors (`PaddleActor`, `BallActor`) and a `BroadcasterActor`.
     -   Drives child actor updates via `UpdatePositionCommand`.
     -   Receives `PositionUpdateMessage` from child actors and updates its local state cache.
-    -   Performs all collision detection and physics calculations using its cached state.
+    -   Performs all collision detection and physics calculations using its cached state. Sets internal `Collided` flags upon detection.
     -   Sends commands (`SetVelocity`, `ReflectVelocity`, `SetPhasing`, etc.) to child actors based on collision results.
-    -   Updates scores and grid state.
+    -   Updates scores and grid state. Implements the "hit own wall" logic (score penalty, lose ownership).
     -   Handles power-up logic (spawning new balls, sending commands to existing balls).
     -   Implements the "persistent ball" logic on player disconnect.
-    -   Periodically creates a `GameState` snapshot and sends it (`BroadcastStateCommand`) to its `BroadcasterActor`.
+    -   Periodically creates a `GameState` snapshot (including the current `Collided` flags) and sends it (`BroadcastStateCommand`) to its `BroadcasterActor`. Resets internal `Collided` flags after creating the snapshot.
     -   Notifies the `RoomManagerActor` when it becomes empty (`GameRoomEmpty`).
 
 ### 3.5 Broadcasting (`BroadcasterActor`)
@@ -185,14 +189,14 @@ PonGo uses an Actor Model architecture facilitated by the [Bollywood](https://gi
 -   **Responsibilities:**
     -   Maintains the list of active WebSocket connections for its specific room (`AddClient`, `RemoveClient`).
     -   Receives `GameState` snapshots (`BroadcastStateCommand`) from its parent `GameActor`.
-    -   Marshals the state to JSON.
+    -   Marshals the state (including `Collided` flags) to JSON.
     -   Sends the JSON payload to all connected clients in its room.
     -   Handles WebSocket write errors and notifies the `GameActor` of disconnections detected during broadcast.
 
 ### 3.6 Entity Actors (`PaddleActor`, `BallActor`)
 
--   **`PaddleActor`:** Manages the state (position, velocity, direction) of a single paddle. Updates state on `UpdatePositionCommand`. Sends `PositionUpdateMessage` to `GameActor` after update. Handles `PaddleDirectionMessage` from `GameActor`. Responds to `GetPositionRequest` (via `ctx.Reply()`) if needed.
--   **`BallActor`:** Manages the state (position, velocity, phasing) of a single ball. Updates state on `UpdatePositionCommand`. Sends `PositionUpdateMessage` to `GameActor` after update. Handles commands (`SetVelocity`, `ReflectVelocity`, `SetPhasing`, etc.) from `GameActor`. Responds to `GetPositionRequest` (via `ctx.Reply()`) if needed.
+-   **`PaddleActor`:** Manages the state (position, velocity, direction) of a single paddle. Updates state on `UpdatePositionCommand`. Sends `PositionUpdateMessage` to `GameActor` after update. Handles `PaddleDirectionMessage` from `GameActor`. Responds to `GetPositionRequest` (via `ctx.Reply()`) if needed. Does *not* directly manage the `Collided` flag.
+-   **`BallActor`:** Manages the state (position, velocity, phasing) of a single ball. Updates state on `UpdatePositionCommand`. Sends `PositionUpdateMessage` to `GameActor` after update. Handles commands (`SetVelocity`, `ReflectVelocity`, `SetPhasing`, etc.) from `GameActor`. Responds to `GetPositionRequest` (via `ctx.Reply()`) if needed. Does *not* directly manage the `Collided` flag.
 
 ### 3.7 Communication Flow (Diagram)
 
@@ -234,10 +238,10 @@ sequenceDiagram
         %% GameActor updates its internal cache upon receiving PositionUpdateMessage
 
         GameActor->>GameActor: detectCollisions()
-        Note over GameActor: Uses internal state cache for detection
+        Note over GameActor: Uses internal state cache for detection. Sets internal Collided flags. Updates OwnerIndex on own wall hit.
         opt Collision Detected
             GameActor->>BallActor: ReflectVelocityCommand / SetVelocityCommand / etc.
-            GameActor->>GameActor: Update Score / Grid
+            GameActor->>GameActor: Update Score / Grid / OwnerIndex
             opt PowerUp Triggered
                  GameActor->>GameActor: SpawnBallCommand / IncreaseMassCommand / etc.
             end
@@ -247,6 +251,7 @@ sequenceDiagram
     loop Broadcast Loop (GameActor Broadcast Tick)
         GameActor->>GameActor: BroadcastTick (Internal Timer)
         GameActor->>GameActor: createGameStateSnapshot()
+        Note over GameActor: Snapshot includes Collided flags. Internal flags are reset after snapshot.
         GameActor->>+BroadcasterActor: BroadcastStateCommand {State}
         BroadcasterActor->>BroadcasterActor: Marshal State to JSON
         BroadcasterActor->>Client: Send GameState JSON (to all clients in room)
@@ -405,4 +410,3 @@ A pre-built image is automatically pushed to Docker Hub from the `main` branch. 
 ## 9. Contributing
 
 Contributions are welcome! Please follow standard Go practices, ensure tests pass, and update documentation as needed. Open an issue to discuss major changes.
-

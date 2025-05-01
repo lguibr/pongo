@@ -25,6 +25,8 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 	canvasSize := a.cfg.CanvasSize
 	ballsToRemove := []int{}
 	powerUpsToTrigger := []Ball{} // Store copies of ball state for power-ups
+	positionAdjustmentBuffer := 1 // Pixels to push ball away from wall after collision
+	minVelocityAwayFromWall := 2  // Ensure minimum speed away from wall after reflection
 
 	for ballID, ball := range activeBalls {
 		// Ensure ball and its actor PID exist before proceeding
@@ -32,11 +34,9 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 		if ball == nil || !pidExists || ballActorPID == nil {
 			// Clean up inconsistent state if necessary
 			if ball == nil && pidExists {
-				// fmt.Printf("WARN: GameActor %s: Ball state nil for existing actor PID %s (BallID %d). Removing actor.\n", a.selfPID, ballActorPID, ballID) // Reduce noise
 				delete(a.ballActors, ballID)
 				currentEngine.Stop(ballActorPID)
 			} else if ball != nil && !pidExists {
-				// fmt.Printf("WARN: GameActor %s: Ball state exists for non-existent actor PID (BallID %d). Removing state.\n", a.selfPID, ballID) // Reduce noise
 				delete(a.balls, ballID)
 			}
 			continue
@@ -59,34 +59,58 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 		}
 
 		if hitWall != -1 {
-			axisToReflect := ""
-			// Adjust position *before* reflecting velocity
+			newVx, newVy := ball.Vx, ball.Vy // Start with current velocity
+
+			// Adjust position *before* reflecting velocity, adding a buffer
 			switch hitWall {
-			case 0:
-				ball.X = canvasSize - ball.Radius
+			case 0: // Right wall
+				ball.X = canvasSize - ball.Radius - positionAdjustmentBuffer
 				if !reflectedX {
-					axisToReflect = "X"
+					newVx = -utils.Abs(ball.Vx) // Ensure X velocity is negative (moving left)
+					if utils.Abs(newVx) < minVelocityAwayFromWall {
+						newVx = -minVelocityAwayFromWall
+					}
 					reflectedX = true
 				}
-			case 1:
-				ball.Y = ball.Radius
+			case 1: // Top wall
+				ball.Y = ball.Radius + positionAdjustmentBuffer
 				if !reflectedY {
-					axisToReflect = "Y"
+					newVy = utils.Abs(ball.Vy) // Ensure Y velocity is positive (moving down)
+					if utils.Abs(newVy) < minVelocityAwayFromWall {
+						newVy = minVelocityAwayFromWall
+					}
 					reflectedY = true
 				}
-			case 2:
-				ball.X = ball.Radius
+			case 2: // Left wall
+				ball.X = ball.Radius + positionAdjustmentBuffer
 				if !reflectedX {
-					axisToReflect = "X"
+					newVx = utils.Abs(ball.Vx) // Ensure X velocity is positive (moving right)
+					if utils.Abs(newVx) < minVelocityAwayFromWall {
+						newVx = minVelocityAwayFromWall
+					}
 					reflectedX = true
 				}
-			case 3:
-				ball.Y = canvasSize - ball.Radius
+			case 3: // Bottom wall
+				ball.Y = canvasSize - ball.Radius - positionAdjustmentBuffer
 				if !reflectedY {
-					axisToReflect = "Y"
+					newVy = -utils.Abs(ball.Vy) // Ensure Y velocity is negative (moving up)
+					if utils.Abs(newVy) < minVelocityAwayFromWall {
+						newVy = -minVelocityAwayFromWall
+					}
 					reflectedY = true
 				}
 			}
+
+			// Send velocity update command if velocity changed
+			if newVx != ball.Vx || newVy != ball.Vy {
+				currentEngine.Send(ballActorPID, SetVelocityCommand{Vx: newVx, Vy: newVy}, nil)
+				// Update local cache immediately
+				ball.Vx = newVx
+				ball.Vy = newVy
+			}
+
+			ball.Collided = true // Set collision flag for the ball
+			shouldPhase = true
 
 			concederIndex := hitWall
 			// Check if the wall belongs to an active player
@@ -94,10 +118,7 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 
 			if isPlayerWall {
 				pInfo := a.players[concederIndex]
-				if axisToReflect != "" {
-					currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: axisToReflect}, nil)
-				}
-				shouldPhase = true
+				// Scoring logic (no change needed here based on velocity fix)
 				scorerIndex := ball.OwnerIndex
 				isScorerValid := scorerIndex >= 0 && scorerIndex < len(a.players) && a.players[scorerIndex] != nil && a.players[scorerIndex].IsConnected
 
@@ -105,21 +126,18 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 					scInfo := a.players[scorerIndex]
 					scInfo.Score.Add(1)
 					pInfo.Score.Add(-1)
-				} else if scorerIndex == -1 { // Ownerless ball
+				} else if scorerIndex == -1 {
 					pInfo.Score.Add(-1)
-				} else if scorerIndex == concederIndex { // Hit own wall
+				} else if scorerIndex == concederIndex {
 					pInfo.Score.Add(-1)
+					ball.OwnerIndex = -1
 				}
 			} else { // Empty slot wall hit
-				if ball.IsPermanent {
-					if axisToReflect != "" {
-						currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: axisToReflect}, nil)
-					}
-					shouldPhase = true
-				} else {
+				if !ball.IsPermanent {
 					ballsToRemove = append(ballsToRemove, ballID)
 					continue // Skip other collision checks for this ball
 				}
+				// Permanent ball just reflects (velocity already handled)
 			}
 		} // End wall collision check
 
@@ -207,6 +225,8 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 				ball.Vx = finalVxInt
 				ball.Vy = finalVyInt
 				ball.OwnerIndex = paddleIndex // Update ball ownership in cache
+				ball.Collided = true          // Set collision flag for the ball
+				paddle.Collided = true        // Set collision flag for the paddle
 				shouldPhase = true
 				goto nextBall // Skip brick collision check if paddle hit occurred
 			}
@@ -258,6 +278,8 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 							ball.Vy = -ball.Vy
 						}
 					}
+
+					ball.Collided = true // Set collision flag for the ball
 
 					if cell.Data.Life <= 0 {
 						cell.Data.Type = utils.Cells.Empty

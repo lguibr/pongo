@@ -97,8 +97,7 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		go a.readLoop(a.engine, a.selfPID) // Start readLoop *after* assignment is processed
 
 	case game.InternalReadLoopMsg:
-		// Add log here to see if this case is reached
-		fmt.Printf("ConnectionHandlerActor %s: Received InternalReadLoopMsg\n", a.connAddr)
+		// Removed log: fmt.Printf("ConnectionHandlerActor %s: Received InternalReadLoopMsg\n", a.connAddr)
 		if a.isAssigned && a.gameActorPID != nil { // Check if assigned before forwarding
 			// Use engine.Send
 			a.engine.Send(a.gameActorPID, game.ForwardedPaddleDirection{

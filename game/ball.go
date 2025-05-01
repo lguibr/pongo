@@ -27,10 +27,11 @@ type Ball struct {
 	// Ay int `json:"ay"` // Acceleration - removed
 	Radius      int  `json:"radius"`
 	Id          int  `json:"id"`         // Unique ID (e.g., timestamp + index)
-	OwnerIndex  int  `json:"ownerIndex"` // Index of the player who last hit it
+	OwnerIndex  int  `json:"ownerIndex"` // Index of the player who last hit it (-1 for ownerless)
 	Phasing     bool `json:"phasing"`    // Is the ball currently phasing? (Managed by BallActor)
 	Mass        int  `json:"mass"`
 	IsPermanent bool `json:"isPermanent"` // True if this is the player's initial, non-expiring ball
+	Collided    bool `json:"collided"`    // True for one tick after any collision (wall, paddle, brick)
 	canvasSize  int  // Keep for boundary checks within Move or getters if needed
 }
 
@@ -121,6 +122,7 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
 		Mass:        mass,
 		Phasing:     false,
 		IsPermanent: isPermanent,
+		Collided:    false, // Initialize Collided flag
 	}
 }
 

@@ -32,6 +32,7 @@ type Paddle struct {
 	Vx         int    `json:"vx"`       // Current horizontal velocity (for physics)
 	Vy         int    `json:"vy"`       // Current vertical velocity (for physics)
 	IsMoving   bool   `json:"isMoving"` // Flag indicating if the paddle has active movement input
+	Collided   bool   `json:"collided"` // True for one tick after hitting a ball
 	canvasSize int    // Store canvas size for boundary checks
 }
 
@@ -50,6 +51,7 @@ func NewPaddle(cfg utils.Config, index int) *Paddle {
 		Vx:         0,
 		Vy:         0,
 		IsMoving:   false, // Start not moving
+		Collided:   false, // Initialize Collided flag
 	}
 
 	// Set dimensions and initial position based on index

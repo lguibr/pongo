@@ -100,7 +100,8 @@ type RemoveClient struct {
 	Conn *websocket.Conn
 }
 
-// BroadcastStateCommand carries the state snapshot to be broadcasted.
+// BroadcastStateCommand carries the dynamic state snapshot to be broadcasted.
+// The grid is sent separately via InitialGridStateMessage.
 type BroadcastStateCommand struct {
 	State GameState // Changed from StateJSON []byte
 }
@@ -113,12 +114,24 @@ type GameOverMessage struct {
 	RoomPID     string   `json:"roomPid"`     // PID of the game room that ended
 }
 
-// --- Specific Message TO Client ---
+// --- Specific Messages TO Client ---
 
 // PlayerAssignmentMessage informs a client of their assigned index.
 // Sent directly from GameActor to the specific client's WebSocket upon connection.
 type PlayerAssignmentMessage struct {
 	PlayerIndex int `json:"playerIndex"`
+}
+
+// InitialGridStateMessage sends the static grid layout and canvas dimensions.
+// Sent directly from GameActor to the specific client's WebSocket upon connection,
+// after the PlayerAssignmentMessage.
+type InitialGridStateMessage struct {
+	CanvasWidth  int    `json:"canvasWidth"`
+	CanvasHeight int    `json:"canvasHeight"`
+	GridSize     int    `json:"gridSize"`
+	CellSize     int    `json:"cellSize"`
+	Grid         Grid   `json:"grid"`        // Contains the initial brick layout
+	MessageType  string `json:"messageType"` // To help client distinguish messages
 }
 
 // --- Internal Actor Messages ---
