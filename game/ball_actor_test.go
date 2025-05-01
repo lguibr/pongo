@@ -35,9 +35,9 @@ func TestBallActor_SpawnsAndMoves(t *testing.T) {
 
 	mockGameActor := &MockGameActor{} // Not strictly needed, but keeps setup consistent
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
-	time.Sleep(50 * time.Millisecond)
-
 	cfg := utils.DefaultConfig()
+	time.Sleep(cfg.GameTickPeriod * 4)
+
 	initialBall := NewBall(cfg, 100, 100, 0, 123, false)
 	initialX, initialY := initialBall.X, initialBall.Y
 
@@ -45,7 +45,7 @@ func TestBallActor_SpawnsAndMoves(t *testing.T) {
 	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
 	assert.NotNil(t, ballPID)
 	// Add a slightly longer delay after spawn before first Ask
-	time.Sleep(cfg.GameTickPeriod * 5)
+	time.Sleep(cfg.GameTickPeriod * 4)
 
 	// Ask for initial position
 	pos1, err1 := askBallPosition(t, engine, ballPID)
@@ -81,9 +81,9 @@ func TestBallActor_ReceivesCommands(t *testing.T) {
 
 	mockGameActor := &MockGameActor{}
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
-	time.Sleep(50 * time.Millisecond)
-
 	cfg := utils.DefaultConfig()
+	time.Sleep(cfg.GameTickPeriod * 2)
+
 	initialBall := NewBall(cfg, 100, 100, 0, 456, false)
 	initialVx, initialVy := initialBall.Vx, initialBall.Vy
 	// Corrected: Remove initialMass from declaration

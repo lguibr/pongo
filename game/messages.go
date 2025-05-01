@@ -89,6 +89,14 @@ type BroadcastStateCommand struct {
 	State GameState // Changed from StateJSON []byte
 }
 
+// --- Specific Message TO Client ---
+
+// PlayerAssignmentMessage informs a client of their assigned index.
+// Sent directly from GameActor to the specific client's WebSocket upon connection.
+type PlayerAssignmentMessage struct {
+	PlayerIndex int `json:"playerIndex"`
+}
+
 // --- Internal Actor Messages ---
 
 type GameTick struct{}      // Sent to GameActor by its physics ticker

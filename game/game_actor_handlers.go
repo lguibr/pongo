@@ -2,9 +2,9 @@
 package game
 
 import (
-	// Keep json import for potential future use or debugging
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/lguibr/bollywood"
@@ -139,16 +139,39 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	// Spawn initial Ball Actor
 	a.spawnBall(ctx, playerIndex, 0, 0, 0, true) // Spawn permanent ball
 
-	// Send initial state immediately
+	// Send the PlayerAssignmentMessage directly to the newly connected client
+	assignmentMsg := PlayerAssignmentMessage{PlayerIndex: playerIndex}
+	err := websocket.JSON.Send(ws, assignmentMsg)
+	if err != nil {
+		// Log the error, but don't necessarily stop everything. The connection might already be closing.
+		// The PlayerDisconnect message will handle the cleanup if the connection is truly dead.
+		fmt.Printf("WARN: GameActor %s: Failed to send PlayerAssignmentMessage to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, err)
+		// If the error indicates a closed connection, trigger disconnect handling immediately
+		errStr := err.Error()
+		isClosedErr := strings.Contains(errStr, "use of closed network connection") ||
+			strings.Contains(errStr, "broken pipe") ||
+			strings.Contains(errStr, "connection reset by peer") ||
+			strings.Contains(errStr, "EOF") ||
+			strings.Contains(errStr, "write: connection timed out")
+		if isClosedErr {
+			// Trigger disconnect logic within the actor's context
+			a.handlePlayerDisconnect(ctx, ws)
+			return // Stop further processing for this connection
+		}
+	} else {
+		fmt.Printf("GameActor %s: Sent PlayerAssignmentMessage (Index: %d) to %s\n", a.selfPID, playerIndex, remoteAddr)
+	}
+
+	// Send initial state broadcast (to all players in the room via broadcaster)
 	initialSnapshot := a.createGameStateSnapshot()
 	currentBroadcasterPID := a.broadcasterPID // Re-fetch broadcaster PID
 
 	if currentBroadcasterPID != nil {
-		fmt.Printf("GameActor %s: Sending initial state broadcast for player %d.\n", a.selfPID, playerIndex)
+		fmt.Printf("GameActor %s: Sending initial state broadcast after assigning player %d.\n", a.selfPID, playerIndex)
 		// Send the GameState struct directly
 		engine.Send(currentBroadcasterPID, BroadcastStateCommand{State: initialSnapshot}, selfPID)
 	} else {
-		fmt.Printf("WARN: GameActor %s: Broadcaster PID nil, cannot send initial state for player %d.\n", a.selfPID, playerIndex)
+		fmt.Printf("WARN: GameActor %s: Broadcaster PID nil, cannot send initial state broadcast for player %d.\n", a.selfPID, playerIndex)
 	}
 
 	fmt.Printf("GameActor %s: Player %d setup complete.\n", a.selfPID, playerIndex)
@@ -167,7 +190,11 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 
 	if !playerFound || playerIndex < 0 || playerIndex >= utils.MaxPlayers || a.players[playerIndex] == nil || a.players[playerIndex].Ws != conn {
 		if playerFound {
+			// Clean up stale mapping if found but player info doesn't match
+			fmt.Printf("GameActor %s: Disconnect for %s - Stale mapping found for index %d, removing.\n", a.selfPID, connAddr, playerIndex)
 			delete(a.connToIndex, conn)
+		} else {
+			fmt.Printf("GameActor %s: Disconnect for %s - No player found for this connection. Ignoring.\n", a.selfPID, connAddr)
 		}
 		return
 	}
@@ -175,6 +202,8 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	pInfo := a.players[playerIndex]
 
 	if !pInfo.IsConnected {
+		// Already handled disconnect for this player/connection
+		fmt.Printf("GameActor %s: Received duplicate disconnect for player %d (%s). Ignoring.\n", a.selfPID, playerIndex, connAddr)
 		return
 	}
 
@@ -313,14 +342,16 @@ func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websock
 
 	if pid != nil {
 		a.engine.Send(pid, PaddleDirectionMessage{Direction: directionData}, ctx.Self())
+	} else {
+		// Log if input received for an unknown/disconnected player
+		connAddr := "unknown"
+		if wsConn != nil {
+			connAddr = wsConn.RemoteAddr().String()
+		}
+		fmt.Printf("WARN: GameActor %s: Received paddle input from invalid/unknown connection %s (Index: %d, Found: %t, Valid: %t). Dropping.\n",
+			a.selfPID, connAddr, playerIndex, playerFound, isValidPlayer)
 	}
 }
-
-// handlePaddlePositionUpdate - No longer needed as GameActor queries state via Ask.
-// func (a *GameActor) handlePaddlePositionUpdate(ctx bollywood.Context, incomingPaddleState *Paddle) { ... }
-
-// handleBallPositionUpdate - No longer needed as GameActor queries state via Ask.
-// func (a *GameActor) handleBallPositionUpdate(ctx bollywood.Context, ballState *Ball) { ... }
 
 // spawnBall - Assumes called within the actor's message loop (no lock needed).
 func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expireIn time.Duration, isPermanent bool) {

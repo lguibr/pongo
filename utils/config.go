@@ -46,13 +46,13 @@ type Config struct {
 
 // DefaultConfig returns a Config struct with default values.
 func DefaultConfig() Config {
-	canvasSize := 576
-	gridSize := 12
+	canvasSize := 1024
+	gridSize := 16
 	cellSize := canvasSize / gridSize
 
 	return Config{
 		// Timing
-		GameTickPeriod: 10 * time.Millisecond,
+		GameTickPeriod: 24 * time.Millisecond,
 
 		// Score & Player
 		InitialScore: 0,
@@ -63,8 +63,8 @@ func DefaultConfig() Config {
 		CellSize:   cellSize,
 
 		// Ball Physics & Properties
-		MinBallVelocity:          canvasSize / 200, // ~2.88
-		MaxBallVelocity:          canvasSize / 150, // ~3.84
+		MinBallVelocity:          canvasSize / 180, // ~2.88
+		MaxBallVelocity:          canvasSize / 90,  // ~3.84
 		BallMass:                 1,
 		BallRadius:               cellSize / 6, // 12
 		BallPhasingTime:          100 * time.Millisecond,
@@ -72,9 +72,9 @@ func DefaultConfig() Config {
 		BallHitPaddleAngleFactor: 2.8, // Max ~64 degrees deflection (Pi / 2.8)
 
 		// Paddle Properties
-		PaddleLength:   cellSize * 3,  // 144
-		PaddleWidth:    cellSize / 2,  // 24
-		PaddleVelocity: cellSize / 10, // 8 (adjust as needed for responsiveness)
+		PaddleLength:   cellSize * 3, // 144
+		PaddleWidth:    cellSize / 2, // 24
+		PaddleVelocity: cellSize / 4, // 8 (adjust as needed for responsiveness)
 
 		// Grid Generation
 		GridFillVectors:    gridSize * 2,
@@ -83,13 +83,10 @@ func DefaultConfig() Config {
 		GridFillSteps:      gridSize / 2,
 
 		// Power-ups
-		PowerUpChance:           0.25,            // 25% chance
-		PowerUpSpawnBallExpiry:  7 * time.Second, // Average expiry, will be randomized +/- 2s
+		PowerUpChance:           0.6,             // 50% chance
+		PowerUpSpawnBallExpiry:  9 * time.Second, // Average expiry, will be randomized +/- 2s
 		PowerUpIncreaseMassAdd:  1,
 		PowerUpIncreaseMassSize: 2, // Radius increase per mass point
 		PowerUpIncreaseVelRatio: 1.1,
 	}
 }
-
-// TODO: Add function to load config from file (e.g., JSON) if needed later.
-// func LoadConfigFromFile(path string) (Config, error) { ... }
