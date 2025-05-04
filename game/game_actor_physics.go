@@ -1,3 +1,4 @@
+// File: game/game_actor_physics.go
 package game
 
 import (
@@ -11,6 +12,8 @@ import (
 
 // detectCollisions checks for and handles collisions using the GameActor's cached state.
 // Assumes called within the actor's message loop (no lock needed for main state).
+// Operates directly on a.paddles and a.balls cache.
+// Sends commands to child actors (BallActor, PaddleActor) for state changes (velocity, phasing).
 func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 	currentEngine := a.engine
 	if currentEngine == nil {
@@ -62,6 +65,7 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 			newVx, newVy := ball.Vx, ball.Vy // Start with current velocity
 
 			// Adjust position *before* reflecting velocity, adding a buffer
+			// Modify ball state directly in the cache
 			switch hitWall {
 			case 0: // Right wall
 				ball.X = canvasSize - ball.Radius - positionAdjustmentBuffer
@@ -104,12 +108,12 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 			// Send velocity update command if velocity changed
 			if newVx != ball.Vx || newVy != ball.Vy {
 				currentEngine.Send(ballActorPID, SetVelocityCommand{Vx: newVx, Vy: newVy}, nil)
-				// Update local cache immediately
+				// Update local cache immediately (velocity part)
 				ball.Vx = newVx
 				ball.Vy = newVy
 			}
 
-			ball.Collided = true // Set collision flag for the ball
+			ball.Collided = true // Set collision flag for the ball in the cache
 			shouldPhase = true
 
 			concederIndex := hitWall
@@ -118,7 +122,7 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 
 			if isPlayerWall {
 				pInfo := a.players[concederIndex]
-				// Scoring logic (no change needed here based on velocity fix)
+				// Scoring logic
 				scorerIndex := ball.OwnerIndex
 				isScorerValid := scorerIndex >= 0 && scorerIndex < len(a.players) && a.players[scorerIndex] != nil && a.players[scorerIndex].IsConnected
 
@@ -126,11 +130,11 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 					scInfo := a.players[scorerIndex]
 					scInfo.Score.Add(1)
 					pInfo.Score.Add(-1)
-				} else if scorerIndex == -1 {
+				} else if scorerIndex == -1 { // Ownerless ball
 					pInfo.Score.Add(-1)
-				} else if scorerIndex == concederIndex {
+				} else if scorerIndex == concederIndex { // Hit own wall
 					pInfo.Score.Add(-1)
-					ball.OwnerIndex = -1
+					ball.OwnerIndex = -1 // Ball becomes ownerless (update cache)
 				}
 			} else { // Empty slot wall hit
 				if !ball.IsPermanent {
@@ -221,12 +225,12 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 
 				// Send command to BallActor to update velocity
 				currentEngine.Send(ballActorPID, SetVelocityCommand{Vx: finalVxInt, Vy: finalVyInt}, nil)
-				// Update local cache immediately
+				// Update local cache immediately (velocity, owner)
 				ball.Vx = finalVxInt
 				ball.Vy = finalVyInt
 				ball.OwnerIndex = paddleIndex // Update ball ownership in cache
-				ball.Collided = true          // Set collision flag for the ball
-				paddle.Collided = true        // Set collision flag for the paddle
+				ball.Collided = true          // Set collision flag for the ball in cache
+				paddle.Collided = true        // Set collision flag for the paddle in cache
 				shouldPhase = true
 				goto nextBall // Skip brick collision check if paddle hit occurred
 			}
@@ -271,7 +275,7 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 					if axisToReflect != "" {
 						// Send command to BallActor
 						currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: axisToReflect}, nil)
-						// Update local cache immediately
+						// Update local cache immediately (velocity)
 						if axisToReflect == "X" {
 							ball.Vx = -ball.Vx
 						} else {
@@ -279,7 +283,7 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 						}
 					}
 
-					ball.Collided = true // Set collision flag for the ball
+					ball.Collided = true // Set collision flag for the ball in cache
 
 					if cell.Data.Life <= 0 {
 						cell.Data.Type = utils.Cells.Empty
@@ -306,7 +310,7 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 		if shouldPhase {
 			// Send command to BallActor
 			currentEngine.Send(ballActorPID, SetPhasingCommand{}, nil)
-			// Update local cache immediately
+			// Update local cache immediately (phasing)
 			ball.Phasing = true
 		}
 	} // End ball loop

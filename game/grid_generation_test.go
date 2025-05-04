@@ -29,82 +29,40 @@ func TestGrid_NewGrid(t *testing.T) {
 	}
 }
 
-func TestCreateQuarterGridSeed(t *testing.T) {
-	type TestCreateQuarterGridSeedTestCase struct {
-		name                    string
-		gridSize                int
-		numberOfVectors         int
-		maxVectorSize           int
-		expectedMaxBrickLifeSum int // Max possible sum of life points
-	}
-
-	testCases := []TestCreateQuarterGridSeedTestCase{
-		{"Size10_Vec5_Len5", 10, 5, 5, 5 * 5}, // Max life sum is roughly vectors * size
-		{"Size20_Vec10_Len8", 20, 10, 8, 10 * 8},
-		{"Size6_Vec2_Len2", 6, 2, 2, 2 * 2},
-	}
-
-	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
-			totalLifeSum := 0
-			runs := 10 // Run multiple times due to randomness
-			for i := 0; i < runs; i++ {
-				grid := NewGrid(test.gridSize) // Create fresh grid each run
-				grid.CreateQuarterGridSeed(test.numberOfVectors, test.maxVectorSize)
-
-				currentLifeSum := 0
-				for r := range grid {
-					for c := range grid[r] {
-						if grid[r][c].Data != nil && grid[r][c].Data.Type == utils.Cells.Brick {
-							currentLifeSum += grid[r][c].Data.Life
-						}
-					}
-				}
-				totalLifeSum += currentLifeSum
-			}
-			averageLifeSum := float64(totalLifeSum) / float64(runs)
-
-			// Check average is plausible, not strictly bounded due to overlaps
-			// Allow some buffer over the simple max estimate
-			plausibleMax := float64(test.expectedMaxBrickLifeSum) * 1.5
-			if averageLifeSum > plausibleMax {
-				t.Errorf("Average brick life sum (%.2f) seems too high, expected roughly <= %.2f", averageLifeSum, plausibleMax)
-			}
-			if averageLifeSum <= 0 && test.numberOfVectors > 0 && test.maxVectorSize > 0 { // Only expect bricks if generation params > 0
-				t.Errorf("Expected some bricks to be generated, but average life sum was %.2f", averageLifeSum)
-			}
-		})
-	}
-}
+// TestCreateQuarterGridSeed is removed as the function is removed.
 
 func TestGrid_RandomWalker(t *testing.T) {
 	type RandomWalkerTestCase struct {
 		name        string
 		gridSize    int
+		startX      int // Use specific start points for testing walker logic
+		startY      int
 		steps       int
 		expectPanic bool
 	}
 
 	testCases := []RandomWalkerTestCase{
-		{"Size10_Steps10", 10, 10, false},
-		{"Size10_Steps100", 10, 100, false},
-		{"Size6_Steps50", 6, 50, false},
-		{"Size0_Steps10", 0, 10, false}, // Should not panic, RandomWalker handles size 0
-		{"Size1_Steps10", 1, 10, false}, // Should not panic, RandomWalker handles size 1
-		{"Size2_Steps10", 2, 10, false}, // Start at [1][1] is valid
+		{"Size10_Steps10_Center", 10, 5, 5, 10, false},
+		{"Size10_Steps100_Center", 10, 5, 5, 100, false},
+		{"Size6_Steps50_Center", 6, 3, 3, 50, false},
+		{"Size0_Steps10", 0, 0, 0, 10, true}, // Corrected: NewGrid(0) panics
+		{"Size1_Steps10", 1, 0, 0, 10, false},
+		{"Size2_Steps10_Start00", 2, 0, 0, 10, false},
+		{"Size10_StartOutOfBounds", 10, 11, 5, 10, false}, // Should not panic, applyRandomWalk handles invalid start
 	}
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			didPanic, panicMsg := utils.AssertPanics(t, func() {
-				grid := NewGrid(test.gridSize)
-				grid.RandomWalker(test.steps) // Call walker regardless of size (it should handle 0/1)
+				grid := NewGrid(test.gridSize) // This line will panic for gridSize 0
+				// Use applyRandomWalk directly for testing
+				grid.applyRandomWalk(test.startX, test.startY, test.steps)
 
-				// If not panicking, check if start cell was modified (only if size >= 2)
-				if !test.expectPanic && test.gridSize >= 2 {
-					startR, startC := test.gridSize/2, test.gridSize/2
-					if grid[startR][startC].Data == nil || grid[startR][startC].Data.Type != utils.Cells.Brick {
-						t.Errorf("Expected start cell (%d, %d) to be a brick after RandomWalker", startR, startC)
+				// If not panicking and start is valid, check if start cell was modified
+				if !test.expectPanic && test.gridSize > 0 && test.startX >= 0 && test.startX < test.gridSize && test.startY >= 0 && test.startY < test.gridSize {
+					startCell := grid[test.startX][test.startY]
+					if startCell.Data == nil || startCell.Data.Type != utils.Cells.Brick {
+						t.Errorf("Expected start cell (%d, %d) to be a brick after RandomWalker", test.startX, test.startY)
 					}
 				}
 			}, "")

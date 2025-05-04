@@ -1,3 +1,4 @@
+// File: game/messages.go
 package game
 
 import (
@@ -45,36 +46,24 @@ type SpawnBallCommand struct {
 	IsPermanent bool
 }
 
-// PositionUpdateMessage is sent by child actors (Ball, Paddle) to GameActor
-// after their position/state is updated.
-type PositionUpdateMessage struct {
-	PID      *bollywood.PID // PID of the sender (BallActor or PaddleActor)
-	ActorID  int            // Specific ID (BallID or PaddleIndex)
-	IsPaddle bool           // True if sender is PaddleActor, false if BallActor
-	X        int
-	Y        int
-	Vx       int
-	Vy       int
-	// Ball specific
-	Radius  int
-	Phasing bool
-	// Paddle specific
-	Width    int
-	Height   int
-	IsMoving bool
+// PaddleStateUpdate is sent by PaddleActor to GameActor when its internal state changes due to a command.
+type PaddleStateUpdate struct {
+	PID       *bollywood.PID // PID of the sender (PaddleActor)
+	Index     int            // Paddle Index (0-3)
+	Direction string         // The new internal direction ("left", "right", "")
+	// Position/Velocity/IsMoving are NOT sent, GameActor calculates these
 }
 
-// --- Messages Between GameActor and Child Actors ---
-type UpdatePositionCommand struct{}
-
-// GetPositionRequest might still be useful for debugging or specific scenarios, keep for now.
-type GetPositionRequest struct{}
-
-// PositionResponse simplified, potentially deprecated if GetPositionRequest is removed later.
-type PositionResponse struct {
-	X int
-	Y int
-	// Other fields removed as they are now sent via PositionUpdateMessage
+// BallStateUpdate is sent by BallActor to GameActor when its internal state changes due to a command.
+type BallStateUpdate struct {
+	PID     *bollywood.PID // PID of the sender (BallActor)
+	ID      int            // Ball ID
+	Vx      int
+	Vy      int
+	Radius  int // Send radius in case it changed (e.g., IncreaseMass)
+	Mass    int // Send mass in case it changed
+	Phasing bool
+	// Position is NOT sent, GameActor calculates this
 }
 
 // --- Commands TO BallActor ---
@@ -103,7 +92,7 @@ type RemoveClient struct {
 // BroadcastStateCommand carries the dynamic state snapshot to be broadcasted.
 // The grid is sent separately via InitialGridStateMessage.
 type BroadcastStateCommand struct {
-	State GameState // Changed from StateJSON []byte
+	State GameState // Contains the full dynamic state snapshot
 }
 
 // GameOverMessage is sent by GameActor via BroadcasterActor when the game ends.
@@ -112,6 +101,7 @@ type GameOverMessage struct {
 	FinalScores [4]int32 `json:"finalScores"` // Final scores of all players
 	Reason      string   `json:"reason"`      // e.g., "All bricks destroyed"
 	RoomPID     string   `json:"roomPid"`     // PID of the game room that ended
+	MessageType string   `json:"messageType"` // Added for client-side differentiation
 }
 
 // --- Specific Messages TO Client ---
@@ -119,7 +109,8 @@ type GameOverMessage struct {
 // PlayerAssignmentMessage informs a client of their assigned index.
 // Sent directly from GameActor to the specific client's WebSocket upon connection.
 type PlayerAssignmentMessage struct {
-	PlayerIndex int `json:"playerIndex"`
+	PlayerIndex int    `json:"playerIndex"`
+	MessageType string `json:"messageType"` // Added for client-side differentiation
 }
 
 // InitialGridStateMessage sends the static grid layout and canvas dimensions.
@@ -142,3 +133,6 @@ type BroadcastTick struct{} // Sent to GameActor by its broadcast ticker
 // --- Internal Connection Handler Messages ---
 // Exported types for use in server package
 type InternalReadLoopMsg struct{ Payload []byte }
+
+// --- Debug/Test Messages ---
+// Removed GetInternalStateDebug and InternalStateResponse

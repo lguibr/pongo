@@ -1,3 +1,4 @@
+// File: game/game_actor_test.go
 package game
 
 import (
@@ -74,6 +75,22 @@ func TestGameActor_PaddleMovementForwarding(t *testing.T) {
 	t.Skip("Skipping test: Input forwarding path changed (Client -> Handler -> GameActor). Requires mocking ConnectionHandler or use E2E test.")
 }
 
-// TODO: Add new unit tests for specific GameActor handlers if possible,
-// mocking the necessary inputs (like AssignPlayerToRoom, PlayerDisconnect)
-// and verifying outputs (like GameRoomEmpty sent to a mock RoomManager PID).
+func TestGameActor_InternalStateUpdate(t *testing.T) {
+	t.Skip("Skipping test: Testing internal state updates requires more complex setup or E2E tests.")
+	// TODO: Consider adding tests that:
+	// 1. Spawn a GameActor directly (mocking RoomManager).
+	// 2. Manually add mock player/paddle/ball actors and state to the GameActor's cache.
+	// 3. Send a GameTick message.
+	// 4. Verify the internal state cache (positions) has changed as expected.
+	// 5. Verify commands were sent to mock child actors.
+	// This is complex to set up correctly.
+}
+
+func TestGameActor_BroadcastTick(t *testing.T) {
+	t.Skip("Skipping test: Testing broadcast requires mocking the BroadcasterActor and verifying messages sent to it.")
+	// TODO: Consider adding tests that:
+	// 1. Spawn GameActor and a MockBroadcasterActor.
+	// 2. Manually add state to GameActor cache.
+	// 3. Send BroadcastTick message.
+	// 4. Verify MockBroadcasterActor received a BroadcastStateCommand with the expected state.
+}

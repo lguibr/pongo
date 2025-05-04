@@ -134,7 +134,10 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	fmt.Printf("GameActor %s: Sending initial messages to player %d (%s)...\n", a.selfPID, playerIndex, remoteAddr)
 
 	// 1. Send PlayerAssignmentMessage
-	assignmentMsg := PlayerAssignmentMessage{PlayerIndex: playerIndex}
+	assignmentMsg := PlayerAssignmentMessage{
+		PlayerIndex: playerIndex,
+		MessageType: "playerAssignment", // Add message type
+	}
 	errAssign := websocket.JSON.Send(ws, assignmentMsg)
 	if errAssign != nil {
 		fmt.Printf("ERROR: GameActor %s: Failed to send PlayerAssignmentMessage to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, errAssign)
@@ -345,16 +348,28 @@ func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websock
 
 // spawnBall - Assumes called within the actor's message loop (no lock needed).
 func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expireIn time.Duration, isPermanent bool) {
-	ownerValidAndConnected := ownerIndex >= 0 && ownerIndex < utils.MaxPlayers && a.players[ownerIndex] != nil && a.players[ownerIndex].IsConnected
-	ownerWs := (*websocket.Conn)(nil)
-	if ownerValidAndConnected {
-		ownerWs = a.players[ownerIndex].Ws // Still need WS for re-verification check
+	// Check if owner index is valid before proceeding
+	if ownerIndex < -1 || ownerIndex >= utils.MaxPlayers { // Allow -1 for ownerless spawn
+		fmt.Printf("WARN: GameActor %s received spawnBall request with invalid owner index %d.\n", a.selfPID, ownerIndex)
+		return
 	}
+
+	ownerValidAndConnected := false
+	ownerWs := (*websocket.Conn)(nil)
+	if ownerIndex != -1 { // Only check connection if owner is not -1
+		ownerValidAndConnected = a.players[ownerIndex] != nil && a.players[ownerIndex].IsConnected
+		if ownerValidAndConnected {
+			ownerWs = a.players[ownerIndex].Ws // Still need WS for re-verification check
+		}
+	}
+
 	cfg := a.cfg
 	selfPID := a.selfPID
 	engine := a.engine // Use the actor's engine field
 
-	if !ownerValidAndConnected {
+	// Allow spawning ownerless balls (-1) or balls for connected players
+	if ownerIndex != -1 && !ownerValidAndConnected {
+		fmt.Printf("WARN: GameActor %s cannot spawn ball for disconnected owner %d.\n", a.selfPID, ownerIndex)
 		return
 	}
 
@@ -369,15 +384,17 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 	ballProducer := NewBallActorProducer(*ballData, selfPID, cfg)
 	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
 	if ballPID == nil {
-		fmt.Printf("ERROR: GameActor %s failed to spawn BallActor for player %d, ball %d\n", a.selfPID, ownerIndex, ballID)
+		fmt.Printf("ERROR: GameActor %s failed to spawn BallActor for owner %d, ball %d\n", a.selfPID, ownerIndex, ballID)
 		return
 	}
 
-	// Re-verify owner is still connected with the *same* websocket connection before adding
-	if pInfo := a.players[ownerIndex]; pInfo != nil && pInfo.IsConnected && pInfo.Ws == ownerWs {
+	// Re-verify owner is still connected with the *same* websocket connection before adding (if owner != -1)
+	if ownerIndex == -1 || (a.players[ownerIndex] != nil && a.players[ownerIndex].IsConnected && a.players[ownerIndex].Ws == ownerWs) {
 		a.balls[ballID] = ballData // Initialize cache
 		a.ballActors[ballID] = ballPID
 	} else {
+		// Owner disconnected between check and spawn completion
+		fmt.Printf("WARN: GameActor %s: Owner %d disconnected before BallActor %s could be fully registered. Stopping actor.\n", a.selfPID, ownerIndex, ballPID)
 		engine.Stop(ballPID)
 		return
 	}

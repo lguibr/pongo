@@ -1,8 +1,8 @@
+// File: game/paddle_actor_test.go
 package game
 
 import (
 	"encoding/json"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -38,87 +38,82 @@ func (tr *MockGameActor) ClearMessages() {
 	tr.received = nil
 }
 
-// Helper function to Ask for position
-func askPaddlePosition(t *testing.T, engine *bollywood.Engine, pid *bollywood.PID) (*PositionResponse, error) {
+// Helper to find the last message of a specific type sent to the mock GameActor
+func findLastSentMessage[T any](t *testing.T, mockGameActor *MockGameActor) (*T, bool) {
 	t.Helper()
-	reply, err := engine.Ask(pid, GetPositionRequest{}, 100*time.Millisecond) // Short timeout for tests
-	if err != nil {
-		return nil, err
+	var lastMsg *T
+	found := false
+	messages := mockGameActor.GetMessages() // Get a copy
+	for _, msg := range messages {
+		if typedMsg, ok := msg.(T); ok {
+			// Need to capture the value correctly in the loop
+			msgCopy := typedMsg
+			lastMsg = &msgCopy
+			found = true
+		}
 	}
-	if posResp, ok := reply.(PositionResponse); ok {
-		return &posResp, nil
-	}
-	return nil, fmt.Errorf("unexpected reply type: %T", reply)
+	return lastMsg, found
 }
 
 // --- Paddle Actor Test ---
 
-func TestPaddleActor_ReceivesDirectionAndMoves(t *testing.T) {
+// TestPaddleActor_ReceivesDirectionAndSendsUpdate verifies the actor sends state update on direction change.
+func TestPaddleActor_ReceivesDirectionAndSendsUpdate(t *testing.T) {
 	// 1. Setup Engine and Mock GameActor
 	engine := bollywood.NewEngine()
 	defer engine.Shutdown(1 * time.Second)
 
-	mockGameActor := &MockGameActor{} // Not strictly needed, but keeps setup consistent
+	mockGameActor := &MockGameActor{}
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
 	assert.NotNil(t, mockGameActorPID, "Mock GameActor PID should not be nil")
 	time.Sleep(50 * time.Millisecond)
 
 	// 2. Setup Paddle Actor
 	cfg := utils.DefaultConfig()
-	initialPaddleState := NewPaddle(cfg, 0) // Paddle 0 (Right edge, moves Up/Down)
-	initialY := initialPaddleState.Y
+	initialPaddleStateValue := NewPaddle(cfg, 0) // Paddle 0
+	initialPaddleStateValue.Direction = ""       // Start stopped
 
-	paddleProducer := NewPaddleActorProducer(*initialPaddleState, mockGameActorPID, cfg)
+	paddleProducer := NewPaddleActorProducer(*initialPaddleStateValue, mockGameActorPID, cfg)
 	paddlePID := engine.Spawn(bollywood.NewProps(paddleProducer))
 	assert.NotNil(t, paddlePID, "Paddle PID should not be nil")
 	time.Sleep(50 * time.Millisecond) // Allow actor to start
 
-	// 3. Verify Initial Position via Ask
-	pos1, err1 := askPaddlePosition(t, engine, paddlePID)
-	assert.NoError(t, err1)
-	assert.NotNil(t, pos1)
-	assert.Equal(t, initialPaddleState.X, pos1.X)
-	assert.Equal(t, initialPaddleState.Y, pos1.Y)
-	// REMOVED: assert.False(t, pos1.IsMoving, "Paddle should initially not be moving")
-
-	// 4. Send Direction Message ("ArrowRight" -> "right" -> Move Down for Paddle 0)
+	// 3. Send Direction Message ("ArrowRight" -> "right")
 	directionMsgPayload, _ := json.Marshal(Direction{Direction: "ArrowRight"})
 	directionMsg := PaddleDirectionMessage{Direction: directionMsgPayload}
 	engine.Send(paddlePID, directionMsg, nil)
-	time.Sleep(cfg.GameTickPeriod * 2) // Allow direction processing
+	time.Sleep(cfg.GameTickPeriod * 2) // Allow direction processing and message sending
 
-	// 5. Send UpdatePosition command to trigger movement
-	engine.Send(paddlePID, UpdatePositionCommand{}, nil)
-	time.Sleep(cfg.GameTickPeriod * 2) // Allow movement processing
+	// 4. Verify PaddleStateUpdate was sent to GameActor
+	updateMsg, found := findLastSentMessage[PaddleStateUpdate](t, mockGameActor)
+	assert.True(t, found, "GameActor should have received PaddleStateUpdate")
+	if found {
+		assert.Equal(t, 0, updateMsg.Index, "Update message index mismatch")
+		assert.Equal(t, "right", updateMsg.Direction, "Update message direction mismatch")
+		assert.Equal(t, paddlePID, updateMsg.PID, "Update message PID mismatch")
+	}
+	mockGameActor.ClearMessages() // Clear for next check
 
-	// 6. Verify Position After Move via Ask
-	pos2, err2 := askPaddlePosition(t, engine, paddlePID)
-	assert.NoError(t, err2)
-	assert.NotNil(t, pos2)
-	assert.Equal(t, initialPaddleState.X, pos2.X, "X should not change for paddle 0")
-	assert.Greater(t, pos2.Y, initialY, "Y should increase (move down) for paddle 0")
-	// REMOVED: assert.True(t, pos2.IsMoving, "Paddle should be moving")
-	// REMOVED: assert.Equal(t, cfg.PaddleVelocity, pos2.Vy, "Vy should match config velocity")
-	// REMOVED: assert.Equal(t, 0, pos2.Vx, "Vx should be 0")
-	movedY := pos2.Y // Store position after move
-
-	// 7. Send Stop message
+	// 5. Send Stop message
 	stopMsgPayload, _ := json.Marshal(Direction{Direction: "Stop"})
 	stopMsg := PaddleDirectionMessage{Direction: stopMsgPayload}
 	engine.Send(paddlePID, stopMsg, nil)
-	time.Sleep(cfg.GameTickPeriod * 2) // Allow stop processing
+	time.Sleep(cfg.GameTickPeriod * 2) // Allow stop processing and message sending
 
-	// 8. Send UpdatePosition command (should not move)
-	engine.Send(paddlePID, UpdatePositionCommand{}, nil)
-	time.Sleep(cfg.GameTickPeriod * 2) // Allow potential movement processing
+	// 6. Verify PaddleStateUpdate was sent for stop
+	updateMsg, found = findLastSentMessage[PaddleStateUpdate](t, mockGameActor)
+	assert.True(t, found, "GameActor should have received PaddleStateUpdate for stop")
+	if found {
+		assert.Equal(t, 0, updateMsg.Index, "Stop update message index mismatch")
+		assert.Equal(t, "", updateMsg.Direction, "Stop update message direction mismatch")
+		assert.Equal(t, paddlePID, updateMsg.PID, "Stop update message PID mismatch")
+	}
+	mockGameActor.ClearMessages()
 
-	// 9. Verify Position After Stop via Ask
-	pos3, err3 := askPaddlePosition(t, engine, paddlePID)
-	assert.NoError(t, err3)
-	assert.NotNil(t, pos3)
-	assert.Equal(t, initialPaddleState.X, pos3.X, "X should remain unchanged after stop")
-	assert.Equal(t, movedY, pos3.Y, "Y should remain unchanged after stop")
-	// REMOVED: assert.False(t, pos3.IsMoving, "Paddle should not be moving after stop")
-	// REMOVED: assert.Equal(t, 0, pos3.Vx, "Vx should be 0 after stop")
-	// REMOVED: assert.Equal(t, 0, pos3.Vy, "Vy should be 0 after stop")
+	// 7. Send Same Stop message again (should not send update)
+	engine.Send(paddlePID, stopMsg, nil)
+	time.Sleep(cfg.GameTickPeriod * 2)
+	updateMsg, found = findLastSentMessage[PaddleStateUpdate](t, mockGameActor)
+	assert.False(t, found, "GameActor should NOT have received PaddleStateUpdate for same direction")
+
 }

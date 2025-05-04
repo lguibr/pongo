@@ -1,12 +1,16 @@
 // File: utils/config.go
 package utils
 
-import "time"
+import (
+	// "math" // Removed unused import
+	"time"
+)
 
 // Config holds all configurable game parameters.
 type Config struct {
 	// Timing
-	GameTickPeriod time.Duration `json:"gameTickPeriod"` // Time between game state updates
+	GameTickPeriod  time.Duration `json:"gameTickPeriod"`  // Time between game physics updates
+	BroadcastRateHz int           `json:"broadcastRateHz"` // Target rate for sending state updates to clients (e.g., 30)
 
 	// Score & Player
 	InitialScore int `json:"initialScore"` // Starting score for players
@@ -52,7 +56,8 @@ func DefaultConfig() Config {
 
 	return Config{
 		// Timing
-		GameTickPeriod: 24 * time.Millisecond,
+		GameTickPeriod:  24 * time.Millisecond, // ~41.6 Hz physics updates
+		BroadcastRateHz: 30,                    // Target 30Hz network updates
 
 		// Score & Player
 		InitialScore: 0,
@@ -108,6 +113,7 @@ func FastGameConfig() Config {
 
 	// Faster game loop
 	cfg.GameTickPeriod = 16 * time.Millisecond // ~60 FPS physics
+	cfg.BroadcastRateHz = 30                   // Keep broadcast rate standard
 
 	// Faster balls
 	cfg.MinBallVelocity = cfg.CanvasSize / 60 // ~8.5
@@ -127,6 +133,47 @@ func FastGameConfig() Config {
 	// Adjust paddle size relative to new cell size
 	cfg.PaddleLength = cfg.CellSize * 2 // 128
 	cfg.PaddleWidth = cfg.CellSize / 3  // ~21
+
+	return cfg
+}
+
+// UltraFastGameConfig returns a config optimized for extremely rapid game completion.
+func UltraFastGameConfig() Config {
+	cfg := DefaultConfig() // Start with defaults
+
+	// Tiny grid, very few bricks
+	cfg.CanvasSize = 240                         // Divisible by 6
+	cfg.GridSize = 6                             // Minimum allowed, even size
+	cfg.CellSize = cfg.CanvasSize / cfg.GridSize // 40
+
+	// Minimal generation steps -> very sparse grid
+	cfg.GridFillVectors = 1 // Minimal vectors
+	cfg.GridFillVectorSize = 1
+	cfg.GridFillWalkers = 1 // Minimal walkers
+	cfg.GridFillSteps = 1
+
+	// Faster game loop
+	cfg.GameTickPeriod = 16 * time.Millisecond // ~60 FPS physics
+	cfg.BroadcastRateHz = 30                   // Keep broadcast rate standard
+
+	// Very fast balls
+	cfg.MinBallVelocity = cfg.CanvasSize / 20 // 12
+	cfg.MaxBallVelocity = cfg.CanvasSize / 15 // 16
+	cfg.BallRadius = cfg.CellSize / 5         // 8 (Smaller radius)
+
+	// Very short phasing
+	cfg.BallPhasingTime = 20 * time.Millisecond
+
+	// Moderate power-up chance, short expiry
+	cfg.PowerUpChance = 0.25
+	cfg.PowerUpSpawnBallExpiry = 3 * time.Second
+
+	// Faster paddles
+	cfg.PaddleVelocity = cfg.CellSize // 40
+
+	// Adjust paddle size
+	cfg.PaddleLength = cfg.CellSize * 2 // 80
+	cfg.PaddleWidth = cfg.CellSize / 4  // 10
 
 	return cfg
 }

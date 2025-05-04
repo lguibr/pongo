@@ -1,3 +1,4 @@
+// File: game/game_actor_broadcast.go
 package game
 
 import (
@@ -5,7 +6,7 @@ import (
 )
 
 // GameState struct for JSON marshalling (used in broadcast)
-// NO LONGER CONTAINS Canvas/Grid. Sent separately via InitialGridStateMessage.
+// Contains the dynamic state snapshot. Grid is sent separately.
 type GameState struct {
 	Players     [utils.MaxPlayers]*Player `json:"players"`
 	Paddles     [utils.MaxPlayers]*Paddle `json:"paddles"`
@@ -38,11 +39,11 @@ func deepCopyGrid(original Grid) Grid {
 	return newGrid
 }
 
-// createGameStateSnapshot creates a snapshot of the current DYNAMIC game state.
+// createGameStateSnapshot creates a snapshot of the current DYNAMIC game state
+// by reading the GameActor's authoritative cache.
 // Assumes it's called within the GameActor's sequential message processing loop.
 // Creates deep copies of mutable slice/map elements (Players, Paddles, Balls).
 // It also copies the Collided flag and then resets it in the GameActor's cache.
-// The static grid is sent separately upon player connection.
 func (a *GameActor) createGameStateSnapshot() GameState {
 	// --- Prepare the GameState snapshot ---
 	state := GameState{
@@ -71,12 +72,13 @@ func (a *GameActor) createGameStateSnapshot() GameState {
 
 	// Copy paddle info - Create a deep copy (using local paddle cache)
 	for i, p := range a.paddles {
-		// Check if player exists and is connected for this paddle index
-		if p != nil && a.players[i] != nil && a.players[i].IsConnected {
+		// Check if paddle exists in cache (player might have disconnected but paddle state might linger briefly)
+		if p != nil {
 			paddleCopy := *p // Create a copy of the paddle struct
 			if paddleCopy.canvasSize == 0 && a.canvas != nil {
 				paddleCopy.canvasSize = a.canvas.CanvasSize
 			}
+			// Include paddle even if player disconnected, client can handle rendering
 			state.Paddles[i] = &paddleCopy // Add pointer to the copy
 
 			// Reset the Collided flag in the GameActor's cache *after* copying

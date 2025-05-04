@@ -1,3 +1,4 @@
+// File: game/game_actor.go
 package game
 
 import (
@@ -17,22 +18,22 @@ type GameActor struct {
 	cfg            utils.Config
 	canvas         *Canvas
 	players        [utils.MaxPlayers]*playerInfo // State managed serially by actor
-	paddles        [utils.MaxPlayers]*Paddle     // Local cache of paddle state
+	paddles        [utils.MaxPlayers]*Paddle     // Local cache, authoritative state for simulation
 	paddleActors   [utils.MaxPlayers]*bollywood.PID
-	balls          map[int]*Ball // Local cache of ball state
+	balls          map[int]*Ball // Local cache, authoritative state for simulation
 	ballActors     map[int]*bollywood.PID
 	engine         *bollywood.Engine
-	ticker         *time.Ticker // Ticker for physics/game logic
-	stopTickerCh   chan struct{}
-	bcastTicker    *time.Ticker // Ticker for broadcasting state
-	stopBcastCh    chan struct{}
-	tickerMu       sync.Mutex // Mutex to protect ticker fields and channels
-	selfPID        *bollywood.PID
-	roomManagerPID *bollywood.PID
-	broadcasterPID *bollywood.PID // PID of the dedicated broadcaster actor
-	connToIndex    map[*websocket.Conn]int
-	playerConns    [utils.MaxPlayers]*websocket.Conn
-	gameOver       atomic.Bool // Flag to prevent multiple game over triggers
+	physicsTicker  *time.Ticker // Ticker for physics/game logic
+	stopPhysicsCh  chan struct{}
+	broadcastTicker *time.Ticker // Ticker for broadcasting state
+	stopBroadcastCh chan struct{}
+	tickerMu        sync.Mutex // Mutex to protect ticker fields and channels
+	selfPID         *bollywood.PID
+	roomManagerPID  *bollywood.PID
+	broadcasterPID  *bollywood.PID // PID of the dedicated broadcaster actor
+	connToIndex     map[*websocket.Conn]int
+	playerConns     [utils.MaxPlayers]*websocket.Conn
+	gameOver        atomic.Bool // Flag to prevent multiple game over triggers
 
 	// Performance Metrics
 	tickDurationSum time.Duration
@@ -57,19 +58,19 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 		// Grid generation happens when first player joins now
 
 		ga := &GameActor{
-			cfg:            cfg,
-			canvas:         canvas, // Canvas exists, but grid is empty initially
-			players:        [utils.MaxPlayers]*playerInfo{},
-			paddles:        [utils.MaxPlayers]*Paddle{}, // Initialize cache map
-			paddleActors:   [utils.MaxPlayers]*bollywood.PID{},
-			balls:          make(map[int]*Ball), // Initialize cache map
-			ballActors:     make(map[int]*bollywood.PID),
-			engine:         engine,
-			stopTickerCh:   make(chan struct{}), // Initialize channels here
-			stopBcastCh:    make(chan struct{}),
-			connToIndex:    make(map[*websocket.Conn]int),
-			playerConns:    [utils.MaxPlayers]*websocket.Conn{},
-			roomManagerPID: roomManagerPID,
+			cfg:             cfg,
+			canvas:          canvas, // Canvas exists, but grid is empty initially
+			players:         [utils.MaxPlayers]*playerInfo{},
+			paddles:         [utils.MaxPlayers]*Paddle{}, // Initialize cache map
+			paddleActors:    [utils.MaxPlayers]*bollywood.PID{},
+			balls:           make(map[int]*Ball), // Initialize cache map
+			ballActors:      make(map[int]*bollywood.PID),
+			engine:          engine,
+			stopPhysicsCh:   make(chan struct{}), // Initialize channels here
+			stopBroadcastCh: make(chan struct{}),
+			connToIndex:     make(map[*websocket.Conn]int),
+			playerConns:     [utils.MaxPlayers]*websocket.Conn{},
+			roomManagerPID:  roomManagerPID,
 			// Initialize metrics
 			tickDurationSum: 0,
 			tickCount:       0,
@@ -135,27 +136,14 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		fmt.Printf("GameActor %s: Started. Broadcaster: %s.\n", a.selfPID, a.broadcasterPID)
 		// Tickers are started when the first player joins
 
-	case GameTick:
+	case GameTick: // Message from physicsTicker
 		start := time.Now()
 
-		// 1. Send UpdatePositionCommand to all children
-		updateCmd := UpdatePositionCommand{}
-		pidsToUpdate := make([]*bollywood.PID, 0, utils.MaxPlayers+len(a.ballActors))
-		for _, pid := range a.paddleActors {
-			if pid != nil {
-				pidsToUpdate = append(pidsToUpdate, pid)
-			}
-		}
-		for _, pid := range a.ballActors {
-			if pid != nil {
-				pidsToUpdate = append(pidsToUpdate, pid)
-			}
-		}
-		for _, pid := range pidsToUpdate {
-			a.engine.Send(pid, updateCmd, a.selfPID)
-		}
+		// 1. Update internal state cache (move paddles, balls based on current velocity/direction)
+		// This uses the latest state received via PaddleStateUpdate/BallStateUpdate
+		a.updateInternalState()
 
-		// 2. Detect collisions using the locally cached state
+		// 2. Detect collisions using the updated cache and send commands to children
 		a.detectCollisions(ctx)
 
 		// 3. Check for Game Over condition
@@ -168,55 +156,29 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.tickCount++
 		a.metricsMu.Unlock()
 
-	case PositionUpdateMessage: // Handle state updates from children
-		if m.IsPaddle {
-			paddleIndex := m.ActorID
-			if paddleIndex >= 0 && paddleIndex < len(a.paddles) {
-				if a.paddles[paddleIndex] == nil {
-					// This case should ideally not happen if connect initializes cache
-					// fmt.Printf("WARN: GameActor %s received paddle update for nil cache index %d from PID %s\n", a.selfPID, paddleIndex, m.PID) // Reduce noise
-					a.paddles[paddleIndex] = &Paddle{Index: paddleIndex}
-					a.paddles[paddleIndex].Velocity = a.cfg.PaddleVelocity
-					if a.canvas != nil {
-						a.paddles[paddleIndex].canvasSize = a.canvas.CanvasSize
-					}
-				}
-				// Update state
-				paddle := a.paddles[paddleIndex]
-				paddle.X, paddle.Y = m.X, m.Y
-				paddle.Vx, paddle.Vy = m.Vx, m.Vy
-				paddle.Width, paddle.Height = m.Width, m.Height
-				paddle.IsMoving = m.IsMoving
-			} else {
-				// Index out of bounds, log warning
-				// fmt.Printf("WARN: GameActor %s received paddle update for invalid index %d from PID %s\n", a.selfPID, paddleIndex, m.PID) // Reduce noise
-			}
-		} else { // Is Ball
-			ballID := m.ActorID
-			if _, actorOk := a.ballActors[ballID]; actorOk { // Check if actor still exists
-				if a.balls[ballID] == nil { // Initialize if nil
-					// fmt.Printf("WARN: GameActor %s received ball update for nil cache ID %d from PID %s\n", a.selfPID, ballID, m.PID) // Reduce noise
-					a.balls[ballID] = &Ball{Id: ballID}
-					a.balls[ballID].Mass = a.cfg.BallMass
-					if a.canvas != nil {
-						a.balls[ballID].canvasSize = a.canvas.CanvasSize
-					}
-					// OwnerIndex and IsPermanent are harder to set here, rely on initial spawn
-				}
-				// Update state
-				ball := a.balls[ballID]
-				ball.X, ball.Y = m.X, m.Y
-				ball.Vx, ball.Vy = m.Vx, m.Vy
-				ball.Radius = m.Radius
-				ball.Phasing = m.Phasing
-			} else {
-				// Actor doesn't exist, ignore update
-			}
+	case PaddleStateUpdate: // Update cache with state from PaddleActor
+		if paddle := a.paddles[m.Index]; paddle != nil {
+			paddle.Direction = m.Direction
+		} else {
+			// Log if trying to update a non-existent paddle cache entry
+			// fmt.Printf("WARN: GameActor %s received PaddleStateUpdate for nil cache index %d from PID %s\n", a.selfPID, m.Index, m.PID)
 		}
 
-	case BroadcastTick:
+	case BallStateUpdate: // Update cache with state from BallActor
+		if ball := a.balls[m.ID]; ball != nil {
+			ball.Vx = m.Vx
+			ball.Vy = m.Vy
+			ball.Radius = m.Radius
+			ball.Mass = m.Mass
+			ball.Phasing = m.Phasing
+		} else {
+			// Log if trying to update a non-existent ball cache entry
+			// fmt.Printf("WARN: GameActor %s received BallStateUpdate for nil cache ID %d from PID %s\n", a.selfPID, m.ID, m.PID)
+		}
+
+	case BroadcastTick: // Message from broadcastTicker
 		if a.broadcasterPID != nil {
-			snapshot := a.createGameStateSnapshot()
+			snapshot := a.createGameStateSnapshot() // Reads cache, resets Collided flags
 			a.engine.Send(a.broadcasterPID, BroadcastStateCommand{State: snapshot}, a.selfPID)
 		}
 
@@ -249,6 +211,23 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 
 	default:
 		fmt.Printf("GameActor %s: Received unknown message type: %T\n", a.selfPID, m)
+	}
+}
+
+// updateInternalState applies velocity/direction to update positions in the local cache.
+// This is called during the GameTick.
+func (a *GameActor) updateInternalState() {
+	// Update paddles based on their Direction (set by PaddleStateUpdate)
+	for _, paddle := range a.paddles {
+		if paddle != nil {
+			paddle.Move() // Paddle.Move updates its own X, Y, Vx, Vy, IsMoving based on Direction
+		}
+	}
+	// Update balls based on their Vx, Vy (set by BallStateUpdate)
+	for _, ball := range a.balls {
+		if ball != nil {
+			ball.Move() // Ball.Move updates its own X, Y based on Vx, Vy
+		}
 	}
 }
 
@@ -318,6 +297,7 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 				FinalScores: finalScores,
 				Reason:      "All bricks destroyed",
 				RoomPID:     a.selfPID.String(),
+				MessageType: "gameOver", // Add message type
 			}
 			a.engine.Send(a.broadcasterPID, gameOverMsg, a.selfPID)
 		}
@@ -343,9 +323,9 @@ func (a *GameActor) logPerformanceMetrics() {
 	if a.tickCount > 0 {
 		avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
 		// Use a distinct prefix for easy filtering
-		fmt.Printf("PERF_METRIC GameActor %s: AvgTick=%v Ticks=%d\n", a.selfPID, avgDuration, a.tickCount)
+		fmt.Printf("PERF_METRIC GameActor %s: AvgPhysicsTick=%v Ticks=%d\n", a.selfPID, avgDuration, a.tickCount)
 	} else {
-		fmt.Printf("PERF_METRIC GameActor %s: No ticks processed.\n", a.selfPID)
+		fmt.Printf("PERF_METRIC GameActor %s: No physics ticks processed.\n", a.selfPID)
 	}
 }
 
@@ -354,16 +334,17 @@ func (a *GameActor) startTickers(ctx bollywood.Context) {
 	a.tickerMu.Lock() // Lock before accessing ticker fields/channels
 
 	// Physics Ticker
-	if a.ticker == nil {
-		a.ticker = time.NewTicker(a.cfg.GameTickPeriod)
+	if a.physicsTicker == nil {
+		a.physicsTicker = time.NewTicker(a.cfg.GameTickPeriod)
 		select {
-		case <-a.stopTickerCh:
-			a.stopTickerCh = make(chan struct{})
+		case <-a.stopPhysicsCh: // Channel might be closed if restarted quickly
+			a.stopPhysicsCh = make(chan struct{}) // Recreate if closed
 		default:
 		}
-		stopCh := a.stopTickerCh
-		tickerCh := a.ticker.C
+		stopCh := a.stopPhysicsCh
+		tickerCh := a.physicsTicker.C
 
+		// Unlock before starting goroutine
 		a.tickerMu.Unlock()
 
 		go func() {
@@ -378,42 +359,45 @@ func (a *GameActor) startTickers(ctx bollywood.Context) {
 					return
 				case _, ok := <-tickerCh:
 					if !ok {
-						return
+						return // Ticker channel closed
 					}
 					if a.gameOver.Load() {
-						return
+						return // Stop ticker if game is over
 					}
+					// Send tick message to self
 					currentEngine := a.engine
 					currentSelfPID := a.selfPID
 					if currentEngine != nil && currentSelfPID != nil {
 						currentEngine.Send(currentSelfPID, GameTick{}, nil)
 					} else {
-						return
+						return // Engine or PID gone, stop ticker
 					}
 				}
 			}
 		}()
 	} else {
+		// Already running, unlock
 		a.tickerMu.Unlock()
 	}
 
 	a.tickerMu.Lock() // Lock again for broadcast ticker
 
 	// Broadcast Ticker
-	if a.bcastTicker == nil {
-		broadcastInterval := 100 * time.Millisecond
-		if broadcastInterval < a.cfg.GameTickPeriod {
-			broadcastInterval = a.cfg.GameTickPeriod
+	if a.broadcastTicker == nil {
+		broadcastInterval := time.Second / time.Duration(a.cfg.BroadcastRateHz)
+		if broadcastInterval <= 0 {
+			broadcastInterval = 33 * time.Millisecond // Default fallback if rate is invalid
 		}
-		a.bcastTicker = time.NewTicker(broadcastInterval)
+		a.broadcastTicker = time.NewTicker(broadcastInterval)
 		select {
-		case <-a.stopBcastCh:
-			a.stopBcastCh = make(chan struct{})
+		case <-a.stopBroadcastCh: // Channel might be closed if restarted quickly
+			a.stopBroadcastCh = make(chan struct{}) // Recreate if closed
 		default:
 		}
-		stopCh := a.stopBcastCh
-		tickerCh := a.bcastTicker.C
+		stopCh := a.stopBroadcastCh
+		tickerCh := a.broadcastTicker.C
 
+		// Unlock before starting goroutine
 		a.tickerMu.Unlock()
 
 		go func() {
@@ -428,22 +412,24 @@ func (a *GameActor) startTickers(ctx bollywood.Context) {
 					return
 				case _, ok := <-tickerCh:
 					if !ok {
-						return
+						return // Ticker channel closed
 					}
 					if a.gameOver.Load() {
-						return
+						return // Stop ticker if game is over
 					}
+					// Send tick message to self
 					currentEngine := a.engine
 					currentSelfPID := a.selfPID
 					if currentEngine != nil && currentSelfPID != nil {
 						currentEngine.Send(currentSelfPID, BroadcastTick{}, nil)
 					} else {
-						return
+						return // Engine or PID gone, stop ticker
 					}
 				}
 			}
 		}()
 	} else {
+		// Already running, unlock
 		a.tickerMu.Unlock()
 	}
 }
@@ -454,25 +440,25 @@ func (a *GameActor) stopTickers() {
 	defer a.tickerMu.Unlock()
 
 	// Stop Physics Ticker
-	if a.ticker != nil {
-		a.ticker.Stop()
+	if a.physicsTicker != nil {
+		a.physicsTicker.Stop()
 		select {
-		case <-a.stopTickerCh: // Already closed
+		case <-a.stopPhysicsCh: // Already closed
 		default:
-			close(a.stopTickerCh)
+			close(a.stopPhysicsCh)
 		}
-		a.ticker = nil
+		a.physicsTicker = nil
 	}
 
 	// Stop Broadcast Ticker
-	if a.bcastTicker != nil {
-		a.bcastTicker.Stop()
+	if a.broadcastTicker != nil {
+		a.broadcastTicker.Stop()
 		select {
-		case <-a.stopBcastCh: // Already closed
+		case <-a.stopBroadcastCh: // Already closed
 		default:
-			close(a.stopBcastCh)
+			close(a.stopBroadcastCh)
 		}
-		a.bcastTicker = nil
+		a.broadcastTicker = nil
 	}
 }
 
@@ -513,13 +499,9 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 	currentEngine := a.engine
 	if currentEngine != nil {
 		if broadcasterToStop != nil && a.broadcasterPID != nil { // Check if not already nilled
-			// Don't stop broadcaster here if game over, let it send message first
-			// It will be stopped when GameActor stops.
-			// If stopping for other reasons, stop it now.
-			if !a.gameOver.Load() {
-				currentEngine.Stop(broadcasterToStop)
-				a.broadcasterPID = nil // Mark as stopped
-			}
+			// Stop broadcaster during general cleanup or if game didn't end normally
+			currentEngine.Stop(broadcasterToStop)
+			a.broadcasterPID = nil // Mark as stopped
 		}
 		for _, pid := range paddlesToStop {
 			if pid != nil {
@@ -533,6 +515,3 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 		}
 	}
 }
-
-// --- Handler method bodies removed from this file ---
-// Implementations are now solely in game_actor_handlers.go

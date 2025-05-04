@@ -1,3 +1,4 @@
+// File: game/paddle_actor.go
 package game
 
 import (
@@ -9,6 +10,8 @@ import (
 )
 
 // PaddleActor implements the bollywood.Actor interface for managing a paddle.
+// It updates its internal direction based on commands and sends a state update
+// back to the GameActor.
 type PaddleActor struct {
 	state        *Paddle        // Use a pointer to the Paddle state
 	cfg          utils.Config   // Store config
@@ -19,9 +22,10 @@ type PaddleActor struct {
 // NewPaddleActorProducer creates a bollywood.Producer for PaddleActor.
 func NewPaddleActorProducer(initialState Paddle, gameActorPID *bollywood.PID, cfg utils.Config) bollywood.Producer {
 	return func() bollywood.Actor {
+		// Create a copy of the initial state for this actor instance
 		actorState := initialState
 		return &PaddleActor{
-			state:        &actorState,
+			state:        &actorState, // Pass the address of the copy
 			cfg:          cfg,
 			gameActorPID: gameActorPID,
 		}
@@ -42,67 +46,36 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 	case bollywood.Started:
 		// Actor started
 
-	case UpdatePositionCommand:
-		a.state.Move() // Move calculates Vx/Vy/IsMoving based on Direction
-		// Send updated state back to GameActor
-		if a.gameActorPID != nil && a.selfPID != nil {
-			updateMsg := PositionUpdateMessage{
-				PID:      a.selfPID,
-				ActorID:  a.state.Index,
-				IsPaddle: true,
-				X:        a.state.X,
-				Y:        a.state.Y,
-				Vx:       a.state.Vx,
-				Vy:       a.state.Vy,
-				Width:    a.state.Width,
-				Height:   a.state.Height,
-				IsMoving: a.state.IsMoving,
-			}
-			ctx.Engine().Send(a.gameActorPID, updateMsg, a.selfPID)
-		}
-
-	case GetPositionRequest:
-		// Reply immediately with current state using ctx.Reply if it's an Ask request
-		if ctx.RequestID() != "" {
-			// Simplified response, as detailed state is pushed via PositionUpdateMessage
-			response := PositionResponse{
-				X: a.state.X,
-				Y: a.state.Y,
-			}
-			ctx.Reply(response)
-		} else {
-			fmt.Printf("WARN: PaddleActor %s (Index %d) received GetPositionRequest not via Ask.\n", pidStr, a.state.Index)
-		}
-
 	case PaddleDirectionMessage:
 		var receivedDirection Direction
 		err := json.Unmarshal(msg.Direction, &receivedDirection)
+		directionChanged := false
+		newInternalDirection := ""
 		if err == nil {
-			newInternalDirection := utils.DirectionFromString(receivedDirection.Direction)
-			// fmt.Printf("PaddleActor %s (Index %d): Received direction '%s', internal: '%s'\n", pidStr, a.state.Index, receivedDirection.Direction, newInternalDirection) // Reduce log noise
-
-			// Update state only if direction actually changed
+			newInternalDirection = utils.DirectionFromString(receivedDirection.Direction)
 			if a.state.Direction != newInternalDirection {
-				// fmt.Printf("PaddleActor %s (Index %d): Direction changed from '%s' to '%s'\n", pidStr, a.state.Index, a.state.Direction, newInternalDirection) // Reduce log noise
 				a.state.Direction = newInternalDirection
-				a.state.IsMoving = (newInternalDirection != "") // Update IsMoving flag
-
-				// If stopping, immediately reset velocity components
-				if newInternalDirection == "" {
-					a.state.Vx = 0
-					a.state.Vy = 0
-				}
+				directionChanged = true
 			}
 		} else {
 			fmt.Printf("PaddleActor %s (Index %d) failed to unmarshal direction: %v\n", pidStr, a.state.Index, err)
 			// Ensure stopped state on error
 			if a.state.Direction != "" {
 				a.state.Direction = ""
-				a.state.Vx = 0
-				a.state.Vy = 0
-				a.state.IsMoving = false
+				directionChanged = true // Direction changed to stop
 			}
 		}
+		// Send state update back to GameActor if direction changed
+		if directionChanged && a.gameActorPID != nil && a.selfPID != nil {
+			updateMsg := PaddleStateUpdate{
+				PID:       a.selfPID,
+				Index:     a.state.Index,
+				Direction: a.state.Direction,
+			}
+			ctx.Engine().Send(a.gameActorPID, updateMsg, a.selfPID)
+		}
+
+	// Removed GetInternalStateDebug handler case
 
 	case bollywood.Stopping:
 		// Actor stopping

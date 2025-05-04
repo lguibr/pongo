@@ -2,6 +2,8 @@
 package game
 
 import (
+	"fmt"
+	// "math" // Removed unused import
 	"math/rand"
 
 	"github.com/lguibr/pongo/utils"
@@ -9,202 +11,196 @@ import (
 
 type Grid [][]Cell
 
-func (grid Grid) LineIntersectedCellIndices(cellSize int, line [2][2]int) [][2]int {
-	var intersects [][2]int
-	for i := range grid {
-		for j := range grid[i] {
-			if line[0][0] <= i && i <= line[1][0] && line[0][1] <= j && j <= line[1][1] {
-				intersects = append(intersects, [2]int{i, j})
-			}
-		}
-	}
-	return intersects
-}
-
+// NewGrid initializes an empty grid of the specified size.
 func NewGrid(gridSize int) Grid {
+	if gridSize <= 0 {
+		panic("Grid size must be positive")
+	}
 	grid := make(Grid, gridSize)
 	for i := range grid {
 		grid[i] = make([]Cell, gridSize)
-	}
-
-	for i, row := range grid {
-		for j := range row {
-			// Initialize with nil Data, GameActor will fill it
+		for j := range grid[i] {
+			// Initialize with nil Data, Fill will populate it
 			grid[i][j] = Cell{X: i, Y: j, Data: nil}
 		}
 	}
 	return grid
 }
 
-func (grid Grid) CreateQuarterGridSeed(numberOfVectors, maxVectorSize int) {
-	vectorZero := [2]int{0, 0}
-	randomVectors := utils.NewRandomPositiveVectors(numberOfVectors, maxVectorSize)
+// Fill populates the grid with bricks using a centralized generation approach.
+// It uses symmetrical vector drawing from the center and random walks starting near the center.
+func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps int) {
+	gridSize := len(grid)
+	if gridSize == 0 || gridSize%2 != 0 {
+		panic("Grid size must be non-zero and even for Fill")
+	}
+	center := gridSize / 2 // Center index (e.g., for 16x16, center is 8)
 
-	randomLines := [][2][2]int{}
-	for _, vector := range randomVectors {
-		randomLines = append(randomLines, [2][2]int{vectorZero, vector})
+	// Use default config values if parameters are zero
+	cfg := utils.DefaultConfig()
+	if numberOfVectors == 0 {
+		numberOfVectors = cfg.GridFillVectors
+	}
+	if maxVectorSize == 0 {
+		maxVectorSize = cfg.GridFillVectorSize
+	}
+	if randomWalkers == 0 {
+		randomWalkers = cfg.GridFillWalkers
+	}
+	if randomSteps == 0 {
+		randomSteps = cfg.GridFillSteps
 	}
 
-	indexes := [][2]int{}
-	for _, line := range randomLines {
-		// Use default cell size from config for intersection check if needed,
-		// though the logic here doesn't strictly depend on it.
-		indexes = append(indexes, grid.LineIntersectedCellIndices(utils.DefaultConfig().CellSize, line)...)
-	}
+	// --- Phase 1: Symmetrical Vector Drawing from Center ---
+	for i := 0; i < numberOfVectors; i++ {
+		// Generate a random vector (can be positive or negative components)
+		vecX := rand.Intn(maxVectorSize*2) - maxVectorSize
+		vecY := rand.Intn(maxVectorSize*2) - maxVectorSize
 
-	for _, index := range indexes {
-		// Check bounds before accessing grid element
-		if index[0] < 0 || index[0] >= len(grid) || index[1] < 0 || index[1] >= len(grid[0]) {
-			continue
-		}
-
-		// Initialize Data if nil
-		if grid[index[0]][index[1]].Data == nil {
-			// Use local NewBrickData
-			grid[index[0]][index[1]].Data = NewBrickData(utils.Cells.Empty, 0)
-		}
-
-		if grid[index[0]][index[1]].Data.Type == utils.Cells.Brick {
-			grid[index[0]][index[1]].Data.Life = grid[index[0]][index[1]].Data.Life + 1
-			grid[index[0]][index[1]].Data.Level = grid[index[0]][index[1]].Data.Life // Update level too
-			continue
-		}
-
-		// Change type to Brick and set life/level
-		grid[index[0]][index[1]].Data.Type = utils.Cells.Brick
-		grid[index[0]][index[1]].Data.Life = 1
-		grid[index[0]][index[1]].Data.Level = 1
-
-	}
-
-}
-
-func (grid Grid) FillGridWithQuarterGrids(q1, q2, q3, q4 Grid) {
-	if len(q1) == 0 || len(q1) != len(q2) || len(q1) != len(q3) || len(q1) != len(q4) {
-		panic("Quarter grids must be of the same non-zero size")
-	}
-	if len(grid) == 0 || len(grid) != 2*len(q1) || len(grid[0]) != 2*len(q1[0]) {
-		panic("Main grid must be twice the size of the quarter grids")
-	}
-
-	n := len(grid)
-	m := len(grid[0])
-	qn := len(q1)
-	qm := len(q1[0])
-
-	for i := 0; i < qn; i++ {
-		for j := 0; j < qm; j++ {
-			// Deep copy cell data to avoid sharing pointers across quarters
-			// Use local BrickData type
-			copyData := func(data *BrickData) *BrickData {
-				if data == nil {
-					return nil
-				}
-				newData := *data
-				return &newData
+		// Ensure vector has some length
+		if vecX == 0 && vecY == 0 {
+			if rand.Intn(2) == 0 {
+				vecX = utils.RandomNumberN(maxVectorSize) // Get non-zero random number
+			} else {
+				vecY = utils.RandomNumberN(maxVectorSize)
 			}
+		}
 
-			// Filling quarter one (top-left)
-			grid[i][j] = q1[i][j]
-			grid[i][j].X = i
-			grid[i][j].Y = j
-			grid[i][j].Data = copyData(q1[i][j].Data)
+		// Draw 4 symmetrical lines from the center
+		grid.drawLineAndApplyBricks(center, center, center+vecX, center+vecY)
+		grid.drawLineAndApplyBricks(center, center, center-vecX, center+vecY)
+		grid.drawLineAndApplyBricks(center, center, center+vecX, center-vecY)
+		grid.drawLineAndApplyBricks(center, center, center-vecX, center-vecY)
+	}
 
-			// Filling quarter two (top-right)
-			grid[i][m-1-j] = q2[i][j] // Use q2 data
-			grid[i][m-1-j].X = i
-			grid[i][m-1-j].Y = m - 1 - j
-			grid[i][m-1-j].Data = copyData(q2[i][j].Data)
+	// --- Phase 2: Random Walkers from Center ---
+	for i := 0; i < randomWalkers; i++ {
+		grid.applyRandomWalk(center, center, randomSteps)
+	}
 
-			// Filling quarter three (bottom-left)
-			grid[n-1-i][j] = q3[i][j] // Use q3 data
-			grid[n-1-i][j].X = n - 1 - i
-			grid[n-1-i][j].Y = j
-			grid[n-1-i][j].Data = copyData(q3[i][j].Data)
-
-			// Filling quarter four (bottom-right)
-			grid[n-1-i][m-1-j] = q4[i][j] // Use q4 data
-			grid[n-1-i][m-1-j].X = n - 1 - i
-			grid[n-1-i][m-1-j].Y = m - 1 - j
-			grid[n-1-i][m-1-j].Data = copyData(q4[i][j].Data)
+	// --- Phase 3: Ensure Center is Clear (Optional but good for gameplay) ---
+	// Clear a small area around the exact center to prevent immediate ball spawns inside bricks
+	clearRadius := 1 // Clear center cell + immediate neighbors
+	for r := center - clearRadius; r <= center+clearRadius; r++ {
+		for c := center - clearRadius; c <= center+clearRadius; c++ {
+			if r >= 0 && r < gridSize && c >= 0 && c < gridSize {
+				// Set to empty, ensuring Data is not nil
+				if grid[r][c].Data == nil {
+					grid[r][c].Data = NewBrickData(utils.Cells.Empty, 0)
+				} else {
+					grid[r][c].Data.Type = utils.Cells.Empty
+					grid[r][c].Data.Life = 0
+					grid[r][c].Data.Level = 0
+				}
+			}
 		}
 	}
 }
 
-func (grid Grid) Rotate() Grid {
-	if len(grid) == 0 || len(grid[0]) == 0 {
-		return grid // Return empty or invalid grid as is
+// drawLineAndApplyBricks uses Bresenham's line algorithm (or similar) to mark cells along a line.
+// Modifies the grid cells directly.
+func (grid Grid) drawLineAndApplyBricks(x0, y0, x1, y1 int) {
+	gridSize := len(grid)
+	dx := utils.Abs(x1 - x0)
+	dy := -utils.Abs(y1 - y0)
+	sx := -1
+	if x0 < x1 {
+		sx = 1
 	}
-	rows := len(grid)
-	cols := len(grid[0])
-	result := make([][]Cell, cols) // New grid dimensions are swapped
-	for i := range result {
-		result[i] = make([]Cell, rows)
+	sy := -1
+	if y0 < y1 {
+		sy = 1
 	}
-	for i, row := range grid {
-		for j, cell := range row {
-			result[j][rows-i-1] = cell // Assign original cell to rotated position
-			// Update X, Y coordinates in the rotated cell
-			result[j][rows-i-1].X = j
-			result[j][rows-i-1].Y = rows - i - 1
+	err := dx + dy // error value e_xy
+
+	for { // loop
+		// Apply brick logic to current point (x0, y0)
+		if x0 >= 0 && x0 < gridSize && y0 >= 0 && y0 < gridSize {
+			cell := &grid[x0][y0] // Get pointer to modify
+			if cell.Data == nil {
+				cell.Data = NewBrickData(utils.Cells.Brick, 1) // Start with life 1
+			} else if cell.Data.Type == utils.Cells.Brick {
+				cell.Data.Life++ // Increase life if already a brick
+				cell.Data.Level = cell.Data.Life
+			} else { // If empty or block, turn into brick
+				cell.Data.Type = utils.Cells.Brick
+				cell.Data.Life = 1
+				cell.Data.Level = 1
+			}
+		}
+
+		if x0 == x1 && y0 == y1 {
+			break
+		}
+		e2 := 2 * err
+		if e2 >= dy { // e_xy+e_x > 0
+			err += dy
+			x0 += sx
+		}
+		if e2 <= dx { // e_xy+e_y < 0
+			err += dx
+			y0 += sy
 		}
 	}
-	return result
 }
 
-func (grid Grid) RandomWalker(numberOfSteps int) {
+// applyRandomWalk performs a random walk starting from (startX, startY).
+// Modifies the grid cells directly.
+func (grid Grid) applyRandomWalk(startX, startY, numberOfSteps int) {
 	gridSize := len(grid)
 	if gridSize == 0 {
 		return
-	} // Cannot walk on empty grid
+	}
 
-	// Ensure start point is valid
-	startX := gridSize / 2
-	startY := gridSize / 2
+	// Ensure start point is valid (should be center, but check anyway)
 	if startX < 0 || startX >= gridSize || startY < 0 || startY >= gridSize {
+		fmt.Printf("WARN: Random walk start point (%d, %d) out of bounds for grid size %d\n", startX, startY, gridSize)
 		return // Invalid start point
 	}
 
-	// Initialize start cell data if nil
-	if grid[startX][startY].Data == nil {
-		// Use local NewBrickData
-		grid[startX][startY].Data = NewBrickData(utils.Cells.Empty, 0)
+	currentX, currentY := startX, startY
+
+	// Apply brick to the starting cell of the walk
+	startCell := &grid[currentX][currentY]
+	if startCell.Data == nil {
+		startCell.Data = NewBrickData(utils.Cells.Brick, 1)
+	} else if startCell.Data.Type == utils.Cells.Brick {
+		startCell.Data.Life++
+		startCell.Data.Level = startCell.Data.Life
+	} else {
+		startCell.Data.Type = utils.Cells.Brick
+		startCell.Data.Life = 1
+		startCell.Data.Level = 1
 	}
 
-	grid[startX][startY].Data.Type = utils.Cells.Brick
-	grid[startX][startY].Data.Life = 1
-	grid[startX][startY].Data.Level = 1
-
-	currentPoint := [2]int{startX, startY}
-
 	for i := 0; i < numberOfSteps; i++ {
-		// Generate potential next step (relative offset)
-		dx := utils.RandomNumberN(1) // -1 or 1
-		dy := utils.RandomNumberN(1) // -1 or 1
-
-		// Randomly choose to step horizontally or vertically
-		nextPoint := currentPoint
-		if rand.Intn(2) == 0 { // Step horizontally
-			nextPoint[0] += dx
-		} else { // Step vertically
-			nextPoint[1] += dy
+		// Generate potential next step (relative offset: N, S, E, W)
+		dx, dy := 0, 0
+		move := rand.Intn(4)
+		switch move {
+		case 0: // North
+			dy = -1
+		case 1: // South
+			dy = 1
+		case 2: // East
+			dx = 1
+		case 3: // West
+			dx = -1
 		}
 
+		nextX, nextY := currentX+dx, currentY+dy
+
 		// Check bounds
-		if nextPoint[0] < 0 || nextPoint[0] >= gridSize || nextPoint[1] < 0 || nextPoint[1] >= gridSize {
-			// If out of bounds, stay put for this step (or try another direction?)
-			// Staying put is simpler.
+		if nextX < 0 || nextX >= gridSize || nextY < 0 || nextY >= gridSize {
+			// If out of bounds, stay put for this step
 			continue
 		}
 
 		// Update the cell at the next point
-		nextCell := &grid[nextPoint[0]][nextPoint[1]] // Get pointer to modify
+		nextCell := &grid[nextX][nextY] // Get pointer to modify
 		if nextCell.Data == nil {
-			// Use local NewBrickData
-			nextCell.Data = NewBrickData(utils.Cells.Empty, 0)
-		}
-
-		if nextCell.Data.Type == utils.Cells.Brick {
+			nextCell.Data = NewBrickData(utils.Cells.Brick, 1)
+		} else if nextCell.Data.Type == utils.Cells.Brick {
 			nextCell.Data.Life++
 			nextCell.Data.Level = nextCell.Data.Life // Update level
 		} else {
@@ -212,7 +208,7 @@ func (grid Grid) RandomWalker(numberOfSteps int) {
 			nextCell.Data.Life = 1
 			nextCell.Data.Level = 1
 		}
-		currentPoint = nextPoint // Update current position
+		currentX, currentY = nextX, nextY // Update current position
 	}
 }
 
@@ -223,7 +219,7 @@ func (grid Grid) Compare(comparedGrid Grid) bool {
 	if grid == nil && comparedGrid == nil {
 		return true
 	}
-	// Case 2: One nil, one not nil - THIS IS THE CRITICAL CHECK
+	// Case 2: One nil, one not nil
 	if grid == nil || comparedGrid == nil {
 		return false
 	}
@@ -247,50 +243,4 @@ func (grid Grid) Compare(comparedGrid Grid) bool {
 	}
 	// If all checks pass, they are equal
 	return true
-}
-
-func (grid Grid) Fill(numberOfVectors, maxVectorSize, randomWalkers, randomSteps int) {
-	if len(grid) == 0 || len(grid)%2 != 0 {
-		panic("Grid size must be non-zero and even for Fill")
-	}
-	gridSize := len(grid)
-	halfGridSize := gridSize / 2
-
-	// Use default config values if parameters are zero
-	cfg := utils.DefaultConfig()
-	if numberOfVectors == 0 {
-		numberOfVectors = cfg.GridFillVectors
-	}
-	if maxVectorSize == 0 {
-		maxVectorSize = cfg.GridFillVectorSize
-	}
-	if randomWalkers == 0 {
-		randomWalkers = cfg.GridFillWalkers // Correct field name
-	}
-	if randomSteps == 0 {
-		randomSteps = cfg.GridFillSteps // Correct field name
-	}
-
-	quarters := [4]Grid{}
-
-	for i := 0; i < 4; i++ {
-		gridSeed := NewGrid(halfGridSize)
-		gridSeed.CreateQuarterGridSeed(numberOfVectors, maxVectorSize)
-		for j := 0; j < randomWalkers; j++ {
-			gridSeed.RandomWalker(randomSteps)
-		}
-		quarters[i] = gridSeed // Store the generated quarter
-	}
-
-	// Rotate quarters appropriately before filling
-	// Q1: Top-Left (no rotation needed)
-	// Q2: Top-Right (needs 1 rotation from its seed generation perspective)
-	// Q3: Bottom-Left (needs 3 rotations)
-	// Q4: Bottom-Right (needs 2 rotations)
-	grid.FillGridWithQuarterGrids(
-		quarters[0],
-		quarters[1].Rotate(),
-		quarters[3].Rotate().Rotate().Rotate(), // Q3 needs 3 rotations total
-		quarters[2].Rotate().Rotate(),          // Q4 needs 2 rotations total
-	)
 }

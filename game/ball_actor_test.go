@@ -1,8 +1,8 @@
+// File: game/ball_actor_test.go
 package game
 
 import (
-	"fmt"
-	// "math" // No longer needed for assertions
+	"math"
 	"testing"
 	"time"
 
@@ -13,127 +13,124 @@ import (
 
 // Using MockGameActor from paddle_actor_test.go
 
-// Helper function to Ask for position
-func askBallPosition(t *testing.T, engine *bollywood.Engine, pid *bollywood.PID) (*PositionResponse, error) {
+// Helper to find the last message of a specific type sent to the mock GameActor
+func findLastSentBallUpdate(t *testing.T, mockGameActor *MockGameActor) (*BallStateUpdate, bool) {
 	t.Helper()
-	// Increased timeout for Ask in tests
-	reply, err := engine.Ask(pid, GetPositionRequest{}, 500*time.Millisecond) // Increased timeout
-	if err != nil {
-		return nil, err
+	var lastMsg *BallStateUpdate
+	found := false
+	messages := mockGameActor.GetMessages() // Get a copy
+	for _, msg := range messages {
+		if typedMsg, ok := msg.(BallStateUpdate); ok {
+			// Need to capture the value correctly in the loop
+			msgCopy := typedMsg
+			lastMsg = &msgCopy
+			found = true
+		}
 	}
-	if posResp, ok := reply.(PositionResponse); ok {
-		return &posResp, nil
-	}
-	return nil, fmt.Errorf("unexpected reply type: %T", reply)
+	return lastMsg, found
 }
 
-func TestBallActor_SpawnsAndMoves(t *testing.T) {
+func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 	engine := bollywood.NewEngine()
-	defer engine.Shutdown(1 * time.Second) // Reduced shutdown time slightly
-
-	mockGameActor := &MockGameActor{} // Not strictly needed, but keeps setup consistent
-	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
-	cfg := utils.DefaultConfig()
-
-	initialBall := NewBall(cfg, 100, 100, 0, 123, false)
-	initialX, initialY := initialBall.X, initialBall.Y
-
-	ballProducer := NewBallActorProducer(*initialBall, mockGameActorPID, cfg)
-	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
-	assert.NotNil(t, ballPID)
-	time.Sleep(50 * time.Millisecond) // Use fixed short delay
-
-	// Ask for initial position
-	pos1, err1 := askBallPosition(t, engine, ballPID)
-	assert.NoError(t, err1)
-	if err1 != nil { // Fail fast if Ask failed
-		t.FailNow()
-	}
-	assert.NotNil(t, pos1)
-	assert.Equal(t, initialX, pos1.X, "Initial X should match")
-	assert.Equal(t, initialY, pos1.Y, "Initial Y should match")
-
-	// Send UpdatePosition command
-	engine.Send(ballPID, UpdatePositionCommand{}, nil)
-	time.Sleep(cfg.GameTickPeriod * 2) // Allow processing
-
-	// Ask for position again
-	pos2, err2 := askBallPosition(t, engine, ballPID)
-	assert.NoError(t, err2)
-	if err2 != nil { // Fail fast if Ask failed
-		t.FailNow()
-	}
-	assert.NotNil(t, pos2)
-
-	// Verify basic movement (X or Y should change)
-	assert.True(t, pos1.X != pos2.X || pos1.Y != pos2.Y, "Ball X or Y should change after UpdatePositionCommand")
-	fmt.Printf("Ball moved from (%d,%d) to (%d,%d)\n", pos1.X, pos1.Y, pos2.X, pos2.Y)
-}
-
-func TestBallActor_ReceivesCommands(t *testing.T) {
-	engine := bollywood.NewEngine()
-	defer engine.Shutdown(1 * time.Second) // Reduced shutdown time slightly
+	defer engine.Shutdown(1 * time.Second)
 
 	mockGameActor := &MockGameActor{}
 	mockGameActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockGameActor }))
 	cfg := utils.DefaultConfig()
 
-	initialBall := NewBall(cfg, 100, 100, 0, 456, false)
-	// Store initial velocity for comparison if needed, but we won't assert it via Ask
-	initialVx, initialVy := initialBall.Vx, initialBall.Vy
+	initialBallValue := NewBall(cfg, 100, 100, 0, 456, false)
+	initialVx, initialVy := initialBallValue.Vx, initialBallValue.Vy
+	initialMass, initialRadius := initialBallValue.Mass, initialBallValue.Radius
 
-	ballProducer := NewBallActorProducer(*initialBall, mockGameActorPID, cfg)
+	ballProducer := NewBallActorProducer(*initialBallValue, mockGameActorPID, cfg)
 	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
-	time.Sleep(50 * time.Millisecond) // Use fixed short delay
+	time.Sleep(50 * time.Millisecond) // Allow actor to start
 
-	// --- Test Sending Commands (Verify actor processes them without error) ---
+	// --- Test Sending Commands (Verify BallStateUpdate sent to GameActor) ---
+	mockGameActor.ClearMessages() // Clear any startup messages
 
 	// Send Velocity Increase Command
 	velRatio := cfg.PowerUpIncreaseVelRatio
 	engine.Send(ballPID, IncreaseVelocityCommand{Ratio: velRatio}, nil)
 	time.Sleep(cfg.GameTickPeriod) // Allow command processing
-
-	// Ask for position (just to ensure actor is still responsive)
-	_, errVel := askBallPosition(t, engine, ballPID)
-	assert.NoError(t, errVel, "Actor should respond after IncreaseVelocityCommand")
-	// REMOVED: Assertions checking posVel.Vx/Vy
+	updateMsg, found := findLastSentBallUpdate(t, mockGameActor)
+	assert.True(t, found, "GameActor should receive BallStateUpdate after IncreaseVelocityCommand")
+	if found {
+		expectedVx := int(math.Floor(float64(initialVx) * velRatio))
+		expectedVy := int(math.Floor(float64(initialVy) * velRatio))
+		if initialVx != 0 && expectedVx == 0 {
+			expectedVx = int(math.Copysign(1, float64(initialVx)))
+		}
+		if initialVy != 0 && expectedVy == 0 {
+			expectedVy = int(math.Copysign(1, float64(initialVy)))
+		}
+		assert.Equal(t, expectedVx, updateMsg.Vx, "Update Vx mismatch")
+		assert.Equal(t, expectedVy, updateMsg.Vy, "Update Vy mismatch")
+		assert.Equal(t, ballPID, updateMsg.PID, "Update PID mismatch")
+		assert.Equal(t, initialBallValue.Id, updateMsg.ID, "Update ID mismatch")
+	}
+	mockGameActor.ClearMessages()
+	initialVx, initialVy = updateMsg.Vx, updateMsg.Vy // Update for next check if found
 
 	// Send Mass Increase Command
 	massAdd := cfg.PowerUpIncreaseMassAdd
 	engine.Send(ballPID, IncreaseMassCommand{Additional: massAdd}, nil)
 	time.Sleep(cfg.GameTickPeriod) // Allow command processing
-
-	// Ask for position
-	_, errMass := askBallPosition(t, engine, ballPID)
-	assert.NoError(t, errMass, "Actor should respond after IncreaseMassCommand")
-	// REMOVED: Assertion checking posMass.Radius
+	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
+	assert.True(t, found, "GameActor should receive BallStateUpdate after IncreaseMassCommand")
+	if found {
+		expectedMass := initialMass + massAdd
+		expectedRadius := initialRadius + massAdd*cfg.PowerUpIncreaseMassSize
+		assert.Equal(t, expectedMass, updateMsg.Mass, "Update Mass mismatch")
+		assert.Equal(t, expectedRadius, updateMsg.Radius, "Update Radius mismatch")
+	}
+	mockGameActor.ClearMessages()
+	initialMass, initialRadius = updateMsg.Mass, updateMsg.Radius // Update for next check if found
 
 	// Send Phasing Command
 	phasingDuration := cfg.BallPhasingTime
 	engine.Send(ballPID, SetPhasingCommand{}, nil)
 	time.Sleep(cfg.GameTickPeriod) // Allow command processing
+	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
+	assert.True(t, found, "GameActor should receive BallStateUpdate after SetPhasingCommand")
+	if found {
+		assert.True(t, updateMsg.Phasing, "Update Phasing should be true")
+	}
+	mockGameActor.ClearMessages()
 
-	// Ask for position
-	_, errPhase1 := askBallPosition(t, engine, ballPID)
-	assert.NoError(t, errPhase1, "Actor should respond after SetPhasingCommand")
-	// REMOVED: Assertion checking posPhase1.Phasing
-
-	// Wait for phasing to expire (ensure timer logic runs)
+	// Wait for phasing to expire (ensure timer logic runs and sends update)
 	time.Sleep(phasingDuration + cfg.GameTickPeriod*2)
+	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
+	assert.True(t, found, "GameActor should receive BallStateUpdate after phasing expires")
+	if found {
+		assert.False(t, updateMsg.Phasing, "Update Phasing should be false after expiry")
+	}
+	mockGameActor.ClearMessages()
 
-	// Ask for position again
-	_, errPhase2 := askBallPosition(t, engine, ballPID)
-	assert.NoError(t, errPhase2, "Actor should respond after phasing timer expires")
-	// REMOVED: Assertion checking posPhase2.Phasing
-
-	// Send Reflect Velocity Command
+	// Send Reflect Velocity Command (Reflect X)
+	vxBeforeReflect := initialVx // Use the last known Vx
 	engine.Send(ballPID, ReflectVelocityCommand{Axis: "X"}, nil)
 	time.Sleep(cfg.GameTickPeriod) // Allow command processing
+	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
+	assert.True(t, found, "GameActor should receive BallStateUpdate after ReflectVelocityCommand")
+	if found {
+		expectedReflectedVx := -vxBeforeReflect
+		if vxBeforeReflect != 0 && expectedReflectedVx == 0 {
+			expectedReflectedVx = int(math.Copysign(1.0, float64(-vxBeforeReflect)))
+		}
+		assert.Equal(t, expectedReflectedVx, updateMsg.Vx, "Update Vx mismatch after reflect")
+	}
+	mockGameActor.ClearMessages()
+	initialVx = updateMsg.Vx // Update for next check if found
 
-	// Ask for position
-	_, errReflect := askBallPosition(t, engine, ballPID)
-	assert.NoError(t, errReflect, "Actor should respond after ReflectVelocityCommand")
-	// REMOVED: Assertions checking posReflect.Vx/Vy
-
-	fmt.Printf("Initial Velocity: (%d, %d)\n", initialVx, initialVy) // Log initial velocity for context
+	// Send Set Velocity Command
+	newVx, newVy := 5, -5
+	engine.Send(ballPID, SetVelocityCommand{Vx: newVx, Vy: newVy}, nil)
+	time.Sleep(cfg.GameTickPeriod) // Allow command processing
+	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
+	assert.True(t, found, "GameActor should receive BallStateUpdate after SetVelocityCommand")
+	if found {
+		assert.Equal(t, newVx, updateMsg.Vx, "Update Vx mismatch after set")
+		assert.Equal(t, newVy, updateMsg.Vy, "Update Vy mismatch after set")
+	}
 }
