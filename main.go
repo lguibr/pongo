@@ -1,4 +1,3 @@
-// File: main.go
 package main
 
 import (
@@ -19,7 +18,6 @@ const servicePort = "8080" // Hardcoded port for Cloud Run
 
 // --- Function to check origin ---
 func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
-	// origin := req.Header.Get("Origin") // REMOVED unused variable
 	// host := req.Host // Removed unused variable
 	// fmt.Printf("Origin Check: Header Origin='%s', Request Host='%s'\n", origin, host) // Removed log
 
@@ -136,7 +134,7 @@ func main() {
 		_, errOrg := url.Parse(originUrlStr)
 		if errLoc != nil || errOrg != nil {
 			fmt.Printf("Error parsing URLs for websocket config (Location: '%s', Origin: '%s'): LocErr=%v, OrgErr=%v\n", locationUrlStr, originUrlStr, errLoc, errOrg)
-			http.Error(w, "Internal Server Error", 500)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -144,7 +142,7 @@ func main() {
 		config, err := websocket.NewConfig(locationUrlStr, originUrlStr)
 		if err != nil {
 			fmt.Printf("Error creating websocket config (Location: %s, Origin: %s): %v\n", locationUrlStr, originUrlStr, err)
-			http.Error(w, "Internal Server Error", 500)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -152,7 +150,7 @@ func main() {
 		err = checkOrigin(config, req) // Call our custom check
 		if err != nil {
 			fmt.Printf("Origin check failed for Origin '%s' against config Origin '%s': %v\n", req.Header.Get("Origin"), config.Origin, err)
-			http.Error(w, "Forbidden", 403)
+			http.Error(w, "Forbidden", http.StatusForbidden) // Use constant
 			return
 		}
 

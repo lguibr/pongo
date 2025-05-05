@@ -1,4 +1,3 @@
-// File: game/paddle_actor_test.go
 package game
 
 import (
@@ -113,7 +112,7 @@ func TestPaddleActor_ReceivesDirectionAndSendsUpdate(t *testing.T) {
 	// 7. Send Same Stop message again (should not send update)
 	engine.Send(paddlePID, stopMsg, nil)
 	time.Sleep(cfg.GameTickPeriod * 2)
-	updateMsg, found = findLastSentMessage[PaddleStateUpdate](t, mockGameActor)
+	_, found = findLastSentMessage[PaddleStateUpdate](t, mockGameActor) // Ignore updateMsg with _
 	assert.False(t, found, "GameActor should NOT have received PaddleStateUpdate for same direction")
 
 }

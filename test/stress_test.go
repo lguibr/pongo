@@ -35,7 +35,7 @@ func clientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin string, stopCh
 		t.Logf("Client failed to dial: %v", err)
 		return
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
 
 	// Consume the first few messages (Assignment, Initial State) blindly for now
 	var tempMsg interface{}

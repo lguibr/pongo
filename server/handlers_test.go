@@ -1,4 +1,3 @@
-// File: server/handlers_test.go
 package server
 
 import (
@@ -138,7 +137,7 @@ func TestHandleSubscribe_SendsFindRequest(t *testing.T) {
 	ws, err := websocket.Dial(wsURL, "", s.URL)
 	assert.NoError(t, err)
 	assert.NotNil(t, ws, "WebSocket connection should not be nil")
-	defer ws.Close()
+	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
 
 	// Use correct message type
 	msg, found := waitForManagerMessage(t, mockManager, game.FindRoomRequest{}, 1*time.Second)

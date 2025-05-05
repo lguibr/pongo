@@ -187,9 +187,9 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 			// fmt.Printf("LOG: GameActor %s: Ball %d cache phasing (%t) differs from BallActor update (%t). Cache takes precedence.\n", a.selfPID, m.ID, ball.Phasing, m.Phasing)
 			// }
 			// ball.Phasing = m.Phasing // DO NOT update phasing from BallActor directly anymore
-		} else {
-			// fmt.Printf("WARN: GameActor %s: Received BallStateUpdate for unknown/nil BallID %d\n", a.selfPID, m.ID) // Removed log
-		}
+		} // else { // Removed SA9003
+		// fmt.Printf("WARN: GameActor %s: Received BallStateUpdate for unknown/nil BallID %d\n", a.selfPID, m.ID) // Removed log
+		// }
 
 	case BroadcastTick: // Message from broadcastTicker
 		a.handleBroadcastTick(ctx)

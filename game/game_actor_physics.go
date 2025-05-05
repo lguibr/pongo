@@ -98,7 +98,7 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 		if ball == nil {
 			continue
 		}
-		ballActorPID := a.ballActors[id] // Get PID
+		ballActorPID := a.ballActors[id]      // Get PID
 		isPhasing := phasingStateThisTick[id] // Use captured state for this tick
 
 		// Get active brick collisions for this ball that might need ending
@@ -134,9 +134,9 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 						if isNewCollision {
 							// fmt.Printf("%s -> Phasing Path: Damaging brick.\n", logPrefix) // Removed log
 							a.damageBrick(ctx, ball, cell, r, c)
-						} else {
-							// fmt.Printf("%s -> Phasing Path: Already damaged this brick this phase.\n", logPrefix) // Removed log
-						}
+						} // else { // Removed SA9003
+						// fmt.Printf("%s -> Phasing Path: Already damaged this brick this phase.\n", logPrefix) // Removed log
+						// }
 						// Do NOT reflect, do NOT send SetPhasingCommand, do NOT reset timer
 					} else { // Use captured state
 						// Non-phasing ball logic: Reflect, damage, start phasing
@@ -273,7 +273,7 @@ func (a *GameActor) handlePaddleCollision(ctx bollywood.Context, ball *Ball, bal
 	}
 
 	// Normalize hit position (-1 to 1)
-	normalizedHitPos := (relativeHitPos / (paddleSpan / 2.0)) * 1.1 // Add slight amplification
+	normalizedHitPos := (relativeHitPos / (paddleSpan / 2.0)) * 1.1    // Add slight amplification
 	normalizedHitPos = math.Max(-1.0, math.Min(1.0, normalizedHitPos)) // Clamp
 
 	// Calculate reflection angle based on hit position
@@ -284,10 +284,14 @@ func (a *GameActor) handlePaddleCollision(ctx bollywood.Context, ball *Ball, bal
 	// Determine base reflection vector based on paddle orientation
 	var baseVx, baseVy float64
 	switch playerIndex {
-	case 0: baseVx, baseVy = -1, 0 // Reflect left from right paddle
-	case 1: baseVx, baseVy = 0, 1  // Reflect down from top paddle
-	case 2: baseVx, baseVy = 1, 0  // Reflect right from left paddle
-	case 3: baseVx, baseVy = 0, -1 // Reflect up from bottom paddle
+	case 0:
+		baseVx, baseVy = -1, 0 // Reflect left from right paddle
+	case 1:
+		baseVx, baseVy = 0, 1 // Reflect down from top paddle
+	case 2:
+		baseVx, baseVy = 1, 0 // Reflect right from left paddle
+	case 3:
+		baseVx, baseVy = 0, -1 // Reflect up from bottom paddle
 	}
 
 	// Rotate base reflection vector by reflectionAngle
@@ -316,8 +320,12 @@ func (a *GameActor) handlePaddleCollision(ctx bollywood.Context, ball *Ball, bal
 
 	// Ensure velocity components are not zero if speed is non-zero
 	if newSpeed > 0 {
-		if finalVx == 0 { finalVx = int(math.Copysign(1.0, newVx)) }
-		if finalVy == 0 { finalVy = int(math.Copysign(1.0, newVy)) }
+		if finalVx == 0 {
+			finalVx = int(math.Copysign(1.0, newVx))
+		}
+		if finalVy == 0 {
+			finalVy = int(math.Copysign(1.0, newVy))
+		}
 	}
 
 	// 2. Update Ball State in Cache
@@ -389,9 +397,9 @@ func (a *GameActor) handleBrickCollision(ctx bollywood.Context, ball *Ball, ball
 		ball.Phasing = true
 		a.startPhasingTimer(ball.Id) // Log is inside this function
 		a.engine.Send(ballActorPID, SetPhasingCommand{}, a.selfPID)
-	} else {
-		// fmt.Printf("%s Not starting phasing (Destroyed: %t, Already Phasing: %t)\n", logPrefix, destroyed, ball.Phasing) // Removed log
-	}
+	} // else { // Removed SA9003
+	// fmt.Printf("%s Not starting phasing (Destroyed: %t, Already Phasing: %t)\n", logPrefix, destroyed, ball.Phasing) // Removed log
+	// }
 }
 
 // damageBrick reduces brick life, handles destruction, scoring, and power-ups.

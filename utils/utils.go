@@ -236,7 +236,7 @@ func JsonLogger(filePath string, data interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // Ignore error on close in defer
 
 	encoder := json.NewEncoder(file)
 	if err := encoder.Encode(data); err != nil {
@@ -251,7 +251,7 @@ func Logger(filePath string, data string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // Ignore error on close in defer
 	if _, err := file.Write([]byte(data)); err != nil {
 		return fmt.Errorf("failed to write to log file: %w", err)
 	}

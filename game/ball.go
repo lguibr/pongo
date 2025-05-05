@@ -184,13 +184,14 @@ func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) {
 
 // ReflectVelocity reverses the velocity along the specified axis, ensuring it doesn't become zero.
 func (ball *Ball) ReflectVelocity(axis string) {
-	if axis == "X" {
+	switch axis {
+	case "X":
 		originalVx := ball.Vx
 		ball.Vx = -ball.Vx
 		if ball.Vx == 0 && originalVx != 0 {
 			ball.Vx = int(math.Copysign(1.0, float64(-originalVx)))
 		}
-	} else if axis == "Y" {
+	case "Y":
 		originalVy := ball.Vy
 		ball.Vy = -ball.Vy
 		if ball.Vy == 0 && originalVy != 0 {

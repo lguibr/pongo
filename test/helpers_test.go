@@ -47,11 +47,12 @@ func ReadWsJSONMessage(t *testing.T, ws *websocket.Conn, timeout time.Duration, 
 
 		// Clear deadline immediately after Receive returns, regardless of error
 		clearDeadlineErr := ws.SetReadDeadline(time.Time{})
-		if clearDeadlineErr != nil && !errors.Is(clearDeadlineErr, net.ErrClosed) {
-			// Log if clearing deadline fails unexpectedly (but prioritize Receive error)
-			// Use t.Logf for logging within tests
-			// t.Logf("Warning: Failed to clear read deadline: %v", clearDeadlineErr)
-		}
+		// if clearDeadlineErr != nil && !errors.Is(clearDeadlineErr, net.ErrClosed) { // Removed SA9003
+		// Log if clearing deadline fails unexpectedly (but prioritize Receive error)
+		// Use t.Logf for logging within tests
+		// t.Logf("Warning: Failed to clear read deadline: %v", clearDeadlineErr)
+		// }
+		_ = clearDeadlineErr // Avoid unused variable error if logging is removed
 
 		// Send the result of Receive (which could be nil, io.EOF, or other errors)
 		readDone <- err

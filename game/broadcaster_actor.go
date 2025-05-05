@@ -50,7 +50,8 @@ func (a *BroadcasterActor) Receive(ctx bollywood.Context) {
 	case RemoveClient:
 		if msg.Conn != nil {
 			a.mu.Lock()
-			if _, exists := a.clients[msg.Conn]; exists { delete(a.clients, msg.Conn) }
+			// if _, exists := a.clients[msg.Conn]; exists { delete(a.clients, msg.Conn) } // Removed S1033
+			delete(a.clients, msg.Conn)
 			a.mu.Unlock()
 		}
 	case BroadcastUpdatesCommand:
@@ -142,7 +143,8 @@ func (a *BroadcasterActor) closeAllConnections(ctx bollywood.Context) {
 func (a *BroadcasterActor) handleDisconnects(ctx bollywood.Context, disconnectedClients []*websocket.Conn) {
 	a.mu.Lock()
 	for _, ws := range disconnectedClients {
-		if _, exists := a.clients[ws]; exists { delete(a.clients, ws) }
+		// if _, exists := a.clients[ws]; exists { delete(a.clients, ws) } // Removed S1033
+		delete(a.clients, ws)
 	}
 	a.mu.Unlock()
 

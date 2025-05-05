@@ -99,15 +99,15 @@ func setupRoomManagerTest(t *testing.T) (*bollywood.Engine, *bollywood.PID, *Roo
 }
 
 // Helper to find a message of a specific type in mock actor's received list
-func findMessage[T any](mockActor *MockManagedGameActor) (*T, bool) {
-	received := mockActor.GetReceived()
-	for _, msg := range received {
-		if typedMsg, ok := msg.(T); ok {
-			return &typedMsg, true
-		}
-	}
-	return nil, false
-}
+// func findMessage[T any](mockActor *MockManagedGameActor) (*T, bool) { // Removed unused function
+// 	received := mockActor.GetReceived()
+// 	for _, msg := range received {
+// 		if typedMsg, ok := msg.(T); ok {
+// 			return &typedMsg, true
+// 		}
+// 	}
+// 	return nil, false
+// }
 
 // --- Tests ---
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net" // Import net
+
 	// "net/http/httptest" // No longer needed directly
 	"strings"
 	"sync"
@@ -38,7 +39,7 @@ func completionClientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin stri
 
 	var ws *websocket.Conn
 	var err error
-	var assignedIndex int = -1
+	// var assignedIndex int = -1 // Removed ineffassign
 
 	// Retry dialing briefly in case of initial connection refused under load
 	for i := 0; i < 3; i++ {
@@ -53,7 +54,7 @@ func completionClientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin stri
 		t.Logf("Client failed to dial after retries: %v", err)
 		return
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
 
 	// 1. Wait for PlayerAssignmentMessage
 	var assignmentMsg game.PlayerAssignmentMessage
@@ -62,7 +63,7 @@ func completionClientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin stri
 		t.Logf("Client failed to receive assignment message: %v", err)
 		return
 	}
-	assignedIndex = assignmentMsg.PlayerIndex
+	assignedIndex := assignmentMsg.PlayerIndex // Assign here
 
 	// Consume InitialPlayersAndBallsState (don't need its content here)
 	var initialEntitiesMsg game.InitialPlayersAndBallsState

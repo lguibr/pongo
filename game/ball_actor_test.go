@@ -70,9 +70,9 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 		assert.Equal(t, initialBallValue.Id, updateMsg.ID, "Update ID mismatch")
 	}
 	mockGameActor.ClearMessages()
-	if found { // Update initial values only if the update was found
-		initialVx, initialVy = updateMsg.Vx, updateMsg.Vy // Update for next check if found
-	}
+	// if found { // Update initial values only if the update was found
+	// initialVx, initialVy = updateMsg.Vx, updateMsg.Vy // Update for next check if found // REMOVED ineffassign
+	// }
 
 	// Send Mass Increase Command
 	massAdd := cfg.PowerUpIncreaseMassAdd
@@ -87,9 +87,9 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 		assert.Equal(t, expectedRadius, updateMsg.Radius, "Update Radius mismatch")
 	}
 	mockGameActor.ClearMessages()
-	if found { // Update initial values only if the update was found
-		initialMass, initialRadius = updateMsg.Mass, updateMsg.Radius // Update for next check if found
-	}
+	// if found { // Update initial values only if the update was found
+	// initialMass, initialRadius = updateMsg.Mass, updateMsg.Radius // Update for next check if found // REMOVED ineffassign
+	// }
 
 	// Send SetPhasing Command
 	engine.Send(ballPID, SetPhasingCommand{}, nil)
@@ -112,7 +112,18 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 	mockGameActor.ClearMessages()
 
 	// Send Reflect Velocity Command (Reflect X)
-	vxBeforeReflect := initialVx // Use the last known Vx
+	vxBeforeReflect := 0 // Need to get the current Vx from the last update if possible
+	// Re-query the state or use the last known value if reliable
+	// For simplicity, let's assume we know the Vx before reflect based on previous steps
+	// If the IncreaseVelocity step ran, Vx would be updated. If not, it's initialVx.
+	// This highlights a potential fragility in the test. A better approach might involve Ask.
+	// Let's assume the IncreaseVelocity step worked and use its expected value.
+	expectedVxAfterIncrease := int(math.Floor(float64(initialBallValue.Vx) * velRatio))
+	if initialBallValue.Vx != 0 && expectedVxAfterIncrease == 0 {
+		expectedVxAfterIncrease = int(math.Copysign(1.0, float64(initialBallValue.Vx)))
+	}
+	vxBeforeReflect = expectedVxAfterIncrease
+
 	engine.Send(ballPID, ReflectVelocityCommand{Axis: "X"}, nil)
 	time.Sleep(cfg.GameTickPeriod) // Allow command processing
 	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
@@ -125,9 +136,9 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 		assert.Equal(t, expectedReflectedVx, updateMsg.Vx, "Update Vx mismatch after reflect")
 	}
 	mockGameActor.ClearMessages()
-	if found { // Update initial values only if the update was found
-		initialVx = updateMsg.Vx // Update for next check if found
-	}
+	// if found { // Update initial values only if the update was found
+	// initialVx = updateMsg.Vx // Update for next check if found // REMOVED ineffassign
+	// }
 
 	// Send Set Velocity Command
 	newVx, newVy := 5, -5

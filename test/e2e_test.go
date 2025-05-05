@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
 	// "math" // Removed unused import
 	"net" // Re-add net import
 	// "net/http/httptest" // No longer needed directly
@@ -45,18 +46,23 @@ func waitForStateCondition(t *testing.T, ws *websocket.Conn, localState *game.Lo
 				if condition(localState) {                                  // Check condition again
 					return true
 				}
-			} else {
-				// Could be another message type (e.g., gameOver), ignore for condition check
-				// t.Logf("Received non-batch message: %s", string(rawMsg))
-			}
+			} // else { // Removed SA9003
+			// Could be another message type (e.g., gameOver), ignore for condition check
+			// t.Logf("Received non-batch message: %s", string(rawMsg))
+			// }
 		} else {
-			netErr, isNetErr := err.(net.Error)
-			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed") || strings.Contains(err.Error(), "reset by peer") || (isNetErr && netErr.Timeout()) {
-				t.Logf("Connection closed or timed out while waiting for condition '%s': %v", description, err)
+			// Simplify error checking for closed connections
+			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed network connection") || strings.Contains(err.Error(), "reset by peer") {
+				t.Logf("Connection closed while waiting for condition '%s': %v", description, err)
 				return false // Condition not met if connection closed
 			}
-			t.Logf("Error reading state while waiting for condition '%s': %v", description, err)
-			// Don't return false immediately on non-fatal read errors, maybe next read works
+			netErr, isNetErr := err.(net.Error)
+			if isNetErr && netErr.Timeout() {
+				// Ignore read timeouts, continue waiting
+			} else {
+				t.Logf("Non-fatal error reading state while waiting for condition '%s': %v", description, err)
+				// Don't return false immediately on non-fatal read errors, maybe next read works
+			}
 		}
 		time.Sleep(50 * time.Millisecond) // Small delay between reads
 	}
@@ -76,7 +82,7 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 	if err != nil {
 		t.FailNow()
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
 
 	// 3. Read initial messages (Assignment + Initial Entities) - Consume them
 	var assignmentMsg game.PlayerAssignmentMessage
@@ -152,8 +158,8 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 	// 9. Disconnect Client by closing the WebSocket
 	fmt.Println("E2E Test: Closing client connection...")
 	err = ws.Close()
-	netErr, isNetErr := err.(net.Error)
-	if err != nil && !errors.Is(err, io.EOF) && !strings.Contains(err.Error(), "use of closed network connection") && !strings.Contains(err.Error(), "connection reset by peer") && !(isNetErr && netErr.Timeout()) {
+	// Ignore common close errors in tests
+	if err != nil && !errors.Is(err, io.EOF) && !strings.Contains(err.Error(), "use of closed network connection") && !strings.Contains(err.Error(), "connection reset by peer") {
 		t.Logf("Note: ws.Close() returned unexpected error: %v", err)
 	}
 
@@ -176,7 +182,7 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 	if err != nil {
 		t.FailNow()
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
 
 	// 3. Read initial messages (Assignment + Initial Entities)
 	var assignmentMsg game.PlayerAssignmentMessage
@@ -192,9 +198,9 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 	fmt.Println("E2E Wall Stick Test: Waiting for wall collision...")
 
 	collisionDetected := false
-	var collidedBallID int = -1
-	var collisionWall int = -1 // 0:Right, 1:Top, 2:Left, 3:Bottom
-	var collisionCoord int     // X or Y coord at collision (original coords)
+	collidedBallID := -1   // Use := for inference
+	collisionWall := -1    // Use := for inference // 0:Right, 1:Top, 2:Left, 3:Bottom
+	var collisionCoord int // X or Y coord at collision (original coords)
 
 	testDeadline := time.Now().Add(e2eTestTimeout - 2*time.Second) // Deadline for the test itself
 
@@ -202,12 +208,17 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 		var rawMsg json.RawMessage
 		err := ReadWsJSONMessage(t, ws, 1*time.Second, &rawMsg)
 		if err != nil {
-			netErr, isNetErr := err.(net.Error)
-			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed") || strings.Contains(err.Error(), "reset by peer") || (isNetErr && netErr.Timeout()) {
+			// Simplify error checking for closed connections
+			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed network connection") || strings.Contains(err.Error(), "reset by peer") {
 				t.Log("Connection closed or timed out during wall stick test.")
 				break
 			}
-			t.Logf("Error reading state during wall stick test: %v", err)
+			netErr, isNetErr := err.(net.Error)
+			if isNetErr && netErr.Timeout() {
+				// Ignore read timeouts, continue waiting
+			} else {
+				t.Logf("Non-fatal error reading state during wall stick test: %v", err)
+			}
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
@@ -231,21 +242,39 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 			for id, ball := range localState.Balls {
 				if ball != nil && ball.Collided {
 					radius := ball.Radius
-					if radius <= 0 { radius = e2eCfg.BallRadius }
+					if radius <= 0 {
+						radius = e2eCfg.BallRadius
+					}
 					buffer := radius + 5 // Allow some buffer near wall
 
 					if ball.X+buffer >= canvasSize { // Near right wall
-						collisionDetected = true; collidedBallID = id; collisionWall = 0; collisionCoord = ball.X
-						t.Logf("Collision detected: Ball %d hit Right Wall (Wall 0) at X=%d", id, ball.X); break
+						collisionDetected = true
+						collidedBallID = id
+						collisionWall = 0
+						collisionCoord = ball.X
+						t.Logf("Collision detected: Ball %d hit Right Wall (Wall 0) at X=%d", id, ball.X)
+						break
 					} else if ball.Y-buffer <= 0 { // Near top wall
-						collisionDetected = true; collidedBallID = id; collisionWall = 1; collisionCoord = ball.Y
-						t.Logf("Collision detected: Ball %d hit Top Wall (Wall 1) at Y=%d", id, ball.Y); break
+						collisionDetected = true
+						collidedBallID = id
+						collisionWall = 1
+						collisionCoord = ball.Y
+						t.Logf("Collision detected: Ball %d hit Top Wall (Wall 1) at Y=%d", id, ball.Y)
+						break
 					} else if ball.X-buffer <= 0 { // Near left wall
-						collisionDetected = true; collidedBallID = id; collisionWall = 2; collisionCoord = ball.X
-						t.Logf("Collision detected: Ball %d hit Left Wall (Wall 2) at X=%d", id, ball.X); break
+						collisionDetected = true
+						collidedBallID = id
+						collisionWall = 2
+						collisionCoord = ball.X
+						t.Logf("Collision detected: Ball %d hit Left Wall (Wall 2) at X=%d", id, ball.X)
+						break
 					} else if ball.Y+buffer >= canvasSize { // Near bottom wall
-						collisionDetected = true; collidedBallID = id; collisionWall = 3; collisionCoord = ball.Y
-						t.Logf("Collision detected: Ball %d hit Bottom Wall (Wall 3) at Y=%d", id, ball.Y); break
+						collisionDetected = true
+						collidedBallID = id
+						collisionWall = 3
+						collisionCoord = ball.Y
+						t.Logf("Collision detected: Ball %d hit Bottom Wall (Wall 3) at Y=%d", id, ball.Y)
+						break
 					}
 				}
 			}
@@ -254,16 +283,26 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 			ball, exists := localState.Balls[collidedBallID]
 			if !exists || ball == nil {
 				t.Logf("Collided ball %d disappeared, assuming test passed for this collision.", collidedBallID)
-				collisionDetected = false; collidedBallID = -1; continue
+				collisionDetected = false
+				collidedBallID = -1
+				continue
 			}
 
 			movedAway := false
 			currentCoord := 0
 			switch collisionWall {
-			case 0: currentCoord = ball.X; movedAway = currentCoord < collisionCoord
-			case 1: currentCoord = ball.Y; movedAway = currentCoord > collisionCoord
-			case 2: currentCoord = ball.X; movedAway = currentCoord > collisionCoord
-			case 3: currentCoord = ball.Y; movedAway = currentCoord < collisionCoord
+			case 0:
+				currentCoord = ball.X
+				movedAway = currentCoord < collisionCoord
+			case 1:
+				currentCoord = ball.Y
+				movedAway = currentCoord > collisionCoord
+			case 2:
+				currentCoord = ball.X
+				movedAway = currentCoord > collisionCoord
+			case 3:
+				currentCoord = ball.Y
+				movedAway = currentCoord < collisionCoord
 			}
 
 			if movedAway {

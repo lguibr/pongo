@@ -192,9 +192,10 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 		if !a.gameOver.CompareAndSwap(false, true) {
 			return // Already processing game over
 		}
-		if !a.isStopping.CompareAndSwap(false, true) {
-			// If not already stopping, mark as stopping now due to game over
-		}
+		// if !a.isStopping.CompareAndSwap(false, true) { // Removed SA9003
+		// If not already stopping, mark as stopping now due to game over
+		// }
+		a.isStopping.CompareAndSwap(false, true) // Mark as stopping if game over triggered
 
 		fmt.Printf("GameActor %s: GAME_OVER - All bricks destroyed.\n", a.selfPID)
 

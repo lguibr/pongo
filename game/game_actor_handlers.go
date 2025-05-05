@@ -381,9 +381,9 @@ func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websock
 		// fmt.Printf("GameActor %s: Forwarding unparseable direction data for player %d to PaddleActor %s\n", a.selfPID, playerIndex, pid)
 		// }
 		a.engine.Send(pid, PaddleDirectionMessage{Direction: directionData}, ctx.Self())
-	} else {
-		// fmt.Printf("WARN: GameActor %s received paddle direction for invalid/unknown player via connection %s\n", a.selfPID, wsConn.RemoteAddr()) // Removed log
-	}
+	} // else { // Removed SA9003
+	// fmt.Printf("WARN: GameActor %s received paddle direction for invalid/unknown player via connection %s\n", a.selfPID, wsConn.RemoteAddr()) // Removed log
+	// }
 }
 
 // --- Ball Handlers ---
@@ -454,7 +454,7 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 
 		// If initial phasing is requested, update cache, send command, and start GameActor timer
 		if setInitialPhasing {
-			ballDataPtr.Phasing = true // Update cache immediately
+			ballDataPtr.Phasing = true  // Update cache immediately
 			a.startPhasingTimer(ballID) // Start GameActor's timer
 			// Send SetPhasingCommand to BallActor so its internal state matches
 			engine.Send(ballPID, SetPhasingCommand{}, selfPID)

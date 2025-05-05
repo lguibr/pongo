@@ -17,13 +17,13 @@ import (
 // MockWebSocket implements PlayerConnection
 // Keep struct definition for reference if needed later
 type MockWebSocket struct {
-	mu       sync.Mutex
+	// mu       sync.Mutex // Removed unused field
 	Written  [][]byte
 	Closed   bool
 	Remote   string
 	ReadChan chan []byte
 	ErrChan  chan error
-	closeSig chan struct{}
+	// closeSig chan struct{} // Removed unused field
 }
 
 // Mock net.Addr
@@ -69,10 +69,10 @@ func (a *MockBroadcasterActor) ClearMessages() {
 
 // --- Helper to wait for a specific message ---
 // Increased timeout significantly
-const waitForStateTimeout = 5000 * time.Millisecond // Increased timeout to 5 seconds
+// const waitForStateTimeout = 5000 * time.Millisecond // Removed unused constant
 
 // Helper to wait for connection close
-const waitForCloseTimeout = 5000 * time.Millisecond // Increased timeout to 5 seconds
+// const waitForCloseTimeout = 5000 * time.Millisecond // Removed unused constant
 
 // --- Tests ---
 
@@ -153,16 +153,16 @@ func waitForGameActorReady(t *testing.T, engine *bollywood.Engine, pid *bollywoo
 }
 
 // Helper to get the last broadcast command from the mock broadcaster
-func getLastBroadcastCommand(t *testing.T, mockBroadcaster *MockBroadcasterActor) *BroadcastUpdatesCommand {
-	t.Helper()
-	receivedMessages := mockBroadcaster.GetMessages()
-	for i := len(receivedMessages) - 1; i >= 0; i-- {
-		if cmd, ok := receivedMessages[i].(BroadcastUpdatesCommand); ok {
-			return &cmd
-		}
-	}
-	return nil
-}
+// func getLastBroadcastCommand(t *testing.T, mockBroadcaster *MockBroadcasterActor) *BroadcastUpdatesCommand { // Removed unused function
+// 	t.Helper()
+// 	receivedMessages := mockBroadcaster.GetMessages()
+// 	for i := len(receivedMessages) - 1; i >= 0; i-- {
+// 		if cmd, ok := receivedMessages[i].(BroadcastUpdatesCommand); ok {
+// 			return &cmd
+// 		}
+// 	}
+// 	return nil
+// }
 
 // --- REFACTORED TEST CASE ---
 func TestGameActor_BrickCollisionAndGridUpdate(t *testing.T) {

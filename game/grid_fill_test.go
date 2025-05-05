@@ -12,13 +12,13 @@ import (
 // NOTE: This test now uses FillSymmetrical internally for checks.
 func TestGrid_Fill(t *testing.T) {
 	type FillTestCase struct {
-		name            string
-		gridSize        int
-		numberOfVectors int // Kept for structure, but not used by FillSymmetrical
-		maxVectorSize   int // Kept for structure, but not used by FillSymmetrical
-		randomWalkers   int // Kept for structure, but not used by FillSymmetrical
-		randomSteps     int // Kept for structure, but not used by FillSymmetrical
-		panics          bool
+		name   string
+		gridSize int
+		// numberOfVectors int // Removed unused field
+		// maxVectorSize   int // Removed unused field
+		// randomWalkers   int // Removed unused field
+		// randomSteps     int // Removed unused field
+		panics bool
 	}
 
 	testCases := []FillTestCase{

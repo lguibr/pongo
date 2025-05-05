@@ -1,12 +1,13 @@
-
+// File: server/connection_handler.go
 package server
 
 import (
 	"encoding/json"
 	"errors" // Import errors
 	"fmt"
-	"net"     // Import net package
-	"reflect" // Import reflect
+	"net" // Import net package
+
+	// "reflect" // Removed unused import
 	"runtime/debug"
 	"sync" // Import sync
 	"time"
@@ -107,9 +108,9 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 				WsConn:    a.conn,
 				Direction: msg.Payload,
 			}, a.selfPID)
-		} else {
-			// fmt.Printf("WARN: ConnectionHandlerActor %s received input before game assignment. Dropping.\n", a.connAddr) // Removed log
-		}
+		} // else { // Removed SA9003
+		// fmt.Printf("WARN: ConnectionHandlerActor %s received input before game assignment. Dropping.\n", a.connAddr) // Removed log
+		// }
 
 	case *net.OpError:
 		// fmt.Printf("ConnectionHandlerActor %s: Received *net.OpError: %v. Cleaning up.\n", a.connAddr, msg) // Removed log
@@ -117,11 +118,11 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 
 	case error:
 		// Check if it's the specific "read loop exited" error to avoid redundant cleanup logs
-		if msg.Error() != "read loop exited" {
-			// fmt.Printf("ConnectionHandlerActor %s: Received error: %v. Cleaning up.\n", a.connAddr, msg) // Removed log
-		} else {
-			// fmt.Printf("ConnectionHandlerActor %s: Received notification: %v. Cleaning up.\n", a.connAddr, msg) // Reduce noise
-		}
+		// if msg.Error() != "read loop exited" { // Removed SA9003
+		// fmt.Printf("ConnectionHandlerActor %s: Received error: %v. Cleaning up.\n", a.connAddr, msg) // Removed log
+		// } else { // Removed SA9003
+		// fmt.Printf("ConnectionHandlerActor %s: Received notification: %v. Cleaning up.\n", a.connAddr, msg) // Reduce noise
+		// }
 		a.cleanup(ctx, msg)
 
 	case bollywood.Stopping:
@@ -142,9 +143,9 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 
 	default:
 		// fmt.Printf("ConnectionHandlerActor %s: Received unexpected message type in Receive: %T, Value: %+v\n", a.connAddr, msg, msg) // Removed log
-		if val := reflect.ValueOf(msg); val.Kind() == reflect.Ptr {
-			// fmt.Printf("ConnectionHandlerActor %s: Underlying type: %T\n", a.connAddr, reflect.Indirect(val).Interface()) // Removed log
-		}
+		// if val := reflect.ValueOf(msg); val.Kind() == reflect.Ptr { // Removed SA9003
+		// fmt.Printf("ConnectionHandlerActor %s: Underlying type: %T\n", a.connAddr, reflect.Indirect(val).Interface()) // Removed log
+		// }
 	}
 }
 
@@ -241,9 +242,9 @@ func (a *ConnectionHandlerActor) cleanup(ctx bollywood.Context, reason error) {
 			// fmt.Printf("ConnectionHandlerActor %s: Cleanup requesting self stop.\n", a.connAddr) // Reduce noise
 			a.engine.Stop(a.selfPID)
 		}
-	} else {
-		// fmt.Printf("ConnectionHandlerActor %s: Cleanup initiated by Stopping message, not stopping self again.\n", a.connAddr) // Reduce noise
-	}
+	} // else { // Removed SA9003
+	// fmt.Printf("ConnectionHandlerActor %s: Cleanup initiated by Stopping message, not stopping self again.\n", a.connAddr) // Reduce noise
+	// }
 }
 
 // performCleanupActions sends disconnect and nils the connection reference.
@@ -256,11 +257,11 @@ func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, re
 		if a.engine != nil && a.selfPID != nil {
 			a.engine.Send(a.gameActorPID, game.PlayerDisconnect{WsConn: connToDisconnect}, a.selfPID)
 		}
-	} else if a.gameActorPID != nil {
-		// Log why disconnect wasn't sent
-		// fmt.Printf("ConnectionHandlerActor %s: Not sending PlayerDisconnect to %s (Reason: %v, Assigned: %t, ConnNil: %t).\n",
-		// 	a.connAddr, a.gameActorPID, reason, a.isAssigned, connToDisconnect == nil) // Reduce noise
-	}
+	} // else if a.gameActorPID != nil { // Removed SA9003
+	// Log why disconnect wasn't sent
+	// fmt.Printf("ConnectionHandlerActor %s: Not sending PlayerDisconnect to %s (Reason: %v, Assigned: %t, ConnNil: %t).\n",
+	// 	a.connAddr, a.gameActorPID, reason, a.isAssigned, connToDisconnect == nil) // Reduce noise
+	// }
 
 	// Close and nil the connection reference
 	if a.conn != nil {
