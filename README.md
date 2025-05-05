@@ -1,6 +1,6 @@
 # PonGo: Multi-Room Pong/Breakout Hybrid
 
-[![Coverage](https://img.shields.io/badge/Coverage-50%25-yellow)](./README.md) [![Unit-tests](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/test.yml?label=UnitTests)](https://github.com/lguibr/pongo/actions/workflows/test.yml) [![Build & Push](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/build.yml?label=Build%20%26%20Push)](https://github.com/lguibr/pongo/actions/workflows/build.yml) [![Lint](https://img.shields.io/github/actions/workflow/status/lguibr/pongo/lint.yml?label=Lint)](https://github.com/lguibr/pongo/actions/workflows/lint.yml) [![Docker Image](https://img.shields.io/docker/pulls/lguibr/pongo.svg?label=Docker%20Pulls)](https://hub.docker.com/r/lguibr/pongo)
+![Coverage](https://img.shields.io/badge/Coverage-52.4%25-yellow)
 
 <img
   src="https://raw.githubusercontent.com/lguibr/pongo/main/bitmap.png"
