@@ -1,3 +1,4 @@
+// File: game/canvas.go
 package game
 
 import (
@@ -21,33 +22,32 @@ func (c *Canvas) GetCanvasSize() int { return c.CanvasSize }
 func (c *Canvas) GetCellSize() int   { return c.CellSize }
 
 func NewCanvas(size, gridSize int) *Canvas {
-	// fmt.Printf("--- [DEBUG] NewCanvas called with size=%d, gridSize=%d ---\n", size, gridSize) // DEBUG REMOVED
-	// originalSize, originalGridSize := size, gridSize                                           // DEBUG REMOVED
+	// Store original values for potential error messages
+	originalSize, originalGridSize := size, gridSize
 
+	// Apply defaults if 0
 	if size == 0 {
-		size = utils.DefaultConfig().CanvasSize // Use default if 0
-		// fmt.Printf("--- [DEBUG] size was 0, set to default: %d ---\n", size) // DEBUG REMOVED
+		size = utils.DefaultConfig().CanvasSize
 	}
 	if gridSize == 0 {
-		gridSize = utils.DefaultConfig().GridSize // Use default if 0
-		// fmt.Printf("--- [DEBUG] gridSize was 0, set to default: %d ---\n", gridSize) // DEBUG REMOVED
+		gridSize = utils.DefaultConfig().GridSize
 	}
 
-	// --- Add Debug Print Before Panic Check ---
-	// fmt.Printf("--- [DEBUG] Checking divisibility: size=%d, gridSize=%d (Originals: %d, %d) ---\n", size, gridSize, originalSize, originalGridSize) // DEBUG REMOVED
+	// --- Perform checks AFTER defaults are applied ---
+	if gridSize < 6 {
+		panic(fmt.Sprintf("GridSize (%d, original: %d) must be greater or equal than 6", gridSize, originalGridSize))
+	}
+
+	if size <= 0 {
+		panic(fmt.Sprintf("Canvas size (%d, original: %d) must be positive", size, originalSize))
+	}
+
 	if size%gridSize != 0 {
-		panicMsg := fmt.Sprintf("Canvas size (%d) must be a multiple of grid size (%d)", size, gridSize)
-		// fmt.Printf("--- [DEBUG] PANICKING: %s ---\n", panicMsg) // DEBUG REMOVED
+		panicMsg := fmt.Sprintf("Canvas size (%d, original: %d) must be a multiple of grid size (%d, original: %d)", size, originalSize, gridSize, originalGridSize)
 		panic(panicMsg)
 	}
-	// --- End Debug Print ---
+	// --- End checks ---
 
-
-	if gridSize < 6 {
-		panic("GridSize must be greater or equal than 6")
-	}
-
-	// fmt.Printf("--- [DEBUG] NewCanvas proceeding with size=%d, gridSize=%d ---\n", size, gridSize) // DEBUG REMOVED
 	return &Canvas{
 		Grid:       NewGrid(gridSize), // Grid starts empty, filled by GameActor later
 		Width:      size,

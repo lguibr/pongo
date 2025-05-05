@@ -112,6 +112,7 @@ func ApplyUpdatesToLocalState(localState *LocalGameState, updates []interface{},
 					ball.Vx = update.Vx
 					ball.Vy = update.Vy
 					ball.Collided = update.Collided // Update collision flag
+					ball.Phasing = update.Phasing   // Update phasing state
 				}
 			} else {
 				t.Errorf("Failed to unmarshal BallPositionUpdate: %v", err)

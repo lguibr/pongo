@@ -1,4 +1,4 @@
-// File: server/websocket.go
+
 package server
 
 import (
@@ -18,7 +18,6 @@ func New(engine *bollywood.Engine, roomManagerPID *bollywood.PID) *Server { // C
 	if engine == nil || roomManagerPID == nil {
 		panic("Server requires a valid engine and roomManagerPID")
 	}
-	// fmt.Println("Creating new Server instance.") // Removed redundant log
 	return &Server{
 		engine:         engine,
 		roomManagerPID: roomManagerPID, // Store RoomManager PID

@@ -84,7 +84,7 @@ func (a *PaddleActor) Receive(ctx bollywood.Context) {
 		// Actor stopped
 
 	default:
-		fmt.Printf("PaddleActor %s (Index %d) received unknown message: %T\n", pidStr, a.state.Index, msg)
+		// fmt.Printf("PaddleActor %s (Index %d) received unknown message: %T\n", pidStr, a.state.Index, msg) // Removed log
 		// If it was an Ask, reply with error
 		if ctx.RequestID() != "" {
 			ctx.Reply(fmt.Errorf("paddle actor received unknown message type: %T", msg))

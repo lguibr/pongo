@@ -1,7 +1,6 @@
-
 # PonGo E2E Tests
 
-This directory contains End-to-End (E2E) tests for the PonGo backend. These tests simulate client interactions with the running server.
+This directory contains End-to-End (E2E) tests for the PonGo backend. These tests simulate client interactions with the running server by connecting via WebSocket and verifying the sequence and content of messages received from the server.
 
 ## Running Tests
 
@@ -26,12 +25,12 @@ go test ./test -v -race
 ## Tests
 
 *   **`e2e_test.go`**:
-    *   `TestE2E_SinglePlayerConnectMoveStopDisconnect`: Simulates a single player connecting, sending move and stop commands, and disconnecting. Verifies basic state updates (received via atomic `GameUpdatesBatch` messages) and connection handling.
-    *   `TestE2E_BallWallNonStick`: Verifies that balls correctly move away from walls after a collision is detected and broadcasted (via atomic `BallPositionUpdate` messages).
+    *   `TestE2E_SinglePlayerConnectMoveStopDisconnect`: Simulates a single player connecting, receiving initial state, sending move and stop commands, and disconnecting. Verifies the sequence of messages and basic state updates (e.g., paddle `IsMoving` flag) received via atomic `GameUpdatesBatch` messages.
+    *   `TestE2E_BallWallNonStick`: Verifies that balls correctly move away from walls after a collision. It monitors `BallPositionUpdate` messages, detects when a ball's `Collided` flag is true near a wall, and then checks subsequent updates to ensure the ball's position changes away from that wall.
 *   **`stress_test.go`**:
-    *   `TestE2E_StressTestMultipleRooms`: Simulates multiple concurrent clients connecting and sending random movement commands for a sustained period. This test is designed to check server stability and performance under load, including handling concurrent connections and actor shutdowns. It doesn't have strict gameplay assertions but checks for crashes, deadlocks, and basic connection success rates. Run this test without the `-short` flag. Monitor server logs during the test for potential issues.
+    *   `TestE2E_StressTestMultipleRooms`: Simulates multiple concurrent clients connecting and sending random movement commands for a sustained period. This test checks server stability and performance under load, including handling concurrent connections, actor message passing, and actor shutdowns. It primarily asserts that a high percentage of clients connect successfully and the server doesn't crash.
 *   **`stress_game_completion_test.go`**:
-    *   `TestE2E_StressTestGameCompletion`: Simulates many clients connecting and waiting for their respective games to finish (all bricks destroyed). Uses an ultra-fast game configuration to accelerate completion. Checks how many games successfully finish (clients receive `GameOverMessage`) within the test duration.
+    *   `TestE2E_StressTestGameCompletion`: Simulates many clients connecting and waiting for their respective games to finish (all bricks destroyed). Uses an ultra-fast game configuration (`utils.UltraFastGameConfig`) to accelerate completion. Checks how many games successfully finish (clients receive `GameOverMessage`) within the test duration, asserting a minimum completion rate.
 
 ## Profiling E2E Tests
 

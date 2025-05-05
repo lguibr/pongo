@@ -19,9 +19,9 @@ const servicePort = "8080" // Hardcoded port for Cloud Run
 
 // --- Function to check origin ---
 func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
-	origin := req.Header.Get("Origin")
-	host := req.Host
-	fmt.Printf("Origin Check: Header Origin='%s', Request Host='%s'\n", origin, host)
+	// origin := req.Header.Get("Origin") // REMOVED unused variable
+	// host := req.Host // Removed unused variable
+	// fmt.Printf("Origin Check: Header Origin='%s', Request Host='%s'\n", origin, host) // Removed log
 
 	// If Origin header is present, let websocket.Origin perform the default check.
 	// If it's missing, we might allow based on Host or other criteria.
@@ -40,7 +40,7 @@ func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
 			return nil // Allow connection
 		}
 		// Origin header was present and matched the config's expected origin.
-		fmt.Printf("Origin Check: websocket.Origin check passed for origin %s\n", config.Origin)
+		// fmt.Printf("Origin Check: websocket.Origin check passed for origin %s\n", config.Origin) // Removed log
 		return nil // Origin check passed
 	}
 
@@ -74,7 +74,7 @@ func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
 
 func main() {
 	// --- ADD A UNIQUE MARKER TO CONFIRM THIS VERSION IS RUNNING ---
-	fmt.Println(">>> RUNNING CODE VERSION: [Lucas-Apr28-v1.1.4-CleanupRefactor] <<<")
+	fmt.Println(">>> RUNNING CODE VERSION: [LG-Apr28-v1.1.4-CleanupRefactor] <<<")
 	// --- END MARKER ---
 
 	// 0. Load Configuration
@@ -117,7 +117,7 @@ func main() {
 			scheme = "wss"
 			originScheme = "https"
 		}
-		fmt.Printf("Handle /subscribe: Detected scheme: %s (Origin scheme: %s)\n", scheme, originScheme)
+		// fmt.Printf("Handle /subscribe: Detected scheme: %s (Origin scheme: %s)\n", scheme, originScheme) // Removed log
 
 		// Construct URLs carefully using the Host header
 		// Location URL (where the WebSocket endpoint is)
@@ -128,7 +128,7 @@ func main() {
 		if originUrlStr == "" {
 			// Construct a default origin if header is missing
 			originUrlStr = fmt.Sprintf("%s://%s", originScheme, req.Host)
-			fmt.Printf("Handle /subscribe: Origin header missing, using constructed origin: %s\n", originUrlStr)
+			// fmt.Printf("Handle /subscribe: Origin header missing, using constructed origin: %s\n", originUrlStr) // Removed log
 		}
 
 		// Validate constructed URLs before creating config
@@ -157,7 +157,7 @@ func main() {
 		}
 
 		// If origin check passes, serve the actual handler using the original Handler interface
-		fmt.Printf("Origin check passed for Origin '%s', serving WebSocket handler.\n", config.Origin)
+		// fmt.Printf("Origin check passed for Origin '%s', serving WebSocket handler.\n", config.Origin) // Removed log
 		subscribeHandler.ServeHTTP(w, req) // Use the original handler
 	})
 	// --- END MODIFICATION ---

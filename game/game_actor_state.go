@@ -2,7 +2,7 @@
 package game
 
 import (
-	// "sync" // Removed unused import
+	// "fmt" // Removed unused import
 
 	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/utils"
@@ -131,6 +131,7 @@ func (a *GameActor) updateInternalState() {
 					X: ball.X, Y: ball.Y, // Original coords
 					R3fX: r3fX, R3fY: r3fY, // R3F coords
 					Vx: ball.Vx, Vy: ball.Vy, Collided: collidedState,
+					Phasing: ball.Phasing, // Include current phasing state
 				}
 				a.addUpdate(update)
 			}

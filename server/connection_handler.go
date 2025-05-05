@@ -1,4 +1,4 @@
-// File: server/connection_handler.go
+
 package server
 
 import (
@@ -108,17 +108,17 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 				Direction: msg.Payload,
 			}, a.selfPID)
 		} else {
-			fmt.Printf("WARN: ConnectionHandlerActor %s received input before game assignment. Dropping.\n", a.connAddr)
+			// fmt.Printf("WARN: ConnectionHandlerActor %s received input before game assignment. Dropping.\n", a.connAddr) // Removed log
 		}
 
 	case *net.OpError:
-		fmt.Printf("ConnectionHandlerActor %s: Received *net.OpError: %v. Cleaning up.\n", a.connAddr, msg)
+		// fmt.Printf("ConnectionHandlerActor %s: Received *net.OpError: %v. Cleaning up.\n", a.connAddr, msg) // Removed log
 		a.cleanup(ctx, msg)
 
 	case error:
 		// Check if it's the specific "read loop exited" error to avoid redundant cleanup logs
 		if msg.Error() != "read loop exited" {
-			fmt.Printf("ConnectionHandlerActor %s: Received error: %v. Cleaning up.\n", a.connAddr, msg)
+			// fmt.Printf("ConnectionHandlerActor %s: Received error: %v. Cleaning up.\n", a.connAddr, msg) // Removed log
 		} else {
 			// fmt.Printf("ConnectionHandlerActor %s: Received notification: %v. Cleaning up.\n", a.connAddr, msg) // Reduce noise
 		}
@@ -141,9 +141,9 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		})
 
 	default:
-		fmt.Printf("ConnectionHandlerActor %s: Received unexpected message type in Receive: %T, Value: %+v\n", a.connAddr, msg, msg)
+		// fmt.Printf("ConnectionHandlerActor %s: Received unexpected message type in Receive: %T, Value: %+v\n", a.connAddr, msg, msg) // Removed log
 		if val := reflect.ValueOf(msg); val.Kind() == reflect.Ptr {
-			fmt.Printf("ConnectionHandlerActor %s: Underlying type: %T\n", a.connAddr, reflect.Indirect(val).Interface())
+			// fmt.Printf("ConnectionHandlerActor %s: Underlying type: %T\n", a.connAddr, reflect.Indirect(val).Interface()) // Removed log
 		}
 	}
 }

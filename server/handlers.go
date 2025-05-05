@@ -1,4 +1,4 @@
-// File: server/handlers.go
+
 package server
 
 import (
@@ -36,7 +36,7 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 					close(handlerDone)
 				}
 			}
-			fmt.Printf("HandleSubscribe: Handler finished for %s\n", connectionAddr)
+			// fmt.Printf("HandleSubscribe: Handler finished for %s\n", connectionAddr) // Removed log
 		}()
 
 		engine := s.GetEngine()
@@ -65,7 +65,7 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 			return
 		}
 
-		fmt.Printf("HandleSubscribe: Spawned ConnectionHandlerActor %s for %s. Waiting for completion...\n", handlerPID, connectionAddr)
+		// fmt.Printf("HandleSubscribe: Spawned ConnectionHandlerActor %s for %s. Waiting for completion...\n", handlerPID, connectionAddr) // Removed log
 
 		// Wait here until the ConnectionHandlerActor signals it's done
 		<-handlerDone

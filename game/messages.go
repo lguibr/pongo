@@ -9,71 +9,215 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// --- Common Message Header ---
+// --- Message Header ---
+// Used for identifying message types after unmarshalling from JSON
 type MessageHeader struct {
 	MessageType string `json:"messageType"`
 }
 
-// --- Brick State Update (for FullGridUpdate) ---
-// Contains essential info needed for rendering state for a single brick.
-type BrickStateUpdate struct {
-	X    float64        `json:"x"`    // R3F X coordinate (centered)
-	Y    float64        `json:"y"`    // R3F Y coordinate (centered, Y-up)
-	Life int            `json:"life"` // Current life
-	Type utils.CellType `json:"type"` // Current type
+// --- WebSocket Messages (Client <-> Server) ---
+
+// PlayerAssignmentMessage informs the client of their assigned index.
+type PlayerAssignmentMessage struct {
+	MessageType string `json:"messageType"` // "playerAssignment"
+	PlayerIndex int    `json:"playerIndex"`
 }
 
-// --- Messages TO/FROM RoomManager ---
+// InitialPaddleState includes R3F coordinates for initial state messages.
+type InitialPaddleState struct {
+	Paddle // Embed original data
+	R3fX   float64 `json:"r3fX"`
+	R3fY   float64 `json:"r3fY"`
+}
+
+// InitialBallState includes R3F coordinates for initial state messages.
+type InitialBallState struct {
+	Ball // Embed original data
+	R3fX float64 `json:"r3fX"`
+	R3fY float64 `json:"r3fY"`
+}
+
+// InitialPlayersAndBallsState sends the initial state of all players and balls to a new client.
+// Includes pre-calculated R3F coordinates.
+type InitialPlayersAndBallsState struct {
+	MessageType string               `json:"messageType"` // "initialPlayersAndBallsState"
+	Players     []*Player            `json:"players"`
+	Paddles     []InitialPaddleState `json:"paddles"` // Now includes R3F coords
+	Balls       []InitialBallState   `json:"balls"`   // Now includes R3F coords
+}
+
+// GameUpdatesBatch bundles multiple atomic updates for efficient network transmission.
+type GameUpdatesBatch struct {
+	MessageType string        `json:"messageType"` // "gameUpdates"
+	Updates     []interface{} `json:"updates"`     // Slice of different update message types
+}
+
+// GameOverMessage signals the end of the game.
+type GameOverMessage struct {
+	MessageType string             `json:"messageType"` // "gameOver"
+	WinnerIndex int                `json:"winnerIndex"` // -1 for a tie or no winner
+	FinalScores [utils.MaxPlayers]int32 `json:"finalScores"`
+	Reason      string             `json:"reason"`
+	RoomPID     string             `json:"roomPID"` // PID of the game room that ended
+}
+
+// --- Atomic Update Messages (Included in GameUpdatesBatch) ---
+
+// PlayerJoined signals a new player has joined the room. Includes R3F coords.
+type PlayerJoined struct {
+	MessageType string `json:"messageType"` // "playerJoined"
+	Player      Player `json:"player"`      // Player data (value type)
+	Paddle      Paddle `json:"paddle"`      // Initial paddle state (value type)
+	R3fX        float64 `json:"r3fX"`        // R3F X coordinate for paddle center
+	R3fY        float64 `json:"r3fY"`        // R3F Y coordinate for paddle center
+}
+
+// PlayerLeft signals a player has left the room.
+type PlayerLeft struct {
+	MessageType string `json:"messageType"` // "playerLeft"
+	Index       int    `json:"index"`
+}
+
+// BallSpawned signals a new ball has been added. Includes R3F coords.
+type BallSpawned struct {
+	MessageType string `json:"messageType"` // "ballSpawned"
+	Ball        Ball   `json:"ball"`        // Ball data (value type)
+	R3fX        float64 `json:"r3fX"`        // R3F X coordinate for ball center
+	R3fY        float64 `json:"r3fY"`        // R3F Y coordinate for ball center
+}
+
+// BallRemoved signals a ball has been removed.
+type BallRemoved struct {
+	MessageType string `json:"messageType"` // "ballRemoved"
+	ID          int    `json:"id"`
+}
+
+// BallPositionUpdate provides the latest position and state of a ball. Includes R3F coords.
+type BallPositionUpdate struct {
+	MessageType string `json:"messageType"` // "ballPositionUpdate"
+	ID          int    `json:"id"`
+	X           int    `json:"x"`    // Original X
+	Y           int    `json:"y"`    // Original Y
+	R3fX        float64 `json:"r3fX"` // R3F X coordinate
+	R3fY        float64 `json:"r3fY"` // R3F Y coordinate
+	Vx          int    `json:"vx"`
+	Vy          int    `json:"vy"`
+	Collided    bool   `json:"collided"` // Collision flag
+	Phasing     bool   `json:"phasing"`  // Phasing state
+}
+
+// PaddlePositionUpdate provides the latest position and state of a paddle. Includes R3F coords.
+type PaddlePositionUpdate struct {
+	MessageType string `json:"messageType"` // "paddlePositionUpdate"
+	Index       int    `json:"index"`
+	X           int    `json:"x"`      // Original X
+	Y           int    `json:"y"`      // Original Y
+	R3fX        float64 `json:"r3fX"`   // R3F X coordinate for paddle center
+	R3fY        float64 `json:"r3fY"`   // R3F Y coordinate for paddle center
+	Width       int    `json:"width"`  // Include dimensions for frontend geometry
+	Height      int    `json:"height"`
+	Vx          int    `json:"vx"`
+	Vy          int    `json:"vy"`
+	IsMoving    bool   `json:"isMoving"` // Movement state
+	Collided    bool   `json:"collided"` // Collision flag
+}
+
+// BrickStateUpdate represents the state of a single brick cell. Includes R3F coords.
+type BrickStateUpdate struct {
+	// MessageType string `json:"messageType"` // "brickStateUpdate" - Removed, part of FullGridUpdate
+	X    float64       `json:"x"`    // R3F X coordinate for cell center
+	Y    float64       `json:"y"`    // R3F Y coordinate for cell center
+	Life int           `json:"life"` // Remaining life
+	Type utils.CellType `json:"type"` // Type (Brick, Empty, etc.)
+}
+
+// FullGridUpdate sends the state of ALL grid cells. Includes R3F coords.
+type FullGridUpdate struct {
+	MessageType string             `json:"messageType"` // "fullGridUpdate"
+	CellSize    int                `json:"cellSize"`    // Cell size for geometry scaling
+	Bricks      []BrickStateUpdate `json:"bricks"`      // Flat list of all brick states
+}
+
+// ScoreUpdate signals a change in a player's score.
+type ScoreUpdate struct {
+	MessageType string `json:"messageType"` // "scoreUpdate"
+	Index       int    `json:"index"`
+	Score       int32  `json:"score"`
+}
+
+// BallOwnershipChange signals that a ball's owner has changed.
+type BallOwnershipChange struct {
+	MessageType   string `json:"messageType"` // "ballOwnerChanged"
+	ID            int    `json:"id"`
+	NewOwnerIndex int    `json:"newOwnerIndex"` // -1 for ownerless
+}
+
+// --- Actor Messages (Internal Communication) ---
+
+// --- RoomManagerActor Messages ---
+
+// FindRoomRequest asks the RoomManager to find or create a room.
 type FindRoomRequest struct {
-	ReplyTo *bollywood.PID
+	ReplyTo *bollywood.PID // PID of the actor requesting the room (ConnectionHandlerActor)
 }
+
+// AssignRoomResponse is the reply from RoomManager with the assigned GameActor PID.
 type AssignRoomResponse struct {
-	RoomPID *bollywood.PID
+	RoomPID *bollywood.PID // nil if no room could be assigned
 }
+
+// GameRoomEmpty notifies the RoomManager that a GameActor is finished or empty.
 type GameRoomEmpty struct {
 	RoomPID *bollywood.PID
 }
+
+// GetRoomListRequest asks the RoomManager for the list of active rooms (used by HTTP handler via Ask).
 type GetRoomListRequest struct{}
+
+// RoomListResponse contains the map of active rooms and player counts.
 type RoomListResponse struct {
-	Rooms map[string]int
+	Rooms map[string]int // Map of Room PID string to player count
 }
 
-// --- Messages TO GameActor ---
+// --- ConnectionHandlerActor Messages ---
+
+// InternalReadLoopMsg wraps data read from WebSocket for processing by the actor.
+type InternalReadLoopMsg struct {
+	Payload []byte
+}
+
+// --- GameActor Messages ---
+
+// AssignPlayerToRoom tells the GameActor to add a player associated with a WebSocket connection.
 type AssignPlayerToRoom struct {
 	WsConn *websocket.Conn
 }
+
+// PlayerDisconnect tells the GameActor that a player's connection was lost.
 type PlayerDisconnect struct {
 	WsConn *websocket.Conn
 }
+
+// ForwardedPaddleDirection carries paddle input from ConnectionHandler to GameActor.
 type ForwardedPaddleDirection struct {
-	WsConn    *websocket.Conn
-	Direction []byte
-}
-type DestroyExpiredBall struct {
-	BallID int
-}
-type SpawnBallCommand struct {
-	OwnerIndex       int
-	X, Y             int
-	ExpireIn         time.Duration
-	IsPermanent      bool
-	SetInitialPhasing bool // New field to force phasing on spawn for testing
-}
-// Message from BallActor telling GameActor to apply damage
-type ApplyBrickDamage struct {
-	BallID int      // ID of the ball that caused the damage
-	Coord  [2]int   // [col, row] of the brick to damage
-	BallX  int      // Ball's X position at time of damage (for power-up spawn)
-	BallY  int      // Ball's Y position at time of damage (for power-up spawn)
-	OwnerIndex int  // Ball's owner at time of damage (for scoring/power-up)
+	WsConn    *websocket.Conn // Corrected type: Use *websocket.Conn
+	Direction []byte          // Raw JSON payload {"direction": "..."}
 }
 
-// --- State Updates FROM Child Actors TO GameActor ---
+// GameTick signals the GameActor to perform a physics update.
+type GameTick struct{}
+
+// BroadcastTick signals the GameActor to broadcast the current state.
+type BroadcastTick struct{}
+
+// PaddleStateUpdate sent from PaddleActor to GameActor when internal state changes.
 type PaddleStateUpdate struct {
 	PID       *bollywood.PID
 	Index     int
-	Direction string
+	Direction string // Internal direction ("left", "right", "")
 }
+
+// BallStateUpdate sent from BallActor to GameActor when internal state changes.
 type BallStateUpdate struct {
 	PID     *bollywood.PID
 	ID      int
@@ -84,145 +228,116 @@ type BallStateUpdate struct {
 	Phasing bool
 }
 
-// --- Commands TO Child Actors ---
-type SetPhasingCommand struct{}
-type IncreaseVelocityCommand struct{ Ratio float64 }
-type IncreaseMassCommand struct{ Additional int }
-type ReflectVelocityCommand struct{ Axis string }
-type SetVelocityCommand struct{ Vx, Vy int }
-type DestroyBallCommand struct{}
-type PaddleDirectionMessage struct{ Direction []byte }
-// Message from GameActor telling BallActor to check brick damage
-type DamageBrickCommand struct {
-	Coord [2]int // [col, row] of the brick intersected
+// SpawnBallCommand tells GameActor to create a new ball.
+type SpawnBallCommand struct {
+	OwnerIndex        int
+	X, Y              int           // Optional initial position (0,0 for default near owner)
+	ExpireIn          time.Duration // 0 for permanent balls
+	IsPermanent       bool
+	SetInitialPhasing bool // Flag to make the ball phase immediately on spawn
 }
 
+// DestroyExpiredBall tells GameActor to remove a ball that reached its expiry time.
+type DestroyExpiredBall struct {
+	BallID int
+}
 
-// --- Messages TO/FROM BroadcasterActor ---
+// stopPhasingTimerMsg is an internal message sent by time.AfterFunc when a ball's phasing ends.
+type stopPhasingTimerMsg struct {
+	BallID int
+}
+
+// --- BroadcasterActor Messages ---
+
+// AddClient tells the Broadcaster to start sending updates to a new connection.
 type AddClient struct {
 	Conn *websocket.Conn
 }
+
+// RemoveClient tells the Broadcaster to stop sending updates to a connection.
 type RemoveClient struct {
 	Conn *websocket.Conn
 }
+
+// BroadcastUpdatesCommand sends a batch of updates from GameActor to BroadcasterActor.
 type BroadcastUpdatesCommand struct {
 	Updates []interface{}
 }
 
-// --- Specific Messages TO Client (via Broadcaster or directly) ---
-type PlayerAssignmentMessage struct {
-	MessageType string `json:"messageType"` // "playerAssignment"
-	PlayerIndex int    `json:"playerIndex"`
+// --- PaddleActor Messages ---
+
+// PaddleDirectionMessage carries the raw direction payload to the PaddleActor.
+type PaddleDirectionMessage struct {
+	Direction []byte // Raw JSON payload {"direction": "..."}
 }
 
-// --- Initial State Message Structures (Modified) ---
+// --- BallActor Messages ---
 
-// InitialPaddleState includes core Paddle data and its initial R3F coordinates.
-type InitialPaddleState struct {
-	Paddle // Embed core Paddle data
-	R3fX   float64 `json:"r3fX"` // Initial R3F X coordinate
-	R3fY   float64 `json:"r3fY"` // Initial R3F Y coordinate
+// ReflectVelocityCommand tells the BallActor to reverse velocity on an axis.
+type ReflectVelocityCommand struct {
+	Axis string // "X" or "Y"
 }
 
-// InitialBallState includes core Ball data and its initial R3F coordinates.
-type InitialBallState struct {
-	Ball // Embed core Ball data
-	R3fX float64 `json:"r3fX"` // Initial R3F X coordinate
-	R3fY float64 `json:"r3fY"` // Initial R3F Y coordinate
+// SetVelocityCommand tells the BallActor to set a specific velocity.
+type SetVelocityCommand struct {
+	Vx, Vy int
 }
 
-// InitialPlayersAndBallsState sends the state of existing entities to a newly joined player.
-// Uses the new structs that include R3F coordinates.
-type InitialPlayersAndBallsState struct {
-	MessageType string                `json:"messageType"` // "initialPlayersAndBallsState"
-	Players     []*Player             `json:"players"`     // Array of existing Player data
-	Paddles     []InitialPaddleState `json:"paddles"`     // Array of existing Paddle data WITH R3F coords
-	Balls       []InitialBallState    `json:"balls"`       // Array of existing Ball data WITH R3F coords
-	// Add CanvasSize if needed by frontend for calculations (e.g., scaling)
-	// CanvasSize int `json:"canvasSize"`
+// SetPhasingCommand tells the BallActor to enter the phasing state.
+type SetPhasingCommand struct{}
+
+// StopPhasingCommand tells the BallActor to exit the phasing state.
+type StopPhasingCommand struct{}
+
+// IncreaseVelocityCommand tells the BallActor to increase its speed.
+type IncreaseVelocityCommand struct {
+	Ratio float64
 }
 
-// --- End Initial State Message Structures ---
-
-type GameOverMessage struct {
-	MessageType string   `json:"messageType"` // "gameOver"
-	WinnerIndex int      `json:"winnerIndex"`
-	FinalScores [4]int32 `json:"finalScores"`
-	Reason      string   `json:"reason"`
-	RoomPID     string   `json:"roomPid"`
+// IncreaseMassCommand tells the BallActor to increase its mass and radius.
+type IncreaseMassCommand struct {
+	Additional int
 }
 
-// --- Atomic Update Messages (Batched for Broadcast) ---
-type GameUpdatesBatch struct {
-	MessageType string        `json:"messageType"` // "gameUpdates"
-	Updates     []interface{} `json:"updates"`
-}
-type BallPositionUpdate struct {
-	MessageType string  `json:"messageType"` // "ballPositionUpdate"
-	ID          int     `json:"id"`
-	X           int     `json:"x"` // Original X
-	Y           int     `json:"y"` // Original Y
-	R3fX        float64 `json:"r3fX"` // Centered R3F X
-	R3fY        float64 `json:"r3fY"` // Centered R3F Y (Y-up)
-	Vx          int     `json:"vx"`
-	Vy          int     `json:"vy"`
-	Collided    bool    `json:"collided"`
-}
-type PaddlePositionUpdate struct {
-	MessageType string  `json:"messageType"` // "paddlePositionUpdate"
-	Index       int     `json:"index"`
-	X           int     `json:"x"` // Original X
-	Y           int     `json:"y"` // Original Y
-	R3fX        float64 `json:"r3fX"` // Centered R3F X of center
-	R3fY        float64 `json:"r3fY"` // Centered R3F Y of center (Y-up)
-	Width       int     `json:"width"` // Original Width
-	Height      int     `json:"height"` // Original Height
-	Vx          int     `json:"vx"`
-	Vy          int     `json:"vy"`
-	IsMoving    bool    `json:"isMoving"`
-	Collided    bool    `json:"collided"`
+// DestroyBallCommand tells the BallActor to stop itself.
+type DestroyBallCommand struct{}
+
+// --- Internal Test Messages ---
+
+// internalAddBallTestMsg allows tests to directly add a ball and its actor PID to GameActor state.
+type internalAddBallTestMsg struct {
+	Ball *Ball
+	PID  *bollywood.PID
 }
 
-// FullGridUpdate sends the state of ALL grid cells as a flat list with R3F coordinates.
-type FullGridUpdate struct {
-	MessageType string             `json:"messageType"` // "fullGridUpdate"
-	CellSize    int                `json:"cellSize"`    // Include cell size for geometry scaling
-	Bricks      []BrickStateUpdate `json:"bricks"`      // List containing state and R3F coords for ALL cells
+// internalStartTickersTestMsg allows tests to trigger ticker start in GameActor.
+type internalStartTickersTestMsg struct{}
+
+// internalTestingAddPlayerAndStart allows tests to add a player and start the game loop.
+type internalTestingAddPlayerAndStart struct {
+	PlayerIndex int
 }
 
-type ScoreUpdate struct {
-	MessageType string `json:"messageType"` // "scoreUpdate"
-	Index       int    `json:"index"`
-	Score       int32  `json:"score"`
-}
-type BallOwnershipChange struct {
-	MessageType   string `json:"messageType"` // "ballOwnerChanged"
-	ID            int    `json:"id"`
-	NewOwnerIndex int    `json:"newOwnerIndex"`
-}
-type BallSpawned struct {
-	MessageType string  `json:"messageType"` // "ballSpawned"
-	Ball        Ball    `json:"ball"`        // Original Ball struct
-	R3fX        float64 `json:"r3fX"`        // Initial R3F X
-	R3fY        float64 `json:"r3fY"`        // Initial R3F Y
-}
-type BallRemoved struct {
-	MessageType string `json:"messageType"` // "ballRemoved"
-	ID          int    `json:"id"`
-}
-type PlayerJoined struct {
-	MessageType string  `json:"messageType"` // "playerJoined"
-	Player      Player  `json:"player"`      // Original Player struct
-	Paddle      Paddle  `json:"paddle"`      // Original Paddle struct
-	R3fX        float64 `json:"r3fX"`        // Initial Paddle R3F X (center)
-	R3fY        float64 `json:"r3fY"`        // Initial Paddle R3F Y (center)
-}
-type PlayerLeft struct {
-	MessageType string `json:"messageType"` // "playerLeft"
-	Index       int    `json:"index"`
+// internalGetBallRequest asks GameActor for a specific ball's state (used via Ask).
+type internalGetBallRequest struct {
+	BallID int
 }
 
-// --- Internal Actor Messages ---
-type GameTick struct{}
-type BroadcastTick struct{}
-type InternalReadLoopMsg struct{ Payload []byte }
+// internalGetBallResponse is the reply containing the ball state.
+type internalGetBallResponse struct {
+	Ball   *Ball // Pointer to a copy of the ball state
+	Exists bool
+}
+
+// internalGetBrickRequest asks GameActor for a specific brick's state (used via Ask).
+type internalGetBrickRequest struct {
+	Row, Col int
+}
+
+// internalGetBrickResponse is the reply containing the brick state.
+type internalGetBrickResponse struct {
+	Life    int
+	Type    utils.CellType
+	Exists  bool // Does the cell exist in the grid?
+	IsBrick bool // Is the cell currently a brick?
+}

@@ -3,7 +3,6 @@ package game
 
 import (
 	"fmt"
-	// "sync" // Removed unused import
 	"time"
 
 	"github.com/lguibr/bollywood"
@@ -26,21 +25,26 @@ func (a *GameActor) handleStart(ctx bollywood.Context) {
 	} else {
 		fmt.Printf("GameActor %s: Started. Using pre-assigned Broadcaster: %s.\n", a.selfPID, a.broadcasterPID)
 	}
-	// Tickers are started when the first player joins
+	// Tickers are started when the first player joins or via internal test message
 }
 
 // startTickers starts the physics and broadcast tickers.
+// Now callable internally via message or by handlePlayerConnect.
 func (a *GameActor) startTickers(ctx bollywood.Context) {
 	a.tickerMu.Lock()
+	defer a.tickerMu.Unlock() // Ensure unlock happens
+
 	if a.physicsTicker == nil {
 		a.physicsTicker = time.NewTicker(a.cfg.GameTickPeriod)
+		// Ensure channel is fresh if previously stopped
 		select {
 		case <-a.stopPhysicsCh: a.stopPhysicsCh = make(chan struct{})
 		default:
 		}
 		stopCh := a.stopPhysicsCh
 		tickerCh := a.physicsTicker.C
-		a.tickerMu.Unlock()
+		// Unlock before starting goroutine to avoid deadlock if goroutine accesses mutex
+		// a.tickerMu.Unlock() // Moved to defer
 
 		go func() {
 			defer func() { if r := recover(); r != nil { fmt.Printf("PANIC recovered in GameActor %s Physics Ticker: %v\n", a.selfPID, r) } }()
@@ -55,20 +59,22 @@ func (a *GameActor) startTickers(ctx bollywood.Context) {
 				}
 			}
 		}()
-	} else { a.tickerMu.Unlock() }
+	} // else { a.tickerMu.Unlock() } // Removed redundant unlock
 
-	a.tickerMu.Lock()
+	// a.tickerMu.Lock() // Lock already held
 	if a.broadcastTicker == nil {
 		broadcastInterval := time.Second / time.Duration(a.cfg.BroadcastRateHz)
 		if broadcastInterval <= 0 { broadcastInterval = 16 * time.Millisecond } // Default to ~60Hz if config is 0 or less
 		a.broadcastTicker = time.NewTicker(broadcastInterval)
+		// Ensure channel is fresh if previously stopped
 		select {
 		case <-a.stopBroadcastCh: a.stopBroadcastCh = make(chan struct{})
 		default:
 		}
 		stopCh := a.stopBroadcastCh
 		tickerCh := a.broadcastTicker.C
-		a.tickerMu.Unlock()
+		// Unlock before starting goroutine
+		// a.tickerMu.Unlock() // Moved to defer
 
 		go func() {
 			defer func() { if r := recover(); r != nil { fmt.Printf("PANIC recovered in GameActor %s Broadcast Ticker: %v\n", a.selfPID, r) } }()
@@ -83,7 +89,7 @@ func (a *GameActor) startTickers(ctx bollywood.Context) {
 				}
 			}
 		}()
-	} else { a.tickerMu.Unlock() }
+	} // else { a.tickerMu.Unlock() } // Removed redundant unlock
 }
 
 // stopTickers stops the physics and broadcast tickers safely using the mutex.
@@ -109,6 +115,7 @@ func (a *GameActor) performCleanup() {
 		fmt.Printf("GameActor %s: Performing cleanup...\n", a.selfPID)
 		a.stopTickers()
 		a.cleanupChildActorsAndConnections()
+		a.cleanupPhasingTimers() // Clean up phasing timers
 		a.logPerformanceMetrics()
 		fmt.Printf("GameActor %s: Cleanup complete.\n", a.selfPID)
 	})
@@ -148,6 +155,18 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 		for _, pid := range ballsToStop { if pid != nil { currentEngine.Stop(pid) } }
 	} else {
 		fmt.Printf("WARN: GameActor %s: Engine is nil during cleanupChildActorsAndConnections.\n", a.selfPID)
+	}
+}
+
+// cleanupPhasingTimers stops all active phasing timers.
+func (a *GameActor) cleanupPhasingTimers() {
+	a.phasingTimersMu.Lock()
+	defer a.phasingTimersMu.Unlock()
+	for id, timer := range a.phasingTimers {
+		if timer != nil {
+			timer.Stop()
+		}
+		delete(a.phasingTimers, id)
 	}
 }
 

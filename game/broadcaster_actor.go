@@ -1,3 +1,4 @@
+// File: game/broadcaster_actor.go
 // File: backend/game/broadcaster_actor.go
 package game
 
@@ -58,12 +59,12 @@ func (a *BroadcasterActor) Receive(ctx bollywood.Context) {
 		fmt.Printf("Broadcaster %s: Received GameOverMessage for room %s. Broadcasting and closing connections.\n", a.selfPID, msg.RoomPID)
 		a.broadcastGameOverAndClose(ctx, msg)
 	case bollywood.Stopping:
-		fmt.Printf("Broadcaster %s: Stopping. Closing remaining connections.\n", a.selfPID)
+		// fmt.Printf("Broadcaster %s: Stopping. Closing remaining connections.\n", a.selfPID) // Removed log
 		a.closeAllConnections(ctx)
 	case bollywood.Stopped:
 		// Actor stopped
 	default:
-		fmt.Printf("BroadcasterActor %s: Received unknown message type: %T\n", a.selfPID, msg)
+		// fmt.Printf("BroadcasterActor %s: Received unknown message type: %T\n", a.selfPID, msg) // Removed log
 	}
 }
 
@@ -129,7 +130,7 @@ func (a *BroadcasterActor) closeAllConnections(ctx bollywood.Context) {
 	a.mu.Unlock()
 
 	if len(clientsToClose) > 0 {
-		fmt.Printf("Broadcaster %s: Closing %d connections.\n", a.selfPID, len(clientsToClose))
+		// fmt.Printf("Broadcaster %s: Closing %d connections.\n", a.selfPID, len(clientsToClose)) // Removed log
 		for _, ws := range clientsToClose {
 			_ = ws.Close()
 			if a.gameActorPID != nil && ctx.Engine() != nil { ctx.Engine().Send(a.gameActorPID, PlayerDisconnect{WsConn: ws}, a.selfPID) }

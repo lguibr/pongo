@@ -59,10 +59,10 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 		expectedVx := int(math.Floor(float64(initialVx) * velRatio))
 		expectedVy := int(math.Floor(float64(initialVy) * velRatio))
 		if initialVx != 0 && expectedVx == 0 {
-			expectedVx = int(math.Copysign(1, float64(initialVx)))
+			expectedVx = int(math.Copysign(1.0, float64(initialVx)))
 		}
 		if initialVy != 0 && expectedVy == 0 {
-			expectedVy = int(math.Copysign(1, float64(initialVy)))
+			expectedVy = int(math.Copysign(1.0, float64(initialVy)))
 		}
 		assert.Equal(t, expectedVx, updateMsg.Vx, "Update Vx mismatch")
 		assert.Equal(t, expectedVy, updateMsg.Vy, "Update Vy mismatch")
@@ -70,7 +70,9 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 		assert.Equal(t, initialBallValue.Id, updateMsg.ID, "Update ID mismatch")
 	}
 	mockGameActor.ClearMessages()
-	initialVx, initialVy = updateMsg.Vx, updateMsg.Vy // Update for next check if found
+	if found { // Update initial values only if the update was found
+		initialVx, initialVy = updateMsg.Vx, updateMsg.Vy // Update for next check if found
+	}
 
 	// Send Mass Increase Command
 	massAdd := cfg.PowerUpIncreaseMassAdd
@@ -85,10 +87,11 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 		assert.Equal(t, expectedRadius, updateMsg.Radius, "Update Radius mismatch")
 	}
 	mockGameActor.ClearMessages()
-	initialMass, initialRadius = updateMsg.Mass, updateMsg.Radius // Update for next check if found
+	if found { // Update initial values only if the update was found
+		initialMass, initialRadius = updateMsg.Mass, updateMsg.Radius // Update for next check if found
+	}
 
-	// Send Phasing Command
-	phasingDuration := cfg.BallPhasingTime
+	// Send SetPhasing Command
 	engine.Send(ballPID, SetPhasingCommand{}, nil)
 	time.Sleep(cfg.GameTickPeriod) // Allow command processing
 	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
@@ -98,12 +101,13 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 	}
 	mockGameActor.ClearMessages()
 
-	// Wait for phasing to expire (ensure timer logic runs and sends update)
-	time.Sleep(phasingDuration + cfg.GameTickPeriod*2)
+	// Send StopPhasing Command
+	engine.Send(ballPID, StopPhasingCommand{}, nil)
+	time.Sleep(cfg.GameTickPeriod) // Allow command processing
 	updateMsg, found = findLastSentBallUpdate(t, mockGameActor)
-	assert.True(t, found, "GameActor should receive BallStateUpdate after phasing expires")
+	assert.True(t, found, "GameActor should receive BallStateUpdate after StopPhasingCommand")
 	if found {
-		assert.False(t, updateMsg.Phasing, "Update Phasing should be false after expiry")
+		assert.False(t, updateMsg.Phasing, "Update Phasing should be false after StopPhasingCommand")
 	}
 	mockGameActor.ClearMessages()
 
@@ -121,7 +125,9 @@ func TestBallActor_ReceivesCommandsAndSendsUpdate(t *testing.T) {
 		assert.Equal(t, expectedReflectedVx, updateMsg.Vx, "Update Vx mismatch after reflect")
 	}
 	mockGameActor.ClearMessages()
-	initialVx = updateMsg.Vx // Update for next check if found
+	if found { // Update initial values only if the update was found
+		initialVx = updateMsg.Vx // Update for next check if found
+	}
 
 	// Send Set Velocity Command
 	newVx, newVy := 5, -5
