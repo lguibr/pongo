@@ -35,6 +35,12 @@ jobs:
         cache: true
         cache-dependency-path: 'go.sum'
 
+    - name: Download Go Modules
+      run: go mod download
+
+    - name: Remove vendor directory if exists # Ensure module cache is used
+      run: rm -rf vendor
+
     - name: Run Go Tests with Coverage
       run: |
         go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
