@@ -9,35 +9,28 @@ import (
 )
 
 // TestGrid_Fill tests the new centralized Fill method.
+// NOTE: This test now uses FillSymmetrical internally for checks.
 func TestGrid_Fill(t *testing.T) {
 	type FillTestCase struct {
 		name            string
 		gridSize        int
-		numberOfVectors int
-		maxVectorSize   int
-		randomWalkers   int
-		randomSteps     int
+		numberOfVectors int // Kept for structure, but not used by FillSymmetrical
+		maxVectorSize   int // Kept for structure, but not used by FillSymmetrical
+		randomWalkers   int // Kept for structure, but not used by FillSymmetrical
+		randomSteps     int // Kept for structure, but not used by FillSymmetrical
 		panics          bool
 	}
 
 	testCases := []FillTestCase{
 		{
-			name:            "10x10 Grid Default Params",
-			gridSize:        10,
-			numberOfVectors: 0, // Use defaults
-			maxVectorSize:   0,
-			randomWalkers:   0,
-			randomSteps:     0,
-			panics:          false,
+			name:     "10x10 Grid Default Params",
+			gridSize: 10,
+			panics:   false,
 		},
 		{
-			name:            "6x6 Grid Min Params",
-			gridSize:        6,
-			numberOfVectors: 1,
-			maxVectorSize:   1,
-			randomWalkers:   1,
-			randomSteps:     1,
-			panics:          false,
+			name:     "6x6 Grid Min Params",
+			gridSize: 6,
+			panics:   false,
 		},
 		{
 			name:     "Odd Grid Size",
@@ -50,13 +43,9 @@ func TestGrid_Fill(t *testing.T) {
 			panics:   true,
 		},
 		{
-			name:            "Large Grid",
-			gridSize:        32,
-			numberOfVectors: 50,
-			maxVectorSize:   10,
-			randomWalkers:   10,
-			randomSteps:     20,
-			panics:          false,
+			name:     "Large Grid",
+			gridSize: 32,
+			panics:   false,
 		},
 	}
 
@@ -64,50 +53,107 @@ func TestGrid_Fill(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			didPanic, _ := utils.AssertPanics(t, func() {
 				grid := NewGrid(test.gridSize)
-				grid.Fill(test.numberOfVectors, test.maxVectorSize, test.randomWalkers, test.randomSteps)
+				// Use FillSymmetrical now, passing the config
+				cfg := utils.DefaultConfig() // Get config for FillSymmetrical
+				// Update config grid size if needed for the test case
+				if test.gridSize > 0 && test.gridSize%2 == 0 {
+					cfg.GridSize = test.gridSize
+					// Recalculate CellSize if needed, though FillSymmetrical doesn't use it directly
+					// cfg.CellSize = cfg.CanvasSize / cfg.GridSize
+				} else if !test.panics {
+					// If not expecting panic but grid size is invalid for FillSymmetrical,
+					// use default grid size from config to avoid panic within the test logic itself.
+					// This assumes the panic check is primarily for NewGrid.
+					cfg.GridSize = utils.DefaultConfig().GridSize
+				}
+
+				// Call with the config struct
+				grid.FillSymmetrical(cfg)
 
 				// Check if grid is filled (at least one brick) if not panicking
 				if !test.panics {
 					hasBrick := false
 					brickCount := 0
-					center := test.gridSize / 2
-					centerBrickCount := 0
+					// Use the actual grid size from the created grid for checks
+					actualGridSize := len(grid)
+					if actualGridSize == 0 { // Handle case where NewGrid might have panicked earlier
+						return
+					}
+					center := float64(actualGridSize) / 2.0 // Use float for center calculation
 
 					for r := range grid {
 						for c := range grid[r] {
 							if grid[r][c].Data != nil && grid[r][c].Data.Type == utils.Cells.Brick {
 								hasBrick = true
 								brickCount++
-								// Check if brick is near center (adjust radius as needed)
-								distSq := (r-center)*(r-center) + (c-center)*(c-center)
-								if distSq <= (test.gridSize/4)*(test.gridSize/4) { // Check within inner quarter radius
-									centerBrickCount++
-								}
 							}
 						}
 					}
-					if test.name == "6x6 Grid Min Params" {
-						// For minimal params, it's okay if no bricks are generated outside the cleared center
-						assert.GreaterOrEqual(t, brickCount, 0, "Brick count should be non-negative for minimal params")
-					} else if !hasBrick && test.numberOfVectors > 0 && test.randomWalkers > 0 { // Only expect bricks if generation params > 0
-						t.Errorf("Expected grid to have at least one brick after Fill, but found none.")
+
+					// Adjust assertion based on parameters and grid size
+					if test.name == "10x10 Grid Default Params" {
+						// Default clear zones (center=0, wall=3) leave cells (3,3) to (6,6) quadrant.
+						// With density 0.7, expect bricks.
+						assert.Greater(t, brickCount, 0, "Expected 10x10 grid with default clear zones to have bricks")
+						t.Logf("10x10 grid generated %d bricks", brickCount)
+					} else if actualGridSize > 6 && cfg.GridFillDensity > 0 {
+						// For larger grids with density > 0, expect some bricks
+						assert.True(t, hasBrick, "Expected grid to have at least one brick after FillSymmetrical")
+					} else {
+						// Smaller grids or zero density might end up empty, don't strictly require bricks
+						t.Logf("Small grid (%dx%d) or zero density, brick generation not strictly asserted.", actualGridSize, actualGridSize)
 					}
 
-					if hasBrick {
-						t.Logf("Grid %s: Total Bricks: %d, Bricks near center: %d", test.name, brickCount, centerBrickCount)
-						// Basic check for centralization: more than a small fraction should be near center
-						// Relaxed threshold from 0.2 to 0.1
-						if brickCount > 10 && float64(centerBrickCount)/float64(brickCount) < 0.1 {
-							t.Errorf("Expected bricks to be more centralized, but only %.2f%% are near center.", 100*float64(centerBrickCount)/float64(brickCount))
+					// Check if center is clear (adjust radius based on config)
+					clearRadius := float64(cfg.GridClearCenterRadius)
+					centerClear := true
+					for r := 0; r < actualGridSize; r++ {
+						for c := 0; c < actualGridSize; c++ {
+							if grid[r][c].Data != nil && grid[r][c].Data.Type == utils.Cells.Brick {
+								// Calculate distance from cell center to grid center
+								cellCenterX := float64(c) + 0.5
+								cellCenterY := float64(r) + 0.5
+								distSq := (cellCenterX-center)*(cellCenterX-center) + (cellCenterY-center)*(cellCenterY-center)
+
+								// Check if the cell center is strictly within the clear radius squared
+								if distSq < clearRadius*clearRadius {
+									centerClear = false
+									t.Logf("Brick found at (%d, %d) which is inside center clear radius %.2f (DistSq: %.2f)", r, c, clearRadius, distSq)
+									break
+								}
+							}
+						}
+						if !centerClear {
+							break
 						}
 					}
+					assert.True(t, centerClear, "Center area should be clear")
 
-					// Check if center is clear
-					centerCell := grid[center][center]
-					assert.NotNil(t, centerCell.Data, "Center cell data should not be nil")
-					if centerCell.Data != nil {
-						assert.Equal(t, utils.Cells.Empty, centerCell.Data.Type, "Center cell should be empty")
+					// Check wall distance (adjust based on config)
+					wallDist := cfg.GridClearWallDistance
+					wallClear := true
+					for i := 0; i < actualGridSize; i++ {
+						for d := 0; d < wallDist; d++ {
+							// Check bounds before accessing grid elements
+							if d >= actualGridSize || actualGridSize-1-d < 0 {
+								continue // Skip if distance makes index invalid
+							}
+							// Top, Bottom, Left, Right walls
+							if (grid[i][d].Data != nil && grid[i][d].Data.Type == utils.Cells.Brick) ||
+								(grid[i][actualGridSize-1-d].Data != nil && grid[i][actualGridSize-1-d].Data.Type == utils.Cells.Brick) ||
+								(grid[d][i].Data != nil && grid[d][i].Data.Type == utils.Cells.Brick) ||
+								(grid[actualGridSize-1-d][i].Data != nil && grid[actualGridSize-1-d][i].Data.Type == utils.Cells.Brick) {
+								wallClear = false
+								t.Logf("Brick found at wall distance %d (index %d or %d)", d, i, actualGridSize-1-d)
+								break
+							}
+						}
+						if !wallClear {
+							break
+						}
 					}
+					assert.True(t, wallClear, "Wall proximity area should be clear")
+
 				}
 			}, "")
 
@@ -116,67 +162,4 @@ func TestGrid_Fill(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestGrid_drawLineAndApplyBricks tests the line drawing helper.
-func TestGrid_drawLineAndApplyBricks(t *testing.T) {
-	gridSize := 10
-	grid := NewGrid(gridSize)
-
-	// Draw a diagonal line
-	grid.drawLineAndApplyBricks(1, 1, 5, 5)
-
-	// Check some points along the line
-	assert.NotNil(t, grid[1][1].Data)
-	assert.Equal(t, utils.Cells.Brick, grid[1][1].Data.Type)
-	assert.Equal(t, 1, grid[1][1].Data.Life)
-
-	assert.NotNil(t, grid[3][3].Data)
-	assert.Equal(t, utils.Cells.Brick, grid[3][3].Data.Type)
-	assert.Equal(t, 1, grid[3][3].Data.Life)
-
-	assert.NotNil(t, grid[5][5].Data)
-	assert.Equal(t, utils.Cells.Brick, grid[5][5].Data.Type)
-	assert.Equal(t, 1, grid[5][5].Data.Life)
-
-	// Check a point not on the line
-	assert.Nil(t, grid[1][2].Data)
-
-	// Draw overlapping line
-	grid.drawLineAndApplyBricks(3, 3, 7, 7)
-	assert.NotNil(t, grid[3][3].Data)
-	assert.Equal(t, utils.Cells.Brick, grid[3][3].Data.Type)
-	assert.Equal(t, 2, grid[3][3].Data.Life, "Life should increment on overlap") // Life should increase
-	assert.Equal(t, 2, grid[3][3].Data.Level)
-
-	assert.NotNil(t, grid[6][6].Data)
-	assert.Equal(t, utils.Cells.Brick, grid[6][6].Data.Type)
-	assert.Equal(t, 1, grid[6][6].Data.Life) // New part of the line
-}
-
-// TestGrid_applyRandomWalk tests the random walk helper.
-func TestGrid_applyRandomWalk(t *testing.T) {
-	gridSize := 10
-	grid := NewGrid(gridSize)
-	center := gridSize / 2
-	steps := 20
-
-	grid.applyRandomWalk(center, center, steps)
-
-	// Check start point
-	assert.NotNil(t, grid[center][center].Data)
-	assert.Equal(t, utils.Cells.Brick, grid[center][center].Data.Type)
-	assert.GreaterOrEqual(t, grid[center][center].Data.Life, 1)
-
-	// Check total bricks (should be <= steps + 1)
-	brickCount := 0
-	for r := range grid {
-		for c := range grid[r] {
-			if grid[r][c].Data != nil && grid[r][c].Data.Type == utils.Cells.Brick {
-				brickCount++
-			}
-		}
-	}
-	assert.LessOrEqual(t, brickCount, steps+1, "Number of bricks should not exceed steps+1")
-	assert.Greater(t, brickCount, 0, "Should have at least one brick (start point)")
 }

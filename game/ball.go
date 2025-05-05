@@ -1,3 +1,4 @@
+// File: game/ball.go
 package game
 
 import (
@@ -156,19 +157,25 @@ func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) {
 		fmt.Printf("WARN: getCenterIndex called with invalid canvasSize (%d) or GridSize (%d)\n", ball.canvasSize, cfg.GridSize)
 		return 0, 0
 	}
-	cellSize := ball.canvasSize / cfg.GridSize
-	if cellSize == 0 {
-		fmt.Printf("WARN: getCenterIndex calculated cellSize = 0 (canvasSize=%d, gridSize=%d)\n", ball.canvasSize, cfg.GridSize)
+	// Ensure cellSize is positive before division
+	cellSizeFloat := float64(ball.canvasSize) / float64(cfg.GridSize)
+	if cellSizeFloat <= 0 {
+		fmt.Printf("WARN: getCenterIndex calculated cellSize <= 0 (canvasSize=%d, gridSize=%d)\n", ball.canvasSize, cfg.GridSize)
 		return 0, 0
 	}
-	gridSize := ball.canvasSize / cellSize // Recalculate actual grid size based on integer division
 
-	col = ball.X / cellSize
-	row = ball.Y / cellSize
+	// Calculate column and row using floating-point division and floor
+	colFloat := math.Floor(float64(ball.X) / cellSizeFloat)
+	rowFloat := math.Floor(float64(ball.Y) / cellSizeFloat)
 
-	// Clamp to valid grid indices
-	finalCol := utils.MaxInt(0, utils.MinInt(gridSize-1, col))
-	finalRow := utils.MaxInt(0, utils.MinInt(gridSize-1, row))
+	// Convert to integer
+	col = int(colFloat)
+	row = int(rowFloat)
+
+	// Clamp to valid grid indices using cfg.GridSize
+	maxIndex := cfg.GridSize - 1
+	finalCol := utils.MaxInt(0, utils.MinInt(maxIndex, col))
+	finalRow := utils.MaxInt(0, utils.MinInt(maxIndex, row))
 
 	return finalCol, finalRow
 }

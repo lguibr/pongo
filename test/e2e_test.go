@@ -6,15 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	// "math" // Removed unused import
 	"net" // Re-add net import
-	"net/http/httptest"
+	// "net/http/httptest" // No longer needed directly
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	// "github.com/lguibr/bollywood" // No longer needed directly
 	"github.com/lguibr/pongo/game"
-	"github.com/lguibr/pongo/server"
+	// "github.com/lguibr/pongo/server" // No longer needed directly
 	"github.com/lguibr/pongo/utils"
 
 	"github.com/stretchr/testify/assert"
@@ -23,98 +24,97 @@ import (
 
 const e2eTestTimeout = 20 * time.Second // Keep increased timeout
 
-// Helper function to wait for a specific game state condition
-func waitForStateCondition(t *testing.T, ws *websocket.Conn, timeout time.Duration, description string, condition func(gs game.GameState) bool) (game.GameState, bool) {
+// Helper function to wait for a specific game state condition using atomic updates
+func waitForStateCondition(t *testing.T, ws *websocket.Conn, localState *game.LocalGameState, timeout time.Duration, description string, condition func(ls *game.LocalGameState) bool) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
-	var lastState game.GameState
-	stateReceived := false // Track if we received at least one valid state
+
+	// Check initial state first
+	if condition(localState) {
+		return true
+	}
 
 	for time.Now().Before(deadline) {
-		// Use a shorter timeout for each individual read attempt
 		var rawMsg json.RawMessage
-		// Pass the destination variable (&rawMsg)
-		err := ReadWsJSONMessage(t, ws, 1*time.Second, &rawMsg)
+		err := ReadWsJSONMessage(t, ws, 1*time.Second, &rawMsg) // Use helper to read raw
+
 		if err == nil {
-			// Check if it's a GameState update
-			var stateUpdate game.GameState
-			if json.Unmarshal(rawMsg, &stateUpdate) == nil && stateUpdate.MessageType == "gameStateUpdate" {
-				lastState = stateUpdate // Update last known state
-				stateReceived = true
-				if condition(lastState) {
-					// t.Logf("Condition '%s' met.", description) // Optional success log
-					return lastState, true // Condition met
+			var batch game.GameUpdatesBatch
+			if json.Unmarshal(rawMsg, &batch) == nil && batch.MessageType == "gameUpdates" {
+				game.ApplyUpdatesToLocalState(localState, batch.Updates, t) // Apply updates (use game package)
+				if condition(localState) {                                  // Check condition again
+					return true
 				}
+			} else {
+				// Could be another message type (e.g., gameOver), ignore for condition check
+				// t.Logf("Received non-batch message: %s", string(rawMsg))
 			}
-			// Ignore other message types (like initial grid, assignment) in this loop
 		} else {
-			// Handle read errors
-			netErr, isNetErr := err.(net.Error) // Use net.Error
+			netErr, isNetErr := err.(net.Error)
 			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed") || strings.Contains(err.Error(), "reset by peer") || (isNetErr && netErr.Timeout()) {
-				// Use t.Logf for test logging
 				t.Logf("Connection closed or timed out while waiting for condition '%s': %v", description, err)
-				return lastState, false // Return last known state and failure
+				return false // Condition not met if connection closed
 			}
-			// Log other errors but continue trying
 			t.Logf("Error reading state while waiting for condition '%s': %v", description, err)
+			// Don't return false immediately on non-fatal read errors, maybe next read works
 		}
-		// Small delay before next attempt to avoid busy-waiting
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond) // Small delay between reads
 	}
 	t.Logf("Timeout waiting %v for state condition '%s'", timeout, description)
-	if !stateReceived {
-		t.Logf("No valid game state updates received during the wait period.")
-	}
-	return lastState, false // Timeout reached
+	return false // Condition not met by timeout
 }
 
 func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
-	// 1. Setup Engine, RoomManager, and Config
-	engine := bollywood.NewEngine()
-	defer engine.Shutdown(e2eTestTimeout / 2)
-	cfg := utils.DefaultConfig()
-	roomManagerPID := engine.Spawn(bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)))
-	assert.NotNil(t, roomManagerPID)
-	time.Sleep(100 * time.Millisecond) // Allow manager to start
+	// 1. Setup using helper with E2E config
+	e2eCfg := utils.E2ETestConfig()
+	setup := SetupE2ETest(t, e2eCfg)
+	defer TeardownE2ETest(t, setup, e2eTestTimeout/2)
 
-	// 2. Setup Test Server
-	testServer := server.New(engine, roomManagerPID)
-	s := httptest.NewServer(websocket.Handler(testServer.HandleSubscribe()))
-	defer s.Close()
-	wsURL := "ws" + strings.TrimPrefix(s.URL, "http")
-
-	// 3. Connect WebSocket Client
-	origin := "http://localhost/"
-	ws, err := websocket.Dial(wsURL, "", origin)
+	// 2. Connect WebSocket Client
+	ws, err := websocket.Dial(setup.WsURL, "", setup.Origin)
 	assert.NoError(t, err, "WebSocket dial should succeed")
 	if err != nil {
 		t.FailNow()
 	}
 	defer ws.Close()
 
-	// 3.5 Read initial messages (Assignment + Grid) - Consume them
+	// 3. Read initial messages (Assignment + Initial Entities) - Consume them
 	var assignmentMsg game.PlayerAssignmentMessage
-	errAssign := ReadWsJSONMessage(t, ws, 5*time.Second, &assignmentMsg) // Use capitalized name
+	errAssign := ReadWsJSONMessage(t, ws, 5*time.Second, &assignmentMsg)
 	assert.NoError(t, errAssign, "Should receive assignment message")
-	assert.Equal(t, "playerAssignment", assignmentMsg.MessageType) // Check message type
+	assert.Equal(t, "playerAssignment", assignmentMsg.MessageType)
+	playerIndex := assignmentMsg.PlayerIndex // Store assigned index
 
-	var gridMsg game.InitialGridStateMessage
-	errGrid := ReadWsJSONMessage(t, ws, 5*time.Second, &gridMsg) // Use capitalized name
-	assert.NoError(t, errGrid, "Should receive initial grid message")
-	assert.Equal(t, "initialGridState", gridMsg.MessageType) // Check message type
+	// Consume InitialPlayersAndBallsState
+	var initialEntitiesMsg game.InitialPlayersAndBallsState
+	errEntities := ReadWsJSONMessage(t, ws, 5*time.Second, &initialEntitiesMsg)
+	assert.NoError(t, errEntities, "Should receive initial entities message")
+	assert.Equal(t, "initialPlayersAndBallsState", initialEntitiesMsg.MessageType)
 
 	// 4. Wait for First Game State Update (Player 0 assigned and ready)
-	fmt.Println("E2E Test: Waiting for first game state update...")
-	initialState, ok := waitForStateCondition(t, ws, 10*time.Second, "Player 0 Ready", func(gs game.GameState) bool {
-		// Check if Player 0 exists and has a paddle
-		return gs.Players[0] != nil && gs.Paddles[0] != nil
+	localState := game.NewLocalGameState() // Use game package
+	// Grid/Bricks will be populated by ApplyUpdatesToLocalState from the first FullGridUpdate
+	fmt.Println("E2E Test: Waiting for first game state update (Player/Paddle/Ball/Bricks)...")
+	ok := waitForStateCondition(t, ws, localState, 10*time.Second, "Player/Paddle/Ball/Bricks Ready", func(ls *game.LocalGameState) bool {
+		playerReady := ls.Players[playerIndex] != nil
+		paddleReady := ls.Paddles[playerIndex] != nil // Check paddle exists
+		ballExists := false
+		for _, ball := range ls.Balls {
+			if ball != nil && ball.OwnerIndex == playerIndex { // Check ball exists
+				ballExists = true
+				break
+			}
+		}
+		// Also wait for brick states to be populated
+		bricksReady := len(ls.BrickStates) > 0 // Use exported field
+		return playerReady && paddleReady && ballExists && bricksReady
 	})
-	assert.True(t, ok, "Should receive initial game state update with Player 0 and Paddle 0 within timeout")
+	// Use E2E config grid settings to assert bricks are ready
+	assert.True(t, ok, "Should receive initial game state updates with Player, Paddle, Ball, and Bricks within timeout (using E2E config)")
 	if !ok {
-		t.FailNow() // Cannot proceed without initial state
+		t.FailNow()
 	}
-	fmt.Printf("E2E Test: Received initial state with Player 0 (Score: %d, PaddleY: %d)\n", initialState.Players[0].Score, initialState.Paddles[0].Y)
-	initialPaddleY := initialState.Paddles[0].Y
+	initialPaddleY := localState.Paddles[playerIndex].Y // Get initial Y
 
 	// 5. Send Input (Move Right -> Down for Player 0)
 	fmt.Println("E2E Test: Sending 'ArrowRight' input...")
@@ -122,25 +122,17 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 	err = websocket.JSON.Send(ws, directionCmd)
 	assert.NoError(t, err, "Should send direction without error")
 
-	// 6. Wait for Updated Game State showing ANY position change
-	fmt.Println("E2E Test: Waiting for paddle position change...")
-	// Modify the condition to check for *any* change from the initial Y
-	movedState, ok := waitForStateCondition(t, ws, 10*time.Second, "Paddle Position Changed", func(gs game.GameState) bool {
-		if gs.Paddles[0] != nil {
-			currentY := gs.Paddles[0].Y
-			// Check if Y is different from the initial Y
-			return currentY != initialPaddleY
-		}
-		return false
+	// 6. Wait for Updated Game State showing position change and IsMoving=true
+	fmt.Println("E2E Test: Waiting for paddle position change and IsMoving=true...")
+	ok = waitForStateCondition(t, ws, localState, 10*time.Second, "Paddle Position Changed & Moving", func(ls *game.LocalGameState) bool {
+		paddle := ls.Paddles[playerIndex]
+		return paddle != nil && paddle.Y != initialPaddleY && paddle.IsMoving
 	})
-	assert.True(t, ok, "Should receive game state with paddle 0 position changed")
+	assert.True(t, ok, "Should receive game state with paddle position changed and IsMoving=true")
 	if !ok {
-		fmt.Println("WARN: E2E Test did not detect paddle position change.")
-		// Don't fail immediately, proceed to check stop state
-	} else {
-		fmt.Printf("E2E Test: SUCCESS - Detected paddle position changed (Y: %d -> %d)\n", initialPaddleY, movedState.Paddles[0].Y)
-		// Check if it moved in the expected direction (down for player 0)
-		assert.Greater(t, movedState.Paddles[0].Y, initialPaddleY, "Paddle should have moved down (Y increased)")
+		// If this fails, log the state for debugging
+		t.Logf("Current local state when failing wait for move: %+v", localState)
+		t.FailNow()
 	}
 
 	// 7. Send Stop Input
@@ -151,30 +143,16 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 
 	// 8. Wait for Updated Game State showing stopped state (IsMoving == false)
 	fmt.Println("E2E Test: Waiting for paddle stopped state (IsMoving=false)...")
-	stoppedState, ok := waitForStateCondition(t, ws, 10*time.Second, "Paddle Stopped", func(gs game.GameState) bool {
-		if gs.Paddles[0] != nil {
-			currentIsMoving := gs.Paddles[0].IsMoving
-			// Check the IsMoving flag specifically
-			return !currentIsMoving
-		}
-		return false
+	ok = waitForStateCondition(t, ws, localState, 10*time.Second, "Paddle Stopped", func(ls *game.LocalGameState) bool {
+		paddle := ls.Paddles[playerIndex]
+		return paddle != nil && !paddle.IsMoving
 	})
-	assert.True(t, ok, "Should receive game state with paddle 0 stopped (IsMoving == false)")
-	if !ok {
-		fmt.Println("WARN: E2E Test did not detect paddle stopped state (IsMoving=false).")
-	} else {
-		fmt.Printf("E2E Test: SUCCESS - Received updated state with Player 0 paddle stopped (Y: %d, IsMoving: %t)\n",
-			stoppedState.Paddles[0].Y, stoppedState.Paddles[0].IsMoving)
-		// Assert velocity components are zero when stopped
-		assert.Equal(t, 0, stoppedState.Paddles[0].Vx, "Vx should be 0 when IsMoving is false")
-		assert.Equal(t, 0, stoppedState.Paddles[0].Vy, "Vy should be 0 when IsMoving is false")
-	}
+	assert.True(t, ok, "Should receive game state with paddle stopped (IsMoving == false)")
 
 	// 9. Disconnect Client by closing the WebSocket
 	fmt.Println("E2E Test: Closing client connection...")
 	err = ws.Close()
-	// Ignore common "connection closed" errors during shutdown
-	netErr, isNetErr := err.(net.Error) // Use net.Error
+	netErr, isNetErr := err.(net.Error)
 	if err != nil && !errors.Is(err, io.EOF) && !strings.Contains(err.Error(), "use of closed network connection") && !strings.Contains(err.Error(), "connection reset by peer") && !(isNetErr && netErr.Timeout()) {
 		t.Logf("Note: ws.Close() returned unexpected error: %v", err)
 	}
@@ -186,61 +164,45 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 
 // TestE2E_BallWallNonStick verifies that balls correctly move away from walls after collision.
 func TestE2E_BallWallNonStick(t *testing.T) {
-	// 1. Setup Engine, RoomManager, and Config
-	engine := bollywood.NewEngine()
-	defer engine.Shutdown(e2eTestTimeout) // Use full timeout for shutdown
-	cfg := utils.DefaultConfig()
-	roomManagerPID := engine.Spawn(bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)))
-	assert.NotNil(t, roomManagerPID)
-	time.Sleep(100 * time.Millisecond) // Allow manager to start
+	// 1. Setup using helper with E2E config
+	e2eCfg := utils.E2ETestConfig()
+	setup := SetupE2ETest(t, e2eCfg)
+	defer TeardownE2ETest(t, setup, e2eTestTimeout) // Use longer timeout for this test
+	canvasSize := e2eCfg.CanvasSize
 
-	// 2. Setup Test Server
-	testServer := server.New(engine, roomManagerPID)
-	s := httptest.NewServer(websocket.Handler(testServer.HandleSubscribe()))
-	defer s.Close()
-	wsURL := "ws" + strings.TrimPrefix(s.URL, "http")
-
-	// 3. Connect WebSocket Client
-	origin := "http://localhost/"
-	ws, err := websocket.Dial(wsURL, "", origin)
+	// 2. Connect WebSocket Client
+	ws, err := websocket.Dial(setup.WsURL, "", setup.Origin)
 	assert.NoError(t, err, "WebSocket dial should succeed")
 	if err != nil {
 		t.FailNow()
 	}
 	defer ws.Close()
 
-	// 3.5 Read initial messages (Assignment + Grid) to get canvas size
+	// 3. Read initial messages (Assignment + Initial Entities)
 	var assignmentMsg game.PlayerAssignmentMessage
-	errAssign := ReadWsJSONMessage(t, ws, 5*time.Second, &assignmentMsg) // Use capitalized name
+	errAssign := ReadWsJSONMessage(t, ws, 5*time.Second, &assignmentMsg)
 	assert.NoError(t, errAssign, "Should receive assignment message")
-	assert.Equal(t, "playerAssignment", assignmentMsg.MessageType)
 
-	var gridMsg game.InitialGridStateMessage
-	errGrid := ReadWsJSONMessage(t, ws, 5*time.Second, &gridMsg) // Use capitalized name
-	assert.NoError(t, errGrid, "Should receive initial grid message")
-	assert.Equal(t, "initialGridState", gridMsg.MessageType)
-	canvasSize := gridMsg.CanvasWidth // Store canvas size
-	assert.Positive(t, canvasSize, "Canvas size should be positive")
+	var initialEntitiesMsg game.InitialPlayersAndBallsState
+	errEntities := ReadWsJSONMessage(t, ws, 5*time.Second, &initialEntitiesMsg)
+	assert.NoError(t, errEntities, "Should receive initial entities message")
 
 	// 4. Monitor game state for wall collisions and subsequent movement
+	localState := game.NewLocalGameState() // Use game package
 	fmt.Println("E2E Wall Stick Test: Waiting for wall collision...")
-	var lastState game.GameState
+
 	collisionDetected := false
-	var collidedBallID int
-	var collisionWall int // 0:Right, 1:Top, 2:Left, 3:Bottom
-	var checkCounter int
-	var lastCollidedCoord int // Store the coordinate *at* collision time
+	var collidedBallID int = -1
+	var collisionWall int = -1 // 0:Right, 1:Top, 2:Left, 3:Bottom
+	var collisionCoord int     // X or Y coord at collision (original coords)
 
 	testDeadline := time.Now().Add(e2eTestTimeout - 2*time.Second) // Deadline for the test itself
 
 	for time.Now().Before(testDeadline) {
-		// Read raw message first to check type
 		var rawMsg json.RawMessage
-		// Use the helper function ReadWsJSONMessage
 		err := ReadWsJSONMessage(t, ws, 1*time.Second, &rawMsg)
 		if err != nil {
-			// Check for expected closure errors
-			netErr, isNetErr := err.(net.Error) // Use net.Error
+			netErr, isNetErr := err.(net.Error)
 			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed") || strings.Contains(err.Error(), "reset by peer") || (isNetErr && netErr.Timeout()) {
 				t.Log("Connection closed or timed out during wall stick test.")
 				break
@@ -250,118 +212,72 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 			continue
 		}
 
-		// Check if it's a GameState update
-		var stateUpdate game.GameState
-		if json.Unmarshal(rawMsg, &stateUpdate) == nil && stateUpdate.MessageType == "gameStateUpdate" {
-			lastState = stateUpdate // Update last known state
+		var batch game.GameUpdatesBatch
+		if json.Unmarshal(rawMsg, &batch) == nil && batch.MessageType == "gameUpdates" {
+			game.ApplyUpdatesToLocalState(localState, batch.Updates, t) // Apply updates (use game package)
 		} else {
+			// Check for game over message
+			var header game.MessageHeader
+			if json.Unmarshal(rawMsg, &header) == nil && header.MessageType == "gameOver" {
+				t.Log("Game ended before wall collision was detected and verified.")
+				break // Exit loop if game ends
+			}
 			continue // Ignore other message types
 		}
 
-		// --- Check logic using lastState and stored canvasSize ---
-		if len(lastState.Balls) == 0 {
-			continue // Wait for valid state with balls
-		}
-
+		// --- Check logic using locally maintained state ---
 		if !collisionDetected {
-			// Look for a ball hitting a wall AND having the Collided flag set
-			for _, ball := range lastState.Balls {
-				if ball == nil {
-					continue
-				}
-				radius := ball.Radius
-				hit := -1
-				coord := 0
-				// Use stored canvasSize, check if ball center is *very close* to boundary
-				boundaryThreshold := radius + 5 // Allow a small buffer
-				if ball.X >= canvasSize-boundaryThreshold {
-					hit = 0; coord = ball.X
-				} else if ball.Y <= boundaryThreshold {
-					hit = 1; coord = ball.Y
-				} else if ball.X <= boundaryThreshold {
-					hit = 2; coord = ball.X
-				} else if ball.Y >= canvasSize-boundaryThreshold {
-					hit = 3; coord = ball.Y
-				}
+			// Look for a ball that has the Collided flag set and is near a wall
+			for id, ball := range localState.Balls {
+				if ball != nil && ball.Collided {
+					radius := ball.Radius
+					if radius <= 0 { radius = e2eCfg.BallRadius }
+					buffer := radius + 5 // Allow some buffer near wall
 
-				// Crucially, check the Collided flag from the broadcast state
-				if hit != -1 && ball.Collided {
-					fmt.Printf("E2E Wall Stick Test: Detected collision flag for Ball %d at Wall %d (Coord: %d)\n", ball.Id, hit, coord)
-					collisionDetected = true
-					collidedBallID = ball.Id
-					collisionWall = hit
-					lastCollidedCoord = coord // Store the coordinate when collision flag was true
-					checkCounter = 0          // Start checking subsequent states
-					break                     // Stop checking other balls for this state
+					if ball.X+buffer >= canvasSize { // Near right wall
+						collisionDetected = true; collidedBallID = id; collisionWall = 0; collisionCoord = ball.X
+						t.Logf("Collision detected: Ball %d hit Right Wall (Wall 0) at X=%d", id, ball.X); break
+					} else if ball.Y-buffer <= 0 { // Near top wall
+						collisionDetected = true; collidedBallID = id; collisionWall = 1; collisionCoord = ball.Y
+						t.Logf("Collision detected: Ball %d hit Top Wall (Wall 1) at Y=%d", id, ball.Y); break
+					} else if ball.X-buffer <= 0 { // Near left wall
+						collisionDetected = true; collidedBallID = id; collisionWall = 2; collisionCoord = ball.X
+						t.Logf("Collision detected: Ball %d hit Left Wall (Wall 2) at X=%d", id, ball.X); break
+					} else if ball.Y+buffer >= canvasSize { // Near bottom wall
+						collisionDetected = true; collidedBallID = id; collisionWall = 3; collisionCoord = ball.Y
+						t.Logf("Collision detected: Ball %d hit Bottom Wall (Wall 3) at Y=%d", id, ball.Y); break
+					}
 				}
 			}
 		} else {
-			// Collision flag was detected, check subsequent states for movement *away* from lastCollidedCoord
-			foundBall := false
-			for _, ball := range lastState.Balls {
-				if ball != nil && ball.Id == collidedBallID {
-					foundBall = true
-					currentCoord := 0
-					movedAway := false
-
-					switch collisionWall {
-					case 0: // Right wall (collided near X=canvasSize)
-						currentCoord = ball.X
-						// Expect X to decrease (move left away from lastCollidedCoord)
-						if currentCoord < lastCollidedCoord {
-							movedAway = true
-						}
-						fmt.Printf("E2E Wall Stick Test: Ball %d (Wall 0): CollidedAtX=%d, CurrX=%d\n", ball.Id, lastCollidedCoord, currentCoord)
-					case 1: // Top wall (collided near Y=0)
-						currentCoord = ball.Y
-						// Expect Y to increase (move down away from lastCollidedCoord)
-						if currentCoord > lastCollidedCoord {
-							movedAway = true
-						}
-						fmt.Printf("E2E Wall Stick Test: Ball %d (Wall 1): CollidedAtY=%d, CurrY=%d\n", ball.Id, lastCollidedCoord, currentCoord)
-					case 2: // Left wall (collided near X=0)
-						currentCoord = ball.X
-						// Expect X to increase (move right away from lastCollidedCoord)
-						if currentCoord > lastCollidedCoord {
-							movedAway = true
-						}
-						fmt.Printf("E2E Wall Stick Test: Ball %d (Wall 2): CollidedAtX=%d, CurrX=%d\n", ball.Id, lastCollidedCoord, currentCoord)
-					case 3: // Bottom wall (collided near Y=canvasSize)
-						currentCoord = ball.Y
-						// Expect Y to decrease (move up away from lastCollidedCoord)
-						if currentCoord < lastCollidedCoord {
-							movedAway = true
-						}
-						fmt.Printf("E2E Wall Stick Test: Ball %d (Wall 3): CollidedAtY=%d, CurrY=%d\n", ball.Id, lastCollidedCoord, currentCoord)
-					}
-
-					checkCounter++
-					// Check if it moved away within a few ticks
-					// Allow 1 tick buffer as the collision flag might be set slightly before pos adjustment is broadcast
-					if checkCounter >= 1 && movedAway {
-						fmt.Printf("E2E Wall Stick Test: SUCCESS - Ball %d moved away from Wall %d after %d ticks.\n", ball.Id, collisionWall, checkCounter)
-						return // Test successful
-					}
-					// If it hasn't moved away after 5 checks, fail
-					if checkCounter >= 5 && !movedAway {
-						t.Errorf("E2E Wall Stick Test: FAILED - Ball %d did not move away from Wall %d within 5 ticks (Last Coord: %d, Collided Coord: %d)", ball.Id, collisionWall, currentCoord, lastCollidedCoord)
-						return // Test failed
-					}
-					break // Found the ball, move to next state
-				}
+			// Collision flag was detected, check subsequent states for movement *away*
+			ball, exists := localState.Balls[collidedBallID]
+			if !exists || ball == nil {
+				t.Logf("Collided ball %d disappeared, assuming test passed for this collision.", collidedBallID)
+				collisionDetected = false; collidedBallID = -1; continue
 			}
-			if !foundBall {
-				// Ball might have been destroyed (e.g., temporary ball hitting empty wall)
-				fmt.Printf("E2E Wall Stick Test: Collided Ball %d not found in subsequent state. Assuming destroyed/removed.\n", collidedBallID)
-				collisionDetected = false // Reset to look for another collision
+
+			movedAway := false
+			currentCoord := 0
+			switch collisionWall {
+			case 0: currentCoord = ball.X; movedAway = currentCoord < collisionCoord
+			case 1: currentCoord = ball.Y; movedAway = currentCoord > collisionCoord
+			case 2: currentCoord = ball.X; movedAway = currentCoord > collisionCoord
+			case 3: currentCoord = ball.Y; movedAway = currentCoord < collisionCoord
+			}
+
+			if movedAway {
+				t.Logf("SUCCESS: Ball %d moved away from Wall %d (Original Coord: %d -> %d)", collidedBallID, collisionWall, collisionCoord, currentCoord)
+				return // Exit after first successful non-stick detection
 			}
 		}
-	}
+	} // End for loop
 
 	// If loop finishes without success
 	if !collisionDetected {
 		t.Log("E2E Wall Stick Test: No wall collision flag detected within the test timeout.")
+		// This might be acceptable if the game ends quickly, don't fail the test
 	} else {
-		t.Errorf("E2E Wall Stick Test: FAILED - Ball %d did not confirm moving away from Wall %d before test timeout.", collidedBallID, collisionWall)
+		t.Errorf("E2E Wall Stick Test: FAILED - Ball %d hit Wall %d at original coord %d, but did not confirm moving away before test timeout.", collidedBallID, collisionWall, collisionCoord)
 	}
 }

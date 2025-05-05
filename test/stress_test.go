@@ -3,15 +3,15 @@ package test
 
 import (
 	"math/rand"
-	"net/http/httptest"
+	// "net/http/httptest" // No longer needed directly
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	// "github.com/lguibr/bollywood" // REMOVED unused import
 	"github.com/lguibr/pongo/game"
-	"github.com/lguibr/pongo/server"
+	// "github.com/lguibr/pongo/server" // No longer needed directly
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/websocket"
@@ -37,17 +37,10 @@ func clientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin string, stopCh
 	}
 	defer ws.Close()
 
-	// 1. Wait for initial state (optional but confirms assignment)
-	var initialState game.GameState
-	// Use the existing helper from helpers.go (capitalized)
-	err = ReadWsJSONMessage(t, ws, 15*time.Second, &initialState) // Generous timeout for initial state under load
-	if err != nil {
-		t.Logf("Client failed to receive initial state (may be expected under load): %v", err)
-		// Continue anyway to send commands
-	} else {
-		// Optional: Log only if verbose or needed
-		// t.Logf("Client connected and received initial state.")
-	}
+	// Consume the first few messages (Assignment, Initial State) blindly for now
+	var tempMsg interface{}
+	_ = ReadWsJSONMessage(t, ws, 15*time.Second, &tempMsg) // Assignment
+	_ = ReadWsJSONMessage(t, ws, 5*time.Second, &tempMsg)  // Initial State
 
 	// 2. Send random commands periodically
 	ticker := time.NewTicker(sendCommandInterval)
@@ -59,7 +52,6 @@ func clientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin string, stopCh
 	for {
 		select {
 		case <-stopCh:
-			// t.Logf("Client received stop signal.") // Reduce log noise
 			return
 		case <-ticker.C:
 			direction := directions[randGen.Intn(len(directions))]
@@ -68,13 +60,10 @@ func clientWorker(t *testing.T, wg *sync.WaitGroup, wsURL, origin string, stopCh
 			if err != nil {
 				// If connection is closed, just exit cleanly
 				if strings.Contains(err.Error(), "closed") || strings.Contains(err.Error(), "broken pipe") || strings.Contains(err.Error(), "EOF") {
-					// t.Logf("Client send error (connection likely closed): %v", err) // Reduce log noise
 					return
 				}
 				// Log other send errors but don't fail the test immediately
 				t.Logf("Client failed to send command: %v", err)
-				// Consider returning on persistent errors to avoid log spam
-				// return
 			}
 		}
 	}
@@ -89,24 +78,10 @@ func TestE2E_StressTestMultipleRooms(t *testing.T) {
 
 	t.Logf("Starting Stress Test: %d clients for %v", stressTestClientCount, stressTestDuration)
 
-	// 1. Setup Engine, RoomManager, and Config
-	engine := bollywood.NewEngine()
-	// Use a longer shutdown timeout for stress tests
-	defer engine.Shutdown(stressTestTimeout / 2)
-
+	// 1. Setup using helper with default config
 	cfg := utils.DefaultConfig()
-
-	// Spawn RoomManager
-	roomManagerPID := engine.Spawn(bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)))
-	assert.NotNil(t, roomManagerPID)
-	time.Sleep(200 * time.Millisecond) // Allow manager to start fully
-
-	// 2. Setup Test Server
-	testServer := server.New(engine, roomManagerPID)
-	s := httptest.NewServer(websocket.Handler(testServer.HandleSubscribe()))
-	defer s.Close()
-	wsURL := "ws" + strings.TrimPrefix(s.URL, "http")
-	origin := "http://localhost/" // Origin doesn't matter much for local test server
+	setup := SetupE2ETest(t, cfg)
+	defer TeardownE2ETest(t, setup, stressTestTimeout/2) // Use longer shutdown timeout
 
 	// 3. Launch Client Workers
 	var wg sync.WaitGroup
@@ -125,9 +100,8 @@ func TestE2E_StressTestMultipleRooms(t *testing.T) {
 				}
 			}()
 			// Pass t *testing.T to the worker
-			clientWorker(t, &wg, wsURL, origin, stopCh, cfg)
+			clientWorker(t, &wg, setup.WsURL, setup.Origin, stopCh, cfg)
 			// Increment success count if worker finishes without calling t.Errorf related to connection
-			// Note: This is a basic check; more sophisticated error tracking could be added.
 			connectMu.Lock()
 			connectSuccessCount++
 			connectMu.Unlock()
@@ -167,11 +141,8 @@ func TestE2E_StressTestMultipleRooms(t *testing.T) {
 	connectMu.Lock()
 	t.Logf("Successfully connected clients (approx): %d / %d", connectSuccessCount, stressTestClientCount)
 	// Basic assertion: Check if at least a majority of clients connected successfully.
-	// This accounts for potential transient errors under load.
 	assert.GreaterOrEqual(t, connectSuccessCount, stressTestClientCount*8/10, "Expected at least 80% of clients to connect without immediate failure")
 	connectMu.Unlock()
 
 	t.Logf("Stress Test Completed.")
-	// The test passes if it reaches here without panics and meets the basic connection assertion.
-	// Check logs for server-side errors or performance bottlenecks.
 }

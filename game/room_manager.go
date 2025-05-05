@@ -113,12 +113,12 @@ func (a *RoomManagerActor) handleFindRoom(ctx bollywood.Context, replyTo *bollyw
 	a.mu.Lock() // Lock for writing (potential room creation)
 
 	// Find existing room
-	for _, roomInfo := range a.rooms { // Use _ for roomID as it's not needed here
+	for roomID, roomInfo := range a.rooms { // Use roomID for logging
 		if roomInfo.PID != nil && roomInfo.PlayerCount < utils.MaxPlayers {
 			roomInfo.PlayerCount++ // Increment approximate count
 			roomPID := roomInfo.PID
-			a.mu.Unlock() // Unlock before sending reply
-			// fmt.Printf("RoomManagerActor %s: Assigning %s to existing room %s (Player count: %d)\n", a.selfPID, replyTo, roomPID.String(), roomInfo.PlayerCount) // Reduce noise
+			a.mu.Unlock()                                                                                                                              // Unlock before sending reply
+			fmt.Printf("RoomManagerActor %s: Assigning %s to existing room %s (Player count: %d)\n", a.selfPID, replyTo, roomID, roomInfo.PlayerCount) // Log assignment
 			a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
 			return
 		}
@@ -159,19 +159,19 @@ func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *b
 	}
 	roomIDStr := roomPID.String()
 	a.mu.Lock() // Lock for writing
-	_, exists := a.rooms[roomIDStr]
+	roomInfo, exists := a.rooms[roomIDStr]
 	pidToStop := (*bollywood.PID)(nil)
 	if exists {
 		fmt.Printf("RoomManagerActor %s: Room %s reported empty/finished. Removing and stopping.\n", a.selfPID, roomIDStr)
-		if roomInfo := a.rooms[roomIDStr]; roomInfo != nil && roomInfo.PID != nil {
+		if roomInfo != nil && roomInfo.PID != nil {
 			pidToStop = roomInfo.PID
 		}
 		delete(a.rooms, roomIDStr)
 	} // Else: Already removed, ignore.
 	a.mu.Unlock() // Unlock before stopping actor
 
-	if pidToStop != nil {
-		a.engine.Stop(pidToStop)
+	if pidToStop != nil && a.engine != nil {
+		a.engine.Stop(pidToStop) // Ensure engine is not nil before stopping
 	}
 }
 

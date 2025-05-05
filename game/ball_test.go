@@ -151,9 +151,12 @@ func TestBall_InterceptsIndex(t *testing.T) {
 
 func TestBall_GetCenterIndex(t *testing.T) {
 	cfg := utils.DefaultConfig() // Create default config
-	canvasSize := cfg.CanvasSize
-	gridSize := cfg.GridSize
-	cellSize := cfg.CellSize
+	canvasSize := cfg.CanvasSize // 900
+	gridSize := cfg.GridSize     // 18
+	cellSize := 0
+	if gridSize > 0 {
+		cellSize = canvasSize / gridSize // 50
+	}
 
 	testCases := []struct {
 		name        string
@@ -164,45 +167,45 @@ func TestBall_GetCenterIndex(t *testing.T) {
 	}{
 		{
 			name:        "center of cell (0,0)",
-			ballX:       cellSize / 2,
-			ballY:       cellSize / 2,
+			ballX:       cellSize / 2, // 25
+			ballY:       cellSize / 2, // 25
 			expectedCol: 0,
 			expectedRow: 0,
 		},
 		{
 			name:        "bottom right corner of cell (0,0)",
-			ballX:       cellSize - 1,
-			ballY:       cellSize - 1,
+			ballX:       cellSize - 1, // 49
+			ballY:       cellSize - 1, // 49
 			expectedCol: 0,
 			expectedRow: 0,
 		},
 		{
 			name:        "top left corner of cell (1,1)",
-			ballX:       cellSize,
-			ballY:       cellSize,
+			ballX:       cellSize, // 50
+			ballY:       cellSize, // 50
 			expectedCol: 1,
 			expectedRow: 1,
 		},
 		{
 			name:        "specific cell (3, 2)",
-			ballX:       cellSize*3 + cellSize/2,
-			ballY:       cellSize*2 + cellSize/2,
-			expectedCol: 3,
-			expectedRow: 2,
+			ballX:       cellSize*3 + cellSize/2, // 150 + 25 = 175
+			ballY:       cellSize*2 + cellSize/2, // 100 + 25 = 125
+			expectedCol: 3,                       // 175 / 50 = 3.5 -> floor(3.5) = 3
+			expectedRow: 2,                       // 125 / 50 = 2.5 -> floor(2.5) = 2
 		},
 		{
 			name:        "outside left",
 			ballX:       -10, // X < 0
-			ballY:       120, // Y = 120 -> 120 / 64 = 1
-			expectedCol: 0,   // Clamped from -10/64=0
-			expectedRow: 1,   // Clamped from 120/64=1
+			ballY:       120, // Y = 120 -> 120 / 50 = 2.4 -> floor(2.4) = 2
+			expectedCol: 0,   // Clamped from floor(-10/50) = -1 -> 0
+			expectedRow: 2,   // Clamped from floor(120/50) = 2 (Updated expectation)
 		},
 		{
 			name:        "outside bottom",
-			ballX:       168,             // X = 168 -> 168 / 64 = 2
-			ballY:       canvasSize + 10, // Y > canvasSize -> 1034 / 64 = 16
-			expectedCol: 2,               // Clamped from 168/64=2
-			expectedRow: gridSize - 1,    // Clamped from 16
+			ballX:       168,             // X = 168 -> 168 / 50 = 3.36 -> floor(3.36) = 3
+			ballY:       canvasSize + 10, // Y = 910 -> 910 / 50 = 18.2 -> floor(18.2) = 18
+			expectedCol: 3,               // Clamped from 3 (Updated expectation)
+			expectedRow: gridSize - 1,    // Clamped from 18 -> 17
 		},
 	}
 

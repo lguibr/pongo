@@ -2,7 +2,6 @@
 package utils
 
 import (
-	// "math" // Removed unused import
 	"time"
 )
 
@@ -34,11 +33,12 @@ type Config struct {
 	PaddleWidth    int `json:"paddleWidth"`    // Thickness of the paddle
 	PaddleVelocity int `json:"paddleVelocity"` // Base speed of the paddle movement
 
-	// Grid Generation (Procedural)
-	GridFillVectors    int `json:"gridFillVectors"`    // Number of vectors for grid generation per quarter
-	GridFillVectorSize int `json:"gridFillVectorSize"` // Max length of vectors for grid generation
-	GridFillWalkers    int `json:"gridFillWalkers"`    // Number of random walkers per quarter
-	GridFillSteps      int `json:"gridFillSteps"`      // Number of steps per random walker
+	// Grid Generation (Symmetrical)
+	GridFillDensity       float64 `json:"gridFillDensity"`       // Probability (0.0 to 1.0) for a cell in the safe zone to become a brick
+	GridClearCenterRadius int     `json:"gridClearCenterRadius"` // Radius around the absolute center to keep clear of bricks
+	GridClearWallDistance int     `json:"gridClearWallDistance"` // Number of cells from each wall to keep clear of bricks
+	GridBrickMinLife      int     `json:"gridBrickMinLife"`      // Minimum life for generated bricks (>= 1)
+	GridBrickMaxLife      int     `json:"gridBrickMaxLife"`      // Maximum life for generated bricks
 
 	// Power-ups
 	PowerUpChance           float64       `json:"powerUpChance"`           // Chance (0.0 to 1.0) to trigger power-up on brick break
@@ -50,14 +50,14 @@ type Config struct {
 
 // DefaultConfig returns a Config struct with default values.
 func DefaultConfig() Config {
-	canvasSize := 1024
-	gridSize := 16
+	canvasSize := 900
+	gridSize := 18 // Must be even
 	cellSize := canvasSize / gridSize
 
 	return Config{
 		// Timing
-		GameTickPeriod:  24 * time.Millisecond, // ~41.6 Hz physics updates
-		BroadcastRateHz: 30,                    // Target 30Hz network updates
+		GameTickPeriod:  25 * time.Millisecond, // ~62.5 Hz physics updates (Adjusted for common refresh rates)
+		BroadcastRateHz: 60,                    // INCREASED Target 60Hz network updates
 
 		// Score & Player
 		InitialScore: 0,
@@ -68,32 +68,51 @@ func DefaultConfig() Config {
 		CellSize:   cellSize,
 
 		// Ball Physics & Properties
-		MinBallVelocity:          canvasSize / 180, // ~5.68
-		MaxBallVelocity:          canvasSize / 90,  // ~11.37
+		MinBallVelocity:          canvasSize / 180, // ~5.68 -> Adjusted to ~6
+		MaxBallVelocity:          canvasSize / 90,  // ~11.37 -> Adjusted to ~13
 		BallMass:                 1,
-		BallRadius:               cellSize / 6, // ~10.6
+		BallRadius:               cellSize / 6, // ~16
 		BallPhasingTime:          100 * time.Millisecond,
 		BallHitPaddleSpeedFactor: 0.3,
 		BallHitPaddleAngleFactor: 2.8, // Max ~64 degrees deflection (Pi / 2.8)
 
 		// Paddle Properties
-		PaddleLength:   cellSize * 3, // 192
-		PaddleWidth:    cellSize / 2, // 32
-		PaddleVelocity: cellSize / 4, // 16
+		PaddleLength:   cellSize * 3, // 300
+		PaddleWidth:    cellSize / 2, // 50
+		PaddleVelocity: cellSize / 4, // 25
 
-		// Grid Generation
-		GridFillVectors:    gridSize * 2,
-		GridFillVectorSize: gridSize,
-		GridFillWalkers:    gridSize / 4,
-		GridFillSteps:      gridSize / 2,
+		// Grid Generation (Symmetrical)
+		GridFillDensity:       0.7,
+		GridClearCenterRadius: 0, // Clear 5x5 area in center (radius 2)
+		GridClearWallDistance: 3, // Keep 3 cells clear from walls
+		GridBrickMinLife:      1, // Bricks have 1-3 life
+		GridBrickMaxLife:      3,
 
 		// Power-ups
-		PowerUpChance:           0.6,
+		PowerUpChance:           0.7,
 		PowerUpSpawnBallExpiry:  9 * time.Second,
 		PowerUpIncreaseMassAdd:  1,
 		PowerUpIncreaseMassSize: 2,
 		PowerUpIncreaseVelRatio: 1.1,
 	}
+}
+
+// E2ETestConfig returns a config suitable for E2E tests, ensuring a playable grid.
+func E2ETestConfig() Config {
+	cfg := DefaultConfig()
+
+	// Ensure a non-empty grid for basic tests
+	cfg.GridFillDensity = 0.7 // Higher density
+	cfg.GridClearCenterRadius = 1 // Smaller clear radius
+	cfg.GridClearWallDistance = 2 // Smaller wall distance
+	cfg.GridBrickMinLife = 1
+	cfg.GridBrickMaxLife = 2 // Lower max life for faster testing
+
+	// Slightly faster ticks for quicker test execution
+	cfg.GameTickPeriod = 20 * time.Millisecond
+	cfg.BroadcastRateHz = 50 // Slightly lower broadcast to reduce noise if needed
+
+	return cfg
 }
 
 // FastGameConfig returns a config optimized for rapid game completion (used for testing).
@@ -105,15 +124,16 @@ func FastGameConfig() Config {
 	cfg.GridSize = 8                             // Must be divisible by 2
 	cfg.CellSize = cfg.CanvasSize / cfg.GridSize // 64
 
-	// Fewer generation steps -> less dense grid
-	cfg.GridFillVectors = cfg.GridSize / 2    // 4
-	cfg.GridFillVectorSize = cfg.GridSize / 2 // 4
-	cfg.GridFillWalkers = cfg.GridSize / 4    // 2
-	cfg.GridFillSteps = cfg.GridSize / 4      // 2
+	// Symmetrical Grid Generation Params for Fast Config
+	cfg.GridFillDensity = 0.35 // Lower density for faster clearing
+	cfg.GridClearCenterRadius = 1
+	cfg.GridClearWallDistance = 2
+	cfg.GridBrickMinLife = 1 // Bricks have only 1 life
+	cfg.GridBrickMaxLife = 1
 
 	// Faster game loop
 	cfg.GameTickPeriod = 16 * time.Millisecond // ~60 FPS physics
-	cfg.BroadcastRateHz = 30                   // Keep broadcast rate standard
+	cfg.BroadcastRateHz = 60                   // Keep broadcast rate high
 
 	// Faster balls
 	cfg.MinBallVelocity = cfg.CanvasSize / 60 // ~8.5
@@ -146,15 +166,16 @@ func UltraFastGameConfig() Config {
 	cfg.GridSize = 6                             // Minimum allowed, even size
 	cfg.CellSize = cfg.CanvasSize / cfg.GridSize // 40
 
-	// Minimal generation steps -> very sparse grid
-	cfg.GridFillVectors = 1 // Minimal vectors
-	cfg.GridFillVectorSize = 1
-	cfg.GridFillWalkers = 1 // Minimal walkers
-	cfg.GridFillSteps = 1
+	// Symmetrical Grid Generation Params for UltraFast Config
+	cfg.GridFillDensity = 0.25 // Very low density
+	cfg.GridClearCenterRadius = 1
+	cfg.GridClearWallDistance = 1 // Minimal wall clearance
+	cfg.GridBrickMinLife = 1      // Bricks have only 1 life
+	cfg.GridBrickMaxLife = 1
 
 	// Faster game loop
 	cfg.GameTickPeriod = 16 * time.Millisecond // ~60 FPS physics
-	cfg.BroadcastRateHz = 30                   // Keep broadcast rate standard
+	cfg.BroadcastRateHz = 60                   // Keep broadcast rate high
 
 	// Very fast balls
 	cfg.MinBallVelocity = cfg.CanvasSize / 20 // 12

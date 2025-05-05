@@ -2,446 +2,369 @@
 package game
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 
-	// Keep time for power-up expiry
-	"github.com/lguibr/bollywood" // Keep bollywood for context/engine access
+	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/utils"
 )
 
-// detectCollisions checks for and handles collisions using the GameActor's cached state.
-// Assumes called within the actor's message loop (no lock needed for main state).
-// Operates directly on a.paddles and a.balls cache.
-// Sends commands to child actors (BallActor, PaddleActor) for state changes (velocity, phasing).
+// --- Physics ---
+
+// detectCollisions checks for collisions and generates specific update messages.
 func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 	currentEngine := a.engine
 	if currentEngine == nil {
-		return // Should not happen if actor is running
+		fmt.Printf("WARN: detectCollisions called on GameActor %s with nil engine.\n", a.selfPID)
+		return
 	}
 
-	// --- Use local caches directly ---
 	activeBalls := a.balls
-	activePaddles := a.paddles // This is the cache [utils.MaxPlayers]*Paddle
+	activePaddles := a.paddles
 
 	cellSize := a.cfg.CellSize
 	canvasSize := a.cfg.CanvasSize
 	ballsToRemove := []int{}
-	powerUpsToTrigger := []Ball{} // Store copies of ball state for power-ups
-	positionAdjustmentBuffer := 1 // Pixels to push ball away from wall after collision
-	minVelocityAwayFromWall := 2  // Ensure minimum speed away from wall after reflection
+	powerUpsToTrigger := []Ball{} // Store copies of ball state at the moment of power-up trigger
+	positionAdjustmentBuffer := 1 // Small buffer to prevent sticking after adjustment
+	minVelocityAwayFromWall := 2  // Minimum speed component away from wall after collision
 
-	for ballID, ball := range activeBalls {
-		// Ensure ball and its actor PID exist before proceeding
+	// Track score changes to send updates only once per tick per player
+	scoreChanged := make(map[int]bool)
+
+	// Iterate over a copy of ball IDs to avoid issues if balls are removed during iteration
+	ballIDs := make([]int, 0, len(activeBalls))
+	for id := range activeBalls {
+		ballIDs = append(ballIDs, id)
+	}
+
+	for _, ballID := range ballIDs {
+		// Re-fetch ball and actor PID inside the loop in case they were removed
+		ball, ballExists := activeBalls[ballID]
 		ballActorPID, pidExists := a.ballActors[ballID]
-		if ball == nil || !pidExists || ballActorPID == nil {
-			// Clean up inconsistent state if necessary
-			if ball == nil && pidExists {
-				delete(a.ballActors, ballID)
-				currentEngine.Stop(ballActorPID)
-			} else if ball != nil && !pidExists {
-				delete(a.balls, ballID)
-			}
-			continue
+
+		if !ballExists || ball == nil || !pidExists || ballActorPID == nil {
+			continue // Ball was removed during this tick's processing
 		}
 
 		shouldPhase := false
-		reflectedX := false
+		reflectedX := false // Track if reflection already happened on this axis this tick
 		reflectedY := false
+		originalOwner := ball.OwnerIndex // Store owner before potential changes
 
 		// 4.1 Wall Collisions
-		hitWall := -1
+		hitWall := -1 // 0: Right, 1: Top, 2: Left, 3: Bottom
 		if ball.X+ball.Radius >= canvasSize {
-			hitWall = 0 // Right wall
+			hitWall = 0
 		} else if ball.Y-ball.Radius <= 0 {
-			hitWall = 1 // Top wall
+			hitWall = 1
 		} else if ball.X-ball.Radius <= 0 {
-			hitWall = 2 // Left wall
+			hitWall = 2
 		} else if ball.Y+ball.Radius >= canvasSize {
-			hitWall = 3 // Bottom wall
+			hitWall = 3
 		}
 
 		if hitWall != -1 {
 			newVx, newVy := ball.Vx, ball.Vy // Start with current velocity
 
-			// Adjust position *before* reflecting velocity, adding a buffer
-			// Modify ball state directly in the cache
+			// Adjust position slightly inside the boundary
 			switch hitWall {
 			case 0: // Right wall
 				ball.X = canvasSize - ball.Radius - positionAdjustmentBuffer
 				if !reflectedX {
-					newVx = -utils.Abs(ball.Vx) // Ensure X velocity is negative (moving left)
-					if utils.Abs(newVx) < minVelocityAwayFromWall {
-						newVx = -minVelocityAwayFromWall
-					}
-					reflectedX = true
+					newVx = -utils.Abs(ball.Vx); if utils.Abs(newVx) < minVelocityAwayFromWall { newVx = -minVelocityAwayFromWall }; reflectedX = true
 				}
 			case 1: // Top wall
 				ball.Y = ball.Radius + positionAdjustmentBuffer
 				if !reflectedY {
-					newVy = utils.Abs(ball.Vy) // Ensure Y velocity is positive (moving down)
-					if utils.Abs(newVy) < minVelocityAwayFromWall {
-						newVy = minVelocityAwayFromWall
-					}
-					reflectedY = true
+					newVy = utils.Abs(ball.Vy); if utils.Abs(newVy) < minVelocityAwayFromWall { newVy = minVelocityAwayFromWall }; reflectedY = true
 				}
 			case 2: // Left wall
 				ball.X = ball.Radius + positionAdjustmentBuffer
 				if !reflectedX {
-					newVx = utils.Abs(ball.Vx) // Ensure X velocity is positive (moving right)
-					if utils.Abs(newVx) < minVelocityAwayFromWall {
-						newVx = minVelocityAwayFromWall
-					}
-					reflectedX = true
+					newVx = utils.Abs(ball.Vx); if utils.Abs(newVx) < minVelocityAwayFromWall { newVx = minVelocityAwayFromWall }; reflectedX = true
 				}
 			case 3: // Bottom wall
 				ball.Y = canvasSize - ball.Radius - positionAdjustmentBuffer
 				if !reflectedY {
-					newVy = -utils.Abs(ball.Vy) // Ensure Y velocity is negative (moving up)
-					if utils.Abs(newVy) < minVelocityAwayFromWall {
-						newVy = -minVelocityAwayFromWall
-					}
-					reflectedY = true
+					newVy = -utils.Abs(ball.Vy); if utils.Abs(newVy) < minVelocityAwayFromWall { newVy = -minVelocityAwayFromWall }; reflectedY = true
 				}
 			}
 
-			// Send velocity update command if velocity changed
+			// Send velocity update command if changed
 			if newVx != ball.Vx || newVy != ball.Vy {
 				currentEngine.Send(ballActorPID, SetVelocityCommand{Vx: newVx, Vy: newVy}, nil)
-				// Update local cache immediately (velocity part)
-				ball.Vx = newVx
-				ball.Vy = newVy
+				ball.Vx = newVx; ball.Vy = newVy // Update local cache
 			}
 
-			ball.Collided = true // Set collision flag for the ball in the cache
-			shouldPhase = true
+			ball.Collided = true // Mark ball as collided for this tick
+			shouldPhase = true  // Trigger phasing
 
+			// Scoring / Ball Removal Logic
 			concederIndex := hitWall
-			// Check if the wall belongs to an active player
 			isPlayerWall := concederIndex >= 0 && concederIndex < len(a.players) && a.players[concederIndex] != nil && a.players[concederIndex].IsConnected
 
 			if isPlayerWall {
 				pInfo := a.players[concederIndex]
-				// Scoring logic
 				scorerIndex := ball.OwnerIndex
 				isScorerValid := scorerIndex >= 0 && scorerIndex < len(a.players) && a.players[scorerIndex] != nil && a.players[scorerIndex].IsConnected
 
 				if isScorerValid && scorerIndex != concederIndex {
-					scInfo := a.players[scorerIndex]
-					scInfo.Score.Add(1)
-					pInfo.Score.Add(-1)
-				} else if scorerIndex == -1 { // Ownerless ball
-					pInfo.Score.Add(-1)
-				} else if scorerIndex == concederIndex { // Hit own wall
-					pInfo.Score.Add(-1)
-					ball.OwnerIndex = -1 // Ball becomes ownerless (update cache)
+					scInfo := a.players[scorerIndex]; scInfo.Score.Add(1); pInfo.Score.Add(-1); scoreChanged[scorerIndex] = true; scoreChanged[concederIndex] = true
+				} else if scorerIndex == -1 {
+					pInfo.Score.Add(-1); scoreChanged[concederIndex] = true
+				} else if scorerIndex == concederIndex {
+					pInfo.Score.Add(-1); ball.OwnerIndex = -1; scoreChanged[concederIndex] = true
 				}
-			} else { // Empty slot wall hit
+
+				if ball.OwnerIndex != originalOwner && ball.OwnerIndex == -1 {
+					ownerUpdate := &BallOwnershipChange{MessageType: "ballOwnerChanged", ID: ballID, NewOwnerIndex: -1}; a.addUpdate(ownerUpdate)
+				}
+			} else { // Hit an empty player slot's wall
 				if !ball.IsPermanent {
-					ballsToRemove = append(ballsToRemove, ballID)
-					continue // Skip other collision checks for this ball
+					ballsToRemove = append(ballsToRemove, ballID); continue
 				}
-				// Permanent ball just reflects (velocity already handled)
 			}
 		} // End wall collision check
 
 		// 4.2 Paddle Collisions
 		for paddleIndex, paddle := range activePaddles {
-			// Check if paddle exists in cache and belongs to an active player
 			if paddle == nil || !(paddleIndex >= 0 && paddleIndex < len(a.players) && a.players[paddleIndex] != nil && a.players[paddleIndex].IsConnected) {
 				continue
 			}
 
 			if !ball.Phasing && ball.BallInterceptPaddles(paddle) {
-				// --- Paddle Collision Physics (same as before) ---
-				vInX := float64(ball.Vx)
-				vInY := float64(ball.Vy)
-				speed := math.Sqrt(vInX*vInX + vInY*vInY)
-				if speed < float64(a.cfg.MinBallVelocity) {
-					speed = float64(a.cfg.MinBallVelocity)
-				}
-				paddleCenterX := float64(paddle.X + paddle.Width/2)
-				paddleCenterY := float64(paddle.Y + paddle.Height/2)
-				hitOffsetX := float64(ball.X) - paddleCenterX
-				hitOffsetY := float64(ball.Y) - paddleCenterY
+				// --- Paddle Collision Physics ---
+				vInX, vInY := float64(ball.Vx), float64(ball.Vy)
+				speed := math.Sqrt(vInX*vInX + vInY*vInY); if speed < float64(a.cfg.MinBallVelocity) { speed = float64(a.cfg.MinBallVelocity) }
+				paddleCenterX, paddleCenterY := float64(paddle.X+paddle.Width/2), float64(paddle.Y+paddle.Height/2)
+				hitOffsetX, hitOffsetY := float64(ball.X)-paddleCenterX, float64(ball.Y)-paddleCenterY
 				normOffset := 0.0
-				if paddle.Index%2 == 0 { // Vertical paddles (0, 2)
-					if paddle.Height > 0 {
-						normOffset = hitOffsetY / (float64(paddle.Height) / 2.0)
-					}
-				} else { // Horizontal paddles (1, 3)
-					if paddle.Width > 0 {
-						normOffset = hitOffsetX / (float64(paddle.Width) / 2.0)
-					}
-				}
+				if paddle.Index%2 == 0 { if paddle.Height > 0 { normOffset = hitOffsetY / (float64(paddle.Height) / 2.0) } } else { if paddle.Width > 0 { normOffset = hitOffsetX / (float64(paddle.Width) / 2.0) } }
 				normOffset = math.Max(-1.0, math.Min(1.0, normOffset))
-
-				vBaseX := vInX
-				vBaseY := vInY
-				if paddle.Index%2 == 0 { // Vertical paddles reflect X
-					if !reflectedX {
-						vBaseX = -vInX
-						reflectedX = true
-					}
-				} else { // Horizontal paddles reflect Y
-					if !reflectedY {
-						vBaseY = -vInY
-						reflectedY = true
-					}
-				}
-
-				maxAngleDeflection := math.Pi / a.cfg.BallHitPaddleAngleFactor
-				maxComponentChange := speed * math.Sin(maxAngleDeflection)
-
-				vFinalX := vBaseX
-				vFinalY := vBaseY
-				if paddle.Index%2 == 0 {
-					vFinalY = vBaseY + normOffset*maxComponentChange
-				} else {
-					vFinalX = vBaseX + normOffset*maxComponentChange
-				}
-
+				vBaseX, vBaseY := vInX, vInY
+				if paddle.Index%2 == 0 { if !reflectedX { vBaseX = -vInX; reflectedX = true } } else { if !reflectedY { vBaseY = -vInY; reflectedY = true } }
+				maxAngleDeflection := math.Pi / a.cfg.BallHitPaddleAngleFactor; maxComponentChange := speed * math.Sin(maxAngleDeflection)
+				vFinalX, vFinalY := vBaseX, vBaseY
+				if paddle.Index%2 == 0 { vFinalY = vBaseY + normOffset*maxComponentChange } else { vFinalX = vBaseX + normOffset*maxComponentChange }
 				finalDirLen := math.Sqrt(vFinalX*vFinalX + vFinalY*vFinalY)
-				if finalDirLen > 0 {
-					vFinalX /= finalDirLen
-					vFinalY /= finalDirLen
-				} else {
-					vFinalX, vFinalY = failsafeDirection(paddle.Index, hitOffsetX, hitOffsetY)
-				}
-
+				if finalDirLen > 0 { vFinalX /= finalDirLen; vFinalY /= finalDirLen } else { vFinalX, vFinalY = a.failsafeDirection(paddle.Index, hitOffsetX, hitOffsetY) }
 				paddleVelAlongHit := float64(paddle.Vx)*vFinalX + float64(paddle.Vy)*vFinalY
-				targetSpeed := speed + (paddleVelAlongHit * a.cfg.BallHitPaddleSpeedFactor)
-
-				minSpeedAfterHit := float64(a.cfg.MinBallVelocity)
-				if targetSpeed < minSpeedAfterHit {
-					targetSpeed = minSpeedAfterHit
-				}
-
-				vFinalX *= targetSpeed
-				vFinalY *= targetSpeed
-
-				finalVxInt, finalVyInt := ensureNonZeroIntVelocity(vFinalX, vFinalY)
+				targetSpeed := speed + (paddleVelAlongHit * a.cfg.BallHitPaddleSpeedFactor); minSpeedAfterHit := float64(a.cfg.MinBallVelocity); if targetSpeed < minSpeedAfterHit { targetSpeed = minSpeedAfterHit }
+				vFinalX *= targetSpeed; vFinalY *= targetSpeed
+				finalVxInt, finalVyInt := a.ensureNonZeroIntVelocity(vFinalX, vFinalY)
 				// --- End Paddle Collision Physics ---
 
-				// Send command to BallActor to update velocity
 				currentEngine.Send(ballActorPID, SetVelocityCommand{Vx: finalVxInt, Vy: finalVyInt}, nil)
-				// Update local cache immediately (velocity, owner)
-				ball.Vx = finalVxInt
-				ball.Vy = finalVyInt
-				ball.OwnerIndex = paddleIndex // Update ball ownership in cache
-				ball.Collided = true          // Set collision flag for the ball in cache
-				paddle.Collided = true        // Set collision flag for the paddle in cache
-				shouldPhase = true
-				goto nextBall // Skip brick collision check if paddle hit occurred
+				ball.Vx = finalVxInt; ball.Vy = finalVyInt // Update local cache
+
+				if ball.OwnerIndex != paddleIndex {
+					ball.OwnerIndex = paddleIndex
+					ownerUpdate := &BallOwnershipChange{MessageType: "ballOwnerChanged", ID: ballID, NewOwnerIndex: paddleIndex}; a.addUpdate(ownerUpdate)
+				}
+				ball.Collided = true; paddle.Collided = true; shouldPhase = true
+				goto nextBall // Skip brick check if paddle hit
 			}
 		} // End paddle loop
 
+	nextBall: // Label for goto statement (moved before collidedCells declaration)
+
 		// 4.3 Brick Collisions
-		if !ball.Phasing {
-			collidedCells := a.findCollidingCells(ball, cellSize)
-			for _, cellPos := range collidedCells {
-				col, row := cellPos[0], cellPos[1]
-				if col < 0 || col >= a.cfg.GridSize || row < 0 || row >= a.cfg.GridSize {
-					continue
-				}
-				// Check if grid and cell data exist before accessing
-				if a.canvas == nil || a.canvas.Grid == nil || len(a.canvas.Grid) <= col || len(a.canvas.Grid[col]) <= row {
-					continue // Grid structure invalid?
-				}
-				cell := &a.canvas.Grid[col][row] // Modify grid directly
-				if cell.Data == nil {
-					continue // Skip if cell data is nil
+		collidedCells := a.findCollidingCells(ball, cellSize)
+
+		for _, cellPos := range collidedCells {
+			col, row := cellPos[0], cellPos[1]
+			cellCoord := [2]int{col, row}
+
+			if a.canvas == nil || a.canvas.Grid == nil || row < 0 || row >= len(a.canvas.Grid) || col < 0 || col >= len(a.canvas.Grid[row]) {
+				continue
+			}
+
+			cell := &a.canvas.Grid[row][col]
+			if cell.Data == nil || cell.Data.Type != utils.Cells.Brick {
+				continue
+			}
+
+			// --- Phasing Ball Logic ---
+			if ball.Phasing {
+				// Send command to BallActor to check and potentially apply damage
+				currentEngine.Send(ballActorPID, DamageBrickCommand{Coord: cellCoord}, a.selfPID)
+				// GameActor no longer directly damages or tracks phasing hits here.
+				// It will wait for an ApplyBrickDamage message from BallActor if needed.
+				// We still mark the ball as collided for visual feedback.
+				ball.Collided = true
+				// Continue checking other cells, phasing ball can hit multiple
+			} else {
+				// --- Non-Phasing Ball Logic ---
+				brickLevel := cell.Data.Level
+				cell.Data.Life--
+
+				// Reflect
+				dx := float64(ball.X - (col*cellSize + cellSize/2))
+				dy := float64(ball.Y - (row*cellSize + cellSize/2))
+				axisToReflect := ""
+				if math.Abs(dx) > math.Abs(dy) { if !reflectedX { axisToReflect = "X"; reflectedX = true } } else { if !reflectedY { axisToReflect = "Y"; reflectedY = true } }
+				if axisToReflect != "" {
+					currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: axisToReflect}, nil)
+					if axisToReflect == "X" { ball.Vx = -ball.Vx } else { ball.Vy = -ball.Vy } // Update cache
 				}
 
-				if cell.Data.Type == utils.Cells.Brick {
-					brickLevel := cell.Data.Level
-					cell.Data.Life--
+				ball.Collided = true
+				shouldPhase = true // Trigger phasing for non-phasing ball
 
-					// Determine reflection axis
-					dx := float64(ball.X - (col*cellSize + cellSize/2))
-					dy := float64(ball.Y - (row*cellSize + cellSize/2))
-					axisToReflect := ""
-					if math.Abs(dx) > math.Abs(dy) {
-						if !reflectedX {
-							axisToReflect = "X"
-							reflectedX = true
-						}
-					} else {
-						if !reflectedY {
-							axisToReflect = "Y"
-							reflectedY = true
-						}
+				// Handle destruction
+				if cell.Data.Life <= 0 {
+					cell.Data.Type = utils.Cells.Empty; cell.Data.Level = 0
+					scorerIndex := ball.OwnerIndex
+					if scorerIndex >= 0 && scorerIndex < len(a.players) && a.players[scorerIndex] != nil && a.players[scorerIndex].IsConnected {
+						scInfo := a.players[scorerIndex]; scInfo.Score.Add(int32(brickLevel)); scoreChanged[scorerIndex] = true
 					}
-					if axisToReflect != "" {
-						// Send command to BallActor
-						currentEngine.Send(ballActorPID, ReflectVelocityCommand{Axis: axisToReflect}, nil)
-						// Update local cache immediately (velocity)
-						if axisToReflect == "X" {
-							ball.Vx = -ball.Vx
-						} else {
-							ball.Vy = -ball.Vy
-						}
+					if rand.Float64() < a.cfg.PowerUpChance {
+						ballStateCopy := *ball; powerUpsToTrigger = append(powerUpsToTrigger, ballStateCopy)
 					}
-
-					ball.Collided = true // Set collision flag for the ball in cache
-
-					if cell.Data.Life <= 0 {
-						cell.Data.Type = utils.Cells.Empty
-						cell.Data.Level = 0
-
-						scorerIndex := ball.OwnerIndex
-						if scorerIndex >= 0 && scorerIndex < len(a.players) && a.players[scorerIndex] != nil && a.players[scorerIndex].IsConnected {
-							scInfo := a.players[scorerIndex]
-							scInfo.Score.Add(int32(brickLevel))
-						}
-
-						if rand.Float64() < a.cfg.PowerUpChance {
-							ballStateCopy := *ball // Create copy for power-up trigger
-							powerUpsToTrigger = append(powerUpsToTrigger, ballStateCopy)
-						}
-					}
-					shouldPhase = true
-					goto nextBall // Only handle one brick collision per tick
 				}
-			} // End collided cells loop
-		} // End brick collision check (!ball.Phasing)
+				// Non-phasing ball processes only one brick collision per tick
+				// Use continue to skip remaining cells for *this ball* this tick
+				continue
+			} // End phasing check
+		} // End collided cells loop
 
-	nextBall: // Label for goto statement
-		if shouldPhase {
-			// Send command to BallActor
+		// Trigger phasing if needed (moved outside the brick loop)
+		if shouldPhase && !ball.Phasing { // Only trigger phasing if not already phasing
 			currentEngine.Send(ballActorPID, SetPhasingCommand{}, nil)
-			// Update local cache immediately (phasing)
-			ball.Phasing = true
+			ball.Phasing = true // Update local cache
 		}
 	} // End ball loop
 
-	// --- 5. Handle Ball Removals and Power-ups ---
+	// --- Generate Score Updates ---
+	for index, changed := range scoreChanged {
+		if changed && a.players[index] != nil {
+			scoreUpdate := &ScoreUpdate{MessageType: "scoreUpdate", Index: index, Score: a.players[index].Score.Load()}; a.addUpdate(scoreUpdate)
+		}
+	}
+
+	// --- Handle Ball Removals ---
 	pidsToStop := make([]*bollywood.PID, 0, len(ballsToRemove))
 	if len(ballsToRemove) > 0 {
 		for _, ballID := range ballsToRemove {
-			if pid, ok := a.ballActors[ballID]; ok && pid != nil {
-				pidsToStop = append(pidsToStop, pid)
-			}
-			delete(a.balls, ballID) // Remove from cache
-			delete(a.ballActors, ballID)
+			if pid, ok := a.ballActors[ballID]; ok && pid != nil { pidsToStop = append(pidsToStop, pid) }
+			delete(a.balls, ballID); delete(a.ballActors, ballID)
+			removedUpdate := &BallRemoved{MessageType: "ballRemoved", ID: ballID}; a.addUpdate(removedUpdate)
 		}
-	}
-	// Trigger power-ups after processing all balls for the tick
-	for _, ballState := range powerUpsToTrigger {
-		// Pass copy of ball state to power-up function
-		a.triggerRandomPowerUp(ctx, &ballState)
 	}
 
-	// --- 6. Stop Removed Ball Actors (outside the main state modification section) ---
+	// --- Trigger Power-ups ---
+	for _, ballState := range powerUpsToTrigger {
+		// Pass the ball's X, Y, and OwnerIndex correctly
+		a.triggerRandomPowerUp(ctx, ballState.X, ballState.Y, ballState.OwnerIndex)
+	}
+
+	// --- Stop Removed Ball Actors ---
 	if len(pidsToStop) > 0 {
-		for _, pid := range pidsToStop {
-			currentEngine.Stop(pid)
-		}
+		for _, pid := range pidsToStop { currentEngine.Stop(pid) }
 	}
 }
 
-// findCollidingCells remains the same.
+// findCollidingCells checks which grid cells the ball overlaps with.
+// Returns pairs of [column, row].
 func (a *GameActor) findCollidingCells(ball *Ball, cellSize int) [][2]int {
 	collided := [][2]int{}
 	gridSize := a.cfg.GridSize
 	if cellSize <= 0 || gridSize <= 0 || ball == nil {
 		return collided
 	}
+
+	// Determine the range of grid cells the ball might overlap with
 	minCol := (ball.X - ball.Radius) / cellSize
 	maxCol := (ball.X + ball.Radius) / cellSize
 	minRow := (ball.Y - ball.Radius) / cellSize
 	maxRow := (ball.Y + ball.Radius) / cellSize
 
+	// Clamp the range to valid grid indices
 	minCol = utils.MaxInt(0, minCol)
 	maxCol = utils.MinInt(gridSize-1, maxCol)
 	minRow = utils.MaxInt(0, minRow)
 	maxRow = utils.MinInt(gridSize-1, maxRow)
 
+	// Check each cell in the potential range for actual intersection
 	for c := minCol; c <= maxCol; c++ {
 		for r := minRow; r <= maxRow; r++ {
 			if ball.InterceptsIndex(c, r, cellSize) {
-				collided = append(collided, [2]int{c, r})
+				collided = append(collided, [2]int{c, r}) // Append as [column, row]
 			}
 		}
 	}
 	return collided
 }
 
-// triggerRandomPowerUp remains the same.
-// Assumes called within the actor's message loop. Uses ball state copy.
-func (a *GameActor) triggerRandomPowerUp(ctx bollywood.Context, ballState *Ball) {
-	if ballState == nil || a.engine == nil || a.selfPID == nil {
-		return
-	}
-	powerUpType := rand.Intn(3)
-
-	// Check if the original ball actor still exists using the ID from the state copy
-	ballActorPID, actorExists := a.ballActors[ballState.Id]
-	_, stateExistsInCache := a.balls[ballState.Id] // Check if state still exists in cache
-
-	if !actorExists || !stateExistsInCache || ballActorPID == nil {
-		if powerUpType != 0 { // Only allow SpawnBall if original ball is gone
-			return
-		}
-	}
-
-	ownerIndex := ballState.OwnerIndex // Use owner from the state copy
+// triggerRandomPowerUp handles the logic for activating a power-up.
+// Takes ballX, ballY, ownerIndex as arguments.
+func (a *GameActor) triggerRandomPowerUp(ctx bollywood.Context, ballX, ballY, ownerIndex int) {
+	// Safety check for owner validity
 	ownerValid := false
 	if ownerIndex >= 0 && ownerIndex < len(a.players) && a.players[ownerIndex] != nil && a.players[ownerIndex].IsConnected {
 		ownerValid = true
 	}
+	if !ownerValid {
+		return
+	}
+
+	powerUpType := rand.Intn(3) // 0: SpawnBall, 1: IncreaseMass, 2: IncreaseVelocity
+
+	// Find the original ball that caused the damage (needed for mass/velocity powerups)
+	// This is slightly tricky now. We might need to pass the original ball ID through ApplyBrickDamage or the collision check.
+	// For now, let's assume power-ups only spawn new balls if triggered by non-phasing damage.
+	// TODO: Revisit if IncreaseMass/Velocity power-ups are desired from phasing damage.
 
 	switch powerUpType {
 	case 0: // SpawnBall
-		if ownerValid {
-			a.engine.Send(a.selfPID, SpawnBallCommand{
-				OwnerIndex:  ownerIndex,
-				X:           ballState.X, // Spawn near the triggering ball's location
-				Y:           ballState.Y,
-				ExpireIn:    a.cfg.PowerUpSpawnBallExpiry,
-				IsPermanent: false,
-			}, nil)
-		}
-	case 1: // IncreaseMass (Only if ball actor still exists)
-		if actorExists && ballActorPID != nil {
-			a.engine.Send(ballActorPID, IncreaseMassCommand{Additional: a.cfg.PowerUpIncreaseMassAdd}, nil)
-		}
-	case 2: // IncreaseVelocity (Only if ball actor still exists)
-		if actorExists && ballActorPID != nil {
-			a.engine.Send(ballActorPID, IncreaseVelocityCommand{Ratio: a.cfg.PowerUpIncreaseVelRatio}, nil)
-		}
+		// Send command to self (GameActor) to handle spawning
+		a.engine.Send(a.selfPID, SpawnBallCommand{
+			OwnerIndex:  ownerIndex,
+			X:           ballX, // Spawn near the original ball's position at damage time
+			Y:           ballY,
+			ExpireIn:    a.cfg.PowerUpSpawnBallExpiry,
+			IsPermanent: false,
+		}, nil)
+	case 1: // IncreaseMass
+		// Requires BallID - currently not available here easily. Skip for now.
+		fmt.Printf("WARN: IncreaseMass power-up triggered - currently not supported from brick break.\n")
+	case 2: // IncreaseVelocity
+		// Requires BallID - currently not available here easily. Skip for now.
+		fmt.Printf("WARN: IncreaseVelocity power-up triggered - currently not supported from brick break.\n")
 	}
 }
 
-// failsafeDirection remains the same.
-func failsafeDirection(paddleIndex int, hitOffsetX, hitOffsetY float64) (float64, float64) {
+// failsafeDirection provides a reasonable reflection direction if calculations result in zero vector.
+func (a *GameActor) failsafeDirection(paddleIndex int, hitOffsetX, hitOffsetY float64) (float64, float64) {
+	// Default to reflecting directly away from center (approximated)
 	vFinalX := -hitOffsetX
 	vFinalY := -hitOffsetY
 	failsafeLen := math.Sqrt(vFinalX*vFinalX + vFinalY*vFinalY)
+
 	if failsafeLen > 0 {
 		vFinalX /= failsafeLen
 		vFinalY /= failsafeLen
 	} else {
+		// If still zero (hit dead center?), reflect directly away from wall
 		vFinalX, vFinalY = 0, 0
 		switch paddleIndex {
-		case 0:
-			vFinalX = -1
-		case 1:
-			vFinalY = 1
-		case 2:
-			vFinalX = 1
-		case 3:
-			vFinalY = -1
+		case 0: vFinalX = -1 // Right paddle -> reflect left
+		case 1: vFinalY = 1  // Top paddle -> reflect down
+		case 2: vFinalX = 1  // Left paddle -> reflect right
+		case 3: vFinalY = -1 // Bottom paddle -> reflect up
 		}
 	}
 	return vFinalX, vFinalY
 }
 
-// ensureNonZeroIntVelocity remains the same.
-func ensureNonZeroIntVelocity(vxFloat, vyFloat float64) (int, int) {
+// ensureNonZeroIntVelocity converts float velocities to int, ensuring non-zero if original float wasn't zero.
+func (a *GameActor) ensureNonZeroIntVelocity(vxFloat, vyFloat float64) (int, int) {
 	vxInt := int(vxFloat)
 	vyInt := int(vyFloat)
 
+	// If conversion to int resulted in zero, but float wasn't zero, set to +/- 1
 	if vxInt == 0 && vxFloat != 0 {
 		vxInt = int(math.Copysign(1.0, vxFloat))
 	}
@@ -449,6 +372,7 @@ func ensureNonZeroIntVelocity(vxFloat, vyFloat float64) (int, int) {
 		vyInt = int(math.Copysign(1.0, vyFloat))
 	}
 
+	// Failsafe: If both are somehow still zero, but floats weren't, prioritize larger component or default
 	if vxInt == 0 && vyInt == 0 && (vxFloat != 0 || vyFloat != 0) {
 		if math.Abs(vxFloat) > math.Abs(vyFloat) {
 			vxInt = int(math.Copysign(1.0, vxFloat))
@@ -456,12 +380,13 @@ func ensureNonZeroIntVelocity(vxFloat, vyFloat float64) (int, int) {
 		} else if math.Abs(vyFloat) > math.Abs(vxFloat) {
 			vxInt = 0
 			vyInt = int(math.Copysign(1.0, vyFloat))
-		} else {
-			vxInt = int(math.Copysign(1.0, vxFloat))
+		} else { // Equal magnitude or both non-zero but small
+			vxInt = int(math.Copysign(1.0, vxFloat)) // Keep both components +/- 1
 			vyInt = int(math.Copysign(1.0, vyFloat))
 		}
+		// Final final failsafe: if somehow *still* zero (e.g., NaN floats?), set a default
 		if vxInt == 0 && vyInt == 0 {
-			vxInt = 1
+			vxInt = 1 // Default to moving right
 		}
 	}
 	return vxInt, vyInt

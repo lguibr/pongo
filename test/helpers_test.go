@@ -2,6 +2,7 @@
 package test
 
 import (
+	// "encoding/json" // Removed unused import
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	// "github.com/lguibr/pongo/game" // No longer needed here
+	// "github.com/lguibr/pongo/utils" // No longer needed here
 	"golang.org/x/net/websocket"
 )
 
@@ -64,5 +67,3 @@ func ReadWsJSONMessage(t *testing.T, ws *websocket.Conn, timeout time.Duration, 
 		return fmt.Errorf("websocket read timeout after %v (Receive call blocked)", timeout)
 	}
 }
-
-// Add other shared test helpers here if needed in the future.

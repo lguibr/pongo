@@ -8,6 +8,7 @@ import (
 	"net"     // Import net package
 	"reflect" // Import reflect
 	"runtime/debug"
+	"sync" // Import sync
 	"time"
 
 	"github.com/lguibr/bollywood"
@@ -30,6 +31,7 @@ type ConnectionHandlerActor struct {
 	readLoopExited chan struct{} // Channel to signal readLoop has exited
 	done           chan struct{} // Channel to signal handler completion
 	isAssigned     bool          // Flag to track if assigned to a GameActor
+	closeOnce      sync.Once     // Ensures done channel is closed only once
 }
 
 // ConnectionHandlerArgs holds arguments for creating the actor.
@@ -56,6 +58,7 @@ func NewConnectionHandlerProducer(args ConnectionHandlerArgs) bollywood.Producer
 			readLoopExited: make(chan struct{}),
 			done:           args.Done, // Store done channel
 			isAssigned:     false,     // Initialize as not assigned
+			// closeOnce is initialized automatically
 		}
 	}
 }
@@ -117,19 +120,25 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		if msg.Error() != "read loop exited" {
 			fmt.Printf("ConnectionHandlerActor %s: Received error: %v. Cleaning up.\n", a.connAddr, msg)
 		} else {
-			fmt.Printf("ConnectionHandlerActor %s: Received notification: %v. Cleaning up.\n", a.connAddr, msg)
+			// fmt.Printf("ConnectionHandlerActor %s: Received notification: %v. Cleaning up.\n", a.connAddr, msg) // Reduce noise
 		}
 		a.cleanup(ctx, msg)
 
 	case bollywood.Stopping:
+		// fmt.Printf("ConnectionHandlerActor %s: Received Stopping message.\n", a.connAddr) // Reduce noise
 		a.signalAndWaitForReadLoop()
-		a.performCleanupActions(ctx, errActorStopping)
+		a.performCleanupActions(ctx, errActorStopping) // Pass specific error
 
 	case bollywood.Stopped:
-		if a.done != nil {
-			close(a.done)
-			a.done = nil
-		}
+		// fmt.Printf("ConnectionHandlerActor %s: Received Stopped message.\n", a.connAddr) // Reduce noise
+		// Use sync.Once to close done channel
+		a.closeOnce.Do(func() {
+			if a.done != nil {
+				// fmt.Printf("ConnectionHandlerActor %s: Closing done channel.\n", a.connAddr) // Reduce noise
+				close(a.done)
+				a.done = nil // Prevent future attempts if somehow accessed again
+			}
+		})
 
 	default:
 		fmt.Printf("ConnectionHandlerActor %s: Received unexpected message type in Receive: %T, Value: %+v\n", a.connAddr, msg, msg)
@@ -147,7 +156,7 @@ func (a *ConnectionHandlerActor) readLoop(engine *bollywood.Engine, selfPID *bol
 			fmt.Printf("PANIC recovered in ConnectionHandlerActor %s readLoop: %v\nStack trace:\n%s\n", a.connAddr, r, string(debug.Stack()))
 		}
 		close(a.readLoopExited)
-		fmt.Printf("ConnectionHandlerActor %s: Read loop finished.\n", a.connAddr)
+		// fmt.Printf("ConnectionHandlerActor %s: Read loop finished.\n", a.connAddr) // Reduce noise
 		// Send error back to the actor instance using the provided engine/PID
 		if engine != nil && selfPID != nil {
 			readLoopExitErr := errors.New("read loop exited")
@@ -155,11 +164,11 @@ func (a *ConnectionHandlerActor) readLoop(engine *bollywood.Engine, selfPID *bol
 		}
 	}()
 
-	fmt.Printf("ConnectionHandlerActor %s: Read loop started.\n", a.connAddr)
+	// fmt.Printf("ConnectionHandlerActor %s: Read loop started.\n", a.connAddr) // Reduce noise
 	for {
 		select {
 		case <-a.stopReadLoop:
-			fmt.Printf("ConnectionHandlerActor %s: Read loop received stop signal.\n", a.connAddr)
+			// fmt.Printf("ConnectionHandlerActor %s: Read loop received stop signal.\n", a.connAddr) // Reduce noise
 			return
 		default:
 		}
@@ -167,7 +176,7 @@ func (a *ConnectionHandlerActor) readLoop(engine *bollywood.Engine, selfPID *bol
 		var message json.RawMessage
 		readTimeout := 90 * time.Second
 		if a.conn == nil {
-			fmt.Printf("ConnectionHandlerActor %s: Connection is nil in readLoop, exiting.\n", a.connAddr)
+			// fmt.Printf("ConnectionHandlerActor %s: Connection is nil in readLoop, exiting.\n", a.connAddr) // Reduce noise
 			return
 		}
 		_ = a.conn.SetReadDeadline(time.Now().Add(readTimeout))
@@ -179,9 +188,9 @@ func (a *ConnectionHandlerActor) readLoop(engine *bollywood.Engine, selfPID *bol
 		if err != nil {
 			select {
 			case <-a.stopReadLoop:
-				fmt.Printf("ConnectionHandlerActor %s: Read loop exiting due to stop signal after read error (%v).\n", a.connAddr, err)
+				// fmt.Printf("ConnectionHandlerActor %s: Read loop exiting due to stop signal after read error (%v).\n", a.connAddr, err) // Reduce noise
 			default:
-				fmt.Printf("ConnectionHandlerActor %s: Read error: %v. Exiting read loop.\n", a.connAddr, err)
+				// fmt.Printf("ConnectionHandlerActor %s: Read error: %v. Exiting read loop.\n", a.connAddr, err) // Reduce noise
 			}
 			return // Exit loop on error
 		}
@@ -215,7 +224,7 @@ func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() {
 	// Wait for the readLoop to signal it has exited
 	select {
 	case <-a.readLoopExited:
-		fmt.Printf("ConnectionHandlerActor %s: Read loop confirmed exited.\n", a.connAddr)
+		// fmt.Printf("ConnectionHandlerActor %s: Read loop confirmed exited.\n", a.connAddr) // Reduce noise
 	case <-time.After(2 * time.Second):
 		fmt.Printf("WARN: ConnectionHandlerActor %s: Timeout waiting for read loop to exit.\n", a.connAddr)
 	}
@@ -223,14 +232,17 @@ func (a *ConnectionHandlerActor) signalAndWaitForReadLoop() {
 
 // cleanup is called when the connection terminates (readLoop exits) or the actor stops.
 func (a *ConnectionHandlerActor) cleanup(ctx bollywood.Context, reason error) {
-	fmt.Printf("ConnectionHandlerActor %s: Initiating cleanup (Reason: %v).\n", a.connAddr, reason)
+	// fmt.Printf("ConnectionHandlerActor %s: Initiating cleanup (Reason: %v).\n", a.connAddr, reason) // Reduce noise
 	a.signalAndWaitForReadLoop()
 	a.performCleanupActions(ctx, reason)
 	// Only stop self if the cleanup wasn't triggered by the actor already stopping
 	if !errors.Is(reason, errActorStopping) {
 		if a.engine != nil && a.selfPID != nil {
+			// fmt.Printf("ConnectionHandlerActor %s: Cleanup requesting self stop.\n", a.connAddr) // Reduce noise
 			a.engine.Stop(a.selfPID)
 		}
+	} else {
+		// fmt.Printf("ConnectionHandlerActor %s: Cleanup initiated by Stopping message, not stopping self again.\n", a.connAddr) // Reduce noise
 	}
 }
 
@@ -240,14 +252,14 @@ func (a *ConnectionHandlerActor) performCleanupActions(ctx bollywood.Context, re
 
 	// Send PlayerDisconnect only if assigned, connection exists, and not already stopping
 	if a.isAssigned && a.gameActorPID != nil && connToDisconnect != nil && !errors.Is(reason, errActorStopping) {
-		fmt.Printf("ConnectionHandlerActor %s: Sending PlayerDisconnect to %s.\n", a.connAddr, a.gameActorPID)
+		// fmt.Printf("ConnectionHandlerActor %s: Sending PlayerDisconnect to %s.\n", a.connAddr, a.gameActorPID) // Reduce noise
 		if a.engine != nil && a.selfPID != nil {
 			a.engine.Send(a.gameActorPID, game.PlayerDisconnect{WsConn: connToDisconnect}, a.selfPID)
 		}
 	} else if a.gameActorPID != nil {
 		// Log why disconnect wasn't sent
-		fmt.Printf("ConnectionHandlerActor %s: Not sending PlayerDisconnect to %s (Reason: %v, Assigned: %t, ConnNil: %t).\n",
-			a.connAddr, a.gameActorPID, reason, a.isAssigned, connToDisconnect == nil)
+		// fmt.Printf("ConnectionHandlerActor %s: Not sending PlayerDisconnect to %s (Reason: %v, Assigned: %t, ConnNil: %t).\n",
+		// 	a.connAddr, a.gameActorPID, reason, a.isAssigned, connToDisconnect == nil) // Reduce noise
 	}
 
 	// Close and nil the connection reference

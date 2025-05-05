@@ -3,8 +3,9 @@ package main
 
 import (
 	"fmt"
-	"net/http" // Import url package
-	// Import strings package
+	"net/http"
+	"net/url" // Import url package
+	"strings" // Import strings package
 	"time"
 
 	"github.com/lguibr/bollywood"
@@ -16,54 +17,71 @@ import (
 
 const servicePort = "8080" // Hardcoded port for Cloud Run
 
-// --- ADDED: Function to check origin (ALLOWS ALL - USE CAUTIOUSLY) ---
+// --- Function to check origin ---
 func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
-	// This function bypasses the default origin check.
-	// Consider adding more specific checks if needed for security.
-	// For example, allow only specific origins:
+	origin := req.Header.Get("Origin")
+	host := req.Host
+	fmt.Printf("Origin Check: Header Origin='%s', Request Host='%s'\n", origin, host)
+
+	// If Origin header is present, let websocket.Origin perform the default check.
+	// If it's missing, we might allow based on Host or other criteria.
+	config.Origin, err = websocket.Origin(config, req)
+	if err == nil {
+		if config.Origin == nil {
+			// websocket.Origin returns nil origin and nil error if Origin header is missing.
+			// This is often allowed by default browsers for ws:// connections from http:// origins.
+			// For Cloud Run (HTTPS -> HTTP), the Origin header *should* be present.
+			// If it's missing, it might indicate a non-browser client or misconfiguration.
+			// We'll allow it for now but log a warning.
+			fmt.Println("Origin Check: Origin header missing, allowing connection (check client/proxy config).")
+			// Optionally, construct a default origin based on Host if strict checking is needed:
+			// defaultOriginUrl := &url.URL{Scheme: "http", Host: req.Host} // Adjust scheme as needed
+			// config.Origin = defaultOriginUrl
+			return nil // Allow connection
+		}
+		// Origin header was present and matched the config's expected origin.
+		fmt.Printf("Origin Check: websocket.Origin check passed for origin %s\n", config.Origin)
+		return nil // Origin check passed
+	}
+
+	// websocket.Origin returned an error (likely origin mismatch)
+	fmt.Printf("Origin Check: websocket.Origin check failed: %v\n", err)
+
+	// --- Custom Allow Logic (Example - USE WITH CAUTION) ---
+	// Allow specific origins explicitly if needed, bypassing the standard check error.
+	// This is generally NOT recommended for security unless you have specific needs.
 	/*
-	   origin := req.Header.Get("Origin")
-	   allowedOrigins := []string{"http://localhost:5173", "https://your-frontend.com"}
+	   allowedOrigins := []string{"http://localhost:5173", "https://your-frontend-domain.com"}
+	   requestOrigin := req.Header.Get("Origin") // Get the actual Origin header value
 	   isAllowed := false
 	   for _, allowed := range allowedOrigins {
-	       if origin == allowed {
+	       if requestOrigin == allowed {
 	           isAllowed = true
 	           break
 	       }
 	   }
-	   if !isAllowed {
-	       return fmt.Errorf("origin %q not allowed", origin)
+	   if isAllowed {
+	       fmt.Printf("Origin Check: Custom allow for origin %s\n", requestOrigin)
+	       config.Origin, _ = url.Parse(requestOrigin) // Set the config origin to the allowed one
+	       return nil // Bypass the original error
 	   }
 	*/
-	fmt.Printf("Bypassing origin check for Origin: %s, Host: %s\n", req.Header.Get("Origin"), req.Host) // Log bypass
-	config.Origin, err = websocket.Origin(config, req)
-	if err == nil && config.Origin == nil {
-		// If Origin header is not present, default check might allow based on Host.
-		// We can explicitly create a default Origin based on the Host if needed,
-		// but often just returning nil error here is sufficient if Origin header is missing.
-		fmt.Println("Origin header not present, allowing connection.")
-		// Example if needed:
-		// config.Origin = &url.URL{Scheme: "http", Host: req.Host} // Or https based on req scheme
-	} else if err != nil {
-		fmt.Printf("Error checking origin (websocket.Origin): %v\n", err)
-		// Return the error from websocket.Origin if it occurred
-		return err
-	}
-	// If websocket.Origin succeeded or we explicitly allowed nil Origin, return nil error
-	return nil
-}
+	// --- End Custom Allow Logic ---
 
-// --- END ADD ---
+	// If no custom logic allowed it, return the original error from websocket.Origin
+	return err
+}
 
 func main() {
 	// --- ADD A UNIQUE MARKER TO CONFIRM THIS VERSION IS RUNNING ---
-	fmt.Println(">>> RUNNING CODE VERSION: [Lucas-Apr28-v1.1.3-OriginFixAttempt] <<<")
+	fmt.Println(">>> RUNNING CODE VERSION: [Lucas-Apr28-v1.1.4-CleanupRefactor] <<<")
 	// --- END MARKER ---
 
 	// 0. Load Configuration
 	cfg := utils.DefaultConfig()
 	fmt.Println("Configuration loaded (using defaults).")
-	fmt.Printf("Canvas Size: %d, Grid Size: %d, Tick Period: %v\n", cfg.CanvasSize, cfg.GridSize, cfg.GameTickPeriod)
+	fmt.Printf("Canvas Size: %d, Grid Size: %d, Tick Period: %v, Broadcast Rate: %dHz\n",
+		cfg.CanvasSize, cfg.GridSize, cfg.GameTickPeriod, cfg.BroadcastRateHz)
 
 	// 1. Initialize Bollywood Engine
 	engine := bollywood.NewEngine()
@@ -82,8 +100,7 @@ func main() {
 
 	// 3. Create the HTTP/WebSocket Server
 	websocketServer := server.New(engine, roomManagerPID) // Pass RoomManager PID
-	fmt.Println(">>> DEBUG: server.New() completed.")     // Debug log
-	fmt.Println("WebSocket Server created.")              // Original log
+	fmt.Println("WebSocket Server instance created.")
 
 	// 4. Setup Handlers
 	http.HandleFunc("/", server.HandleHealthCheck())              // Simple health check at root
@@ -93,26 +110,40 @@ func main() {
 	// --- MODIFIED: Use http.HandleFunc with custom origin check ---
 	subscribeHandler := websocket.Handler(websocketServer.HandleSubscribe())
 	http.HandleFunc("/subscribe", func(w http.ResponseWriter, req *http.Request) {
-		// Determine scheme based on request or Cloud Run headers if needed
-		// Cloud Run terminates TLS, so the request Go sees might be HTTP,
-		// but we need to construct the config URLs based on the external access (HTTPS).
-		// X-Forwarded-Proto is usually reliable.
-		scheme := "wss" // Assume HTTPS for Cloud Run external access
-		originScheme := "https"
-		if req.Header.Get("X-Forwarded-Proto") == "http" {
-			// This case should be rare for Cloud Run default URLs but handles potential non-HTTPS setups
-			scheme = "ws"
-			originScheme = "http"
+		// Determine scheme based on request or Cloud Run headers
+		scheme := "ws"
+		originScheme := "http"
+		if req.TLS != nil || strings.EqualFold(req.Header.Get("X-Forwarded-Proto"), "https") {
+			scheme = "wss"
+			originScheme = "https"
 		}
+		fmt.Printf("Handle /subscribe: Detected scheme: %s (Origin scheme: %s)\n", scheme, originScheme)
 
 		// Construct URLs carefully using the Host header
-		requestUrl := fmt.Sprintf("%s://%s/subscribe", scheme, req.Host)
-		// Origin URL should generally not include the path
-		originUrl := fmt.Sprintf("%s://%s", originScheme, req.Host)
+		// Location URL (where the WebSocket endpoint is)
+		locationUrlStr := fmt.Sprintf("%s://%s/subscribe", scheme, req.Host)
+		// Origin URL (where the request is coming from - usually without path)
+		// Use the Origin header if present, otherwise construct from Host.
+		originUrlStr := req.Header.Get("Origin")
+		if originUrlStr == "" {
+			// Construct a default origin if header is missing
+			originUrlStr = fmt.Sprintf("%s://%s", originScheme, req.Host)
+			fmt.Printf("Handle /subscribe: Origin header missing, using constructed origin: %s\n", originUrlStr)
+		}
 
-		config, err := websocket.NewConfig(requestUrl, originUrl)
+		// Validate constructed URLs before creating config
+		_, errLoc := url.Parse(locationUrlStr)
+		_, errOrg := url.Parse(originUrlStr)
+		if errLoc != nil || errOrg != nil {
+			fmt.Printf("Error parsing URLs for websocket config (Location: '%s', Origin: '%s'): LocErr=%v, OrgErr=%v\n", locationUrlStr, originUrlStr, errLoc, errOrg)
+			http.Error(w, "Internal Server Error", 500)
+			return
+		}
+
+		// Create WebSocket config
+		config, err := websocket.NewConfig(locationUrlStr, originUrlStr)
 		if err != nil {
-			fmt.Printf("Error creating websocket config (URL: %s, Origin: %s): %v\n", requestUrl, originUrl, err)
+			fmt.Printf("Error creating websocket config (Location: %s, Origin: %s): %v\n", locationUrlStr, originUrlStr, err)
 			http.Error(w, "Internal Server Error", 500)
 			return
 		}
@@ -120,28 +151,26 @@ func main() {
 		// Perform the custom origin check
 		err = checkOrigin(config, req) // Call our custom check
 		if err != nil {
-			fmt.Printf("Origin check failed: %v\n", err)
+			fmt.Printf("Origin check failed for Origin '%s' against config Origin '%s': %v\n", req.Header.Get("Origin"), config.Origin, err)
 			http.Error(w, "Forbidden", 403)
 			return
 		}
 
 		// If origin check passes, serve the actual handler using the original Handler interface
-		fmt.Println("Origin check passed, serving WebSocket handler.")
+		fmt.Printf("Origin check passed for Origin '%s', serving WebSocket handler.\n", config.Origin)
 		subscribeHandler.ServeHTTP(w, req) // Use the original handler
 	})
 	// --- END MODIFICATION ---
 
-	fmt.Println(">>> DEBUG: HTTP Handlers registered.") // Debug log
+	fmt.Println("HTTP Handlers registered.")
 
 	// 5. Determine Port and Start Server
-	listenAddr := ":" + servicePort                                                  // Use the hardcoded port
-	fmt.Printf(">>> DEBUG: Attempting to listen on address: [%s] <<<\n", listenAddr) // Debug log
-	fmt.Printf("Server starting explicitly on address %s\n", listenAddr)             // Original log
+	listenAddr := ":" + servicePort
+	fmt.Printf("Server starting on address %s\n", listenAddr)
 	err := http.ListenAndServe(listenAddr, nil)
 	if err != nil {
-		fmt.Printf(">>> DEBUG: http.ListenAndServe on %s failed: %v <<<\n", listenAddr, err) // Debug log
+		fmt.Printf("FATAL: http.ListenAndServe on %s failed: %v\n", listenAddr, err)
 		// Handle shutdown gracefully
-		fmt.Println("Server stopped:", err)
 		fmt.Println("Shutting down engine...")
 		engine.Shutdown(5 * time.Second) // Allow actors time to stop
 		fmt.Println("Engine shutdown complete.")
