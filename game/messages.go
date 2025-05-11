@@ -25,14 +25,14 @@ type PlayerAssignmentMessage struct {
 
 // InitialPaddleState includes R3F coordinates for initial state messages.
 type InitialPaddleState struct {
-	Paddle // Embed original data
+	Paddle         // Embed original data
 	R3fX   float64 `json:"r3fX"`
 	R3fY   float64 `json:"r3fY"`
 }
 
 // InitialBallState includes R3F coordinates for initial state messages.
 type InitialBallState struct {
-	Ball // Embed original data
+	Ball         // Embed original data
 	R3fX float64 `json:"r3fX"`
 	R3fY float64 `json:"r3fY"`
 }
@@ -54,20 +54,20 @@ type GameUpdatesBatch struct {
 
 // GameOverMessage signals the end of the game.
 type GameOverMessage struct {
-	MessageType string             `json:"messageType"` // "gameOver"
-	WinnerIndex int                `json:"winnerIndex"` // -1 for a tie or no winner
+	MessageType string                  `json:"messageType"` // "gameOver"
+	WinnerIndex int                     `json:"winnerIndex"` // -1 for a tie or no winner
 	FinalScores [utils.MaxPlayers]int32 `json:"finalScores"`
-	Reason      string             `json:"reason"`
-	RoomPID     string             `json:"roomPID"` // PID of the game room that ended
+	Reason      string                  `json:"reason"`
+	RoomPID     string                  `json:"roomPID"` // PID of the game room that ended
 }
 
 // --- Atomic Update Messages (Included in GameUpdatesBatch) ---
 
 // PlayerJoined signals a new player has joined the room. Includes R3F coords.
 type PlayerJoined struct {
-	MessageType string `json:"messageType"` // "playerJoined"
-	Player      Player `json:"player"`      // Player data (value type)
-	Paddle      Paddle `json:"paddle"`      // Initial paddle state (value type)
+	MessageType string  `json:"messageType"` // "playerJoined"
+	Player      Player  `json:"player"`      // Player data (value type)
+	Paddle      Paddle  `json:"paddle"`      // Initial paddle state (value type)
 	R3fX        float64 `json:"r3fX"`        // R3F X coordinate for paddle center
 	R3fY        float64 `json:"r3fY"`        // R3F Y coordinate for paddle center
 }
@@ -80,8 +80,8 @@ type PlayerLeft struct {
 
 // BallSpawned signals a new ball has been added. Includes R3F coords.
 type BallSpawned struct {
-	MessageType string `json:"messageType"` // "ballSpawned"
-	Ball        Ball   `json:"ball"`        // Ball data (value type)
+	MessageType string  `json:"messageType"` // "ballSpawned"
+	Ball        Ball    `json:"ball"`        // Ball data (value type)
 	R3fX        float64 `json:"r3fX"`        // R3F X coordinate for ball center
 	R3fY        float64 `json:"r3fY"`        // R3F Y coordinate for ball center
 }
@@ -94,40 +94,40 @@ type BallRemoved struct {
 
 // BallPositionUpdate provides the latest position and state of a ball. Includes R3F coords.
 type BallPositionUpdate struct {
-	MessageType string `json:"messageType"` // "ballPositionUpdate"
-	ID          int    `json:"id"`
-	X           int    `json:"x"`    // Original X
-	Y           int    `json:"y"`    // Original Y
+	MessageType string  `json:"messageType"` // "ballPositionUpdate"
+	ID          int     `json:"id"`
+	X           int     `json:"x"`    // Original X
+	Y           int     `json:"y"`    // Original Y
 	R3fX        float64 `json:"r3fX"` // R3F X coordinate
 	R3fY        float64 `json:"r3fY"` // R3F Y coordinate
-	Vx          int    `json:"vx"`
-	Vy          int    `json:"vy"`
-	Collided    bool   `json:"collided"` // Collision flag
-	Phasing     bool   `json:"phasing"`  // Phasing state
+	Vx          int     `json:"vx"`
+	Vy          int     `json:"vy"`
+	Collided    bool    `json:"collided"` // Collision flag
+	Phasing     bool    `json:"phasing"`  // Phasing state
 }
 
 // PaddlePositionUpdate provides the latest position and state of a paddle. Includes R3F coords.
 type PaddlePositionUpdate struct {
-	MessageType string `json:"messageType"` // "paddlePositionUpdate"
-	Index       int    `json:"index"`
-	X           int    `json:"x"`      // Original X
-	Y           int    `json:"y"`      // Original Y
-	R3fX        float64 `json:"r3fX"`   // R3F X coordinate for paddle center
-	R3fY        float64 `json:"r3fY"`   // R3F Y coordinate for paddle center
-	Width       int    `json:"width"`  // Include dimensions for frontend geometry
-	Height      int    `json:"height"`
-	Vx          int    `json:"vx"`
-	Vy          int    `json:"vy"`
-	IsMoving    bool   `json:"isMoving"` // Movement state
-	Collided    bool   `json:"collided"` // Collision flag
+	MessageType string  `json:"messageType"` // "paddlePositionUpdate"
+	Index       int     `json:"index"`
+	X           int     `json:"x"`     // Original X
+	Y           int     `json:"y"`     // Original Y
+	R3fX        float64 `json:"r3fX"`  // R3F X coordinate for paddle center
+	R3fY        float64 `json:"r3fY"`  // R3F Y coordinate for paddle center
+	Width       int     `json:"width"` // Include dimensions for frontend geometry
+	Height      int     `json:"height"`
+	Vx          int     `json:"vx"`
+	Vy          int     `json:"vy"`
+	IsMoving    bool    `json:"isMoving"` // Movement state
+	Collided    bool    `json:"collided"` // Collision flag
 }
 
 // BrickStateUpdate represents the state of a single brick cell. Includes R3F coords.
 type BrickStateUpdate struct {
 	// MessageType string `json:"messageType"` // "brickStateUpdate" - Removed, part of FullGridUpdate
-	X    float64       `json:"x"`    // R3F X coordinate for cell center
-	Y    float64       `json:"y"`    // R3F Y coordinate for cell center
-	Life int           `json:"life"` // Remaining life
+	X    float64        `json:"x"`    // R3F X coordinate for cell center
+	Y    float64        `json:"y"`    // R3F Y coordinate for cell center
+	Life int            `json:"life"` // Remaining life
 	Type utils.CellType `json:"type"` // Type (Brick, Empty, etc.)
 }
 
@@ -340,4 +340,20 @@ type internalGetBrickResponse struct {
 	Type    utils.CellType
 	Exists  bool // Does the cell exist in the grid?
 	IsBrick bool // Is the cell currently a brick?
+}
+
+// internalTriggerStartPhasingPowerUp tells GameActor to activate phasing for a ball.
+type internalTriggerStartPhasingPowerUp struct {
+	BallID int
+}
+
+// internalConfirmPhasingRequest asks GameActor to confirm a ball's phasing state.
+type internalConfirmPhasingRequest struct {
+	BallID int
+}
+
+// internalConfirmPhasingResponse is the reply to internalConfirmPhasingRequest.
+type internalConfirmPhasingResponse struct {
+	IsPhasing bool
+	Exists    bool
 }

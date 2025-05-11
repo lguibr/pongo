@@ -84,60 +84,14 @@ func (a *GameActor) handleBroadcastTick(ctx bollywood.Context) {
 	a.engine.Send(a.broadcasterPID, BroadcastUpdatesCommand{Updates: updatesToSend}, a.selfPID)
 }
 
-// updateInternalState applies velocity/direction, updates positions in cache,
-// and generates BallPositionUpdate/PaddlePositionUpdate messages with R3F coords.
-func (a *GameActor) updateInternalState() {
-	canvasSize := a.cfg.CanvasSize
-	// Update paddles
-	for i, paddle := range a.paddles {
-		if paddle != nil {
-			oldX, oldY, oldVx, oldVy, oldMoving := paddle.X, paddle.Y, paddle.Vx, paddle.Vy, paddle.IsMoving
-			collidedState := paddle.Collided // Capture collision state BEFORE move/reset
-			paddle.Collided = false          // Reset collision flag BEFORE move
-
-			paddle.Move() // Updates internal X, Y, Vx, Vy, IsMoving
-
-			// Check if state relevant for update has changed
-			if paddle.X != oldX || paddle.Y != oldY || paddle.Vx != oldVx || paddle.Vy != oldVy || paddle.IsMoving != oldMoving || collidedState {
-				// Calculate R3F coords for the paddle center
-				r3fX, r3fY := mapToR3FCoords(paddle.X+paddle.Width/2, paddle.Y+paddle.Height/2, canvasSize)
-				update := &PaddlePositionUpdate{
-					MessageType: "paddlePositionUpdate", Index: i,
-					X: paddle.X, Y: paddle.Y, // Original coords
-					R3fX: r3fX, R3fY: r3fY, // R3F coords
-					Width: paddle.Width, Height: paddle.Height, // Dimensions for frontend geometry
-					Vx: paddle.Vx, Vy: paddle.Vy, IsMoving: paddle.IsMoving, Collided: collidedState,
-				}
-				a.addUpdate(update)
-			}
-		}
-	}
-
-	// Update balls
-	for id, ball := range a.balls {
-		if ball != nil {
-			oldX, oldY := ball.X, ball.Y
-			collidedState := ball.Collided // Capture collision state BEFORE move/reset
-			ball.Collided = false          // Reset collision flag BEFORE move
-
-			ball.Move() // Updates internal X, Y
-
-			// Check if state relevant for update has changed
-			if ball.X != oldX || ball.Y != oldY || collidedState {
-				// Calculate R3F coords
-				r3fX, r3fY := mapToR3FCoords(ball.X, ball.Y, canvasSize)
-				update := &BallPositionUpdate{
-					MessageType: "ballPositionUpdate", ID: id,
-					X: ball.X, Y: ball.Y, // Original coords
-					R3fX: r3fX, R3fY: r3fY, // R3F coords
-					Vx: ball.Vx, Vy: ball.Vy, Collided: collidedState,
-					Phasing: ball.Phasing, // Include current phasing state
-				}
-				a.addUpdate(update)
-			}
-		}
-	}
-}
+// updateInternalState is now DEPRECATED. Its logic has been moved into:
+// GameActor.moveEntities()
+// GameActor.detectCollisions() (already existed, but its role in the sequence is clarified)
+// GameActor.generatePositionUpdates()
+// GameActor.resetPerTickCollisionFlags()
+// func (a *GameActor) updateInternalState() {
+// THIS FUNCTION IS NO LONGER CALLED.
+// }
 
 // Helper to map original world coords (0,0 top-left) to R3F centered coords (0,0 center, Y-up)
 // This is a pure function.

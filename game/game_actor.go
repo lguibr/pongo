@@ -160,9 +160,22 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 
 	case GameTick: // Message from physicsTicker
 		start := time.Now()
-		a.updateInternalState() // Generates position updates
-		a.detectCollisions(ctx) // Generates collision/score/etc updates
-		a.checkGameOver(ctx)    // Checks game end condition
+
+		// 1. Move entities based on current velocity/direction (updates cache)
+		a.moveEntities()
+
+		// 2. Detect and resolve collisions (updates cache: positions, velocities, Collided flags; adds score/event updates to pending)
+		a.detectCollisions(ctx)
+
+		// 3. Generate position updates from final cached state and add to pending
+		a.generatePositionUpdates()
+
+		// 4. Reset Collided flags in cache for the next tick
+		a.resetPerTickCollisionFlags()
+
+		// 5. Check for game over
+		a.checkGameOver(ctx)
+
 		duration := time.Since(start)
 		a.metricsMu.Lock()
 		a.tickDurationSum += duration
@@ -176,20 +189,12 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 
 	case BallStateUpdate: // Update cache with state from BallActor
 		if ball := a.balls[m.ID]; ball != nil {
-			// Update cached state BUT NOT VELOCITY
-			// ball.Vx = m.Vx // DO NOT UPDATE - GameActor physics is authoritative
-			// ball.Vy = m.Vy // DO NOT UPDATE - GameActor physics is authoritative
+			ball.Vx = m.Vx // Update velocity from BallActor
+			ball.Vy = m.Vy
 			ball.Radius = m.Radius
 			ball.Mass = m.Mass
-			// Phasing state is now primarily managed by GameActor cache,
-			// but we can log if BallActor reports a different state.
-			// if ball.Phasing != m.Phasing {
-			// fmt.Printf("LOG: GameActor %s: Ball %d cache phasing (%t) differs from BallActor update (%t). Cache takes precedence.\n", a.selfPID, m.ID, ball.Phasing, m.Phasing)
-			// }
-			// ball.Phasing = m.Phasing // DO NOT update phasing from BallActor directly anymore
-		} // else { // Removed SA9003
-		// fmt.Printf("WARN: GameActor %s: Received BallStateUpdate for unknown/nil BallID %d\n", a.selfPID, m.ID) // Removed log
-		// }
+			ball.Phasing = m.Phasing // Crucially update phasing state from BallActor
+		}
 
 	case BroadcastTick: // Message from broadcastTicker
 		a.handleBroadcastTick(ctx)
@@ -207,7 +212,6 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.handleDestroyExpiredBall(ctx, m.BallID)
 	case stopPhasingTimerMsg: // Handle internal timer expiry
 		a.handleStopPhasingTimerMsg(ctx, m.BallID)
-	// Removed ApplyBrickDamage case
 	// --- End Delegation ---
 
 	// --- Internal Test Messages ---
@@ -245,6 +249,22 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 			}
 		}
 		ctx.Reply(resp)
+	case internalTriggerStartPhasingPowerUp:
+		ball, ballExists := a.balls[m.BallID]
+		ballActorPID, actorExists := a.ballActors[m.BallID]
+		if ballExists && actorExists && ball != nil && ballActorPID != nil {
+			// Apply phasing regardless of current state to reset timer if already phasing
+			ball.Phasing = true
+			a.startPhasingTimer(ball.Id) // This will stop existing timer and start new one
+			a.engine.Send(ballActorPID, SetPhasingCommand{}, a.selfPID)
+		}
+	case internalConfirmPhasingRequest:
+		ball, exists := a.balls[m.BallID]
+		isPhasing := false
+		if exists && ball != nil {
+			isPhasing = ball.Phasing
+		}
+		ctx.Reply(internalConfirmPhasingResponse{IsPhasing: isPhasing, Exists: exists})
 	// --- End Internal Test Messages ---
 
 	case bollywood.Stopping:
@@ -254,7 +274,6 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.handleStopped(ctx)
 
 	default:
-		// fmt.Printf("GameActor %s: Received unknown message type: %T\n", a.selfPID, m) // Removed log
 		if ctx.RequestID() != "" {
 			ctx.Reply(fmt.Errorf("unknown message type: %T", m))
 		}
@@ -272,8 +291,6 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 		return
 	}
 
-	// fmt.Printf("LOG: GameActor %s: Internally adding test player %d and starting game.\n", a.selfPID, playerIndex) // Removed log
-
 	// Check if this is the first player (to initialize grid/tickers)
 	isFirstPlayerInRoom := true
 	for i, p := range a.players {
@@ -283,12 +300,12 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 		}
 	}
 	if isFirstPlayerInRoom {
-		// fmt.Printf("GameActor %s: First player (test). Initializing grid and starting tickers.\n", a.selfPID) // Removed log
 		if a.canvas == nil {
 			a.canvas = NewCanvas(a.cfg.CanvasSize, a.cfg.GridSize)
 		}
 		a.canvas.Grid.FillSymmetrical(a.cfg)
-		a.startTickers(ctx) // Start tickers
+		// Tickers are now started by internalStartTickersTestMsg or by actual player connect
+		// a.startTickers(ctx) // Do not start tickers here automatically for this test message
 	} else if a.canvas == nil || a.canvas.Grid == nil {
 		fmt.Printf("ERROR: GameActor %s: Adding test player %d but grid/canvas not initialized!\n", a.selfPID, playerIndex)
 		return
@@ -300,7 +317,7 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 		Index:       playerIndex,
 		ID:          playerDataPtr.Id,
 		Color:       playerDataPtr.Color,
-		Ws:          nil, // Explicitly nil for test player
+		Ws:          nil,  // Explicitly nil for test player
 		IsConnected: true, // Mark as connected for game logic
 	}
 	player.Score.Store(playerDataPtr.Score)
@@ -319,8 +336,80 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 	}
 	a.paddleActors[playerIndex] = paddlePID
 
-	// Spawn initial ball for the test player
-	a.spawnBall(ctx, playerIndex, 0, 0, 0, true, false)
+	// Do not spawn ball here automatically for this test message, let tests control ball spawning
+}
 
-	// fmt.Printf("LOG: GameActor %s: Internal test player %d setup complete.\n", a.selfPID, playerIndex) // Removed log
+// --- Game Tick Processing Methods ---
+
+// moveEntities updates positions of paddles and balls in cache based on their current velocities/directions.
+func (a *GameActor) moveEntities() {
+	// Update paddles
+	for _, paddle := range a.paddles {
+		if paddle != nil {
+			paddle.Move() // Updates internal X, Y, Vx, Vy, IsMoving
+		}
+	}
+
+	// Update balls
+	for _, ball := range a.balls {
+		if ball != nil {
+			ball.Move() // Updates internal X, Y
+		}
+	}
+}
+
+// generatePositionUpdates creates BallPositionUpdate and PaddlePositionUpdate messages
+// using the current state from the cache (after movement and collision resolution)
+// and adds them to the pendingUpdates buffer.
+func (a *GameActor) generatePositionUpdates() {
+	canvasSize := a.cfg.CanvasSize
+
+	// Paddle position updates
+	for i, paddle := range a.paddles {
+		if paddle != nil {
+			// Calculate R3F coords for the paddle center
+			r3fX, r3fY := mapToR3FCoords(paddle.X+paddle.Width/2, paddle.Y+paddle.Height/2, canvasSize)
+			update := &PaddlePositionUpdate{
+				MessageType: "paddlePositionUpdate", Index: i,
+				X: paddle.X, Y: paddle.Y, // Original coords
+				R3fX: r3fX, R3fY: r3fY, // R3F coords
+				Width: paddle.Width, Height: paddle.Height, // Dimensions for frontend geometry
+				Vx: paddle.Vx, Vy: paddle.Vy, IsMoving: paddle.IsMoving,
+				Collided: paddle.Collided, // Use Collided flag set by detectCollisions
+			}
+			a.addUpdate(update)
+		}
+	}
+
+	// Ball position updates
+	for id, ball := range a.balls {
+		if ball != nil {
+			// Calculate R3F coords
+			r3fX, r3fY := mapToR3FCoords(ball.X, ball.Y, canvasSize)
+			update := &BallPositionUpdate{
+				MessageType: "ballPositionUpdate", ID: id,
+				X: ball.X, Y: ball.Y, // Original coords
+				R3fX: r3fX, R3fY: r3fY, // R3F coords
+				Vx: ball.Vx, Vy: ball.Vy,
+				Collided: ball.Collided, // Use Collided flag set by detectCollisions
+				Phasing:  ball.Phasing,  // Include current phasing state
+			}
+			a.addUpdate(update)
+		}
+	}
+}
+
+// resetPerTickCollisionFlags resets the Collided flag for all paddles and balls in the cache.
+// This is done at the end of a tick, after updates have been generated.
+func (a *GameActor) resetPerTickCollisionFlags() {
+	for _, paddle := range a.paddles {
+		if paddle != nil {
+			paddle.Collided = false
+		}
+	}
+	for _, ball := range a.balls {
+		if ball != nil {
+			ball.Collided = false
+		}
+	}
 }

@@ -72,7 +72,7 @@ func DefaultConfig() Config {
 		MaxBallVelocity:          canvasSize / 90,  // ~11.37 -> Adjusted to ~13
 		BallMass:                 1,
 		BallRadius:               cellSize / 6, // ~16
-		BallPhasingTime:          100 * time.Millisecond,
+		BallPhasingTime:          3000 * time.Millisecond,
 		BallHitPaddleSpeedFactor: 0.3,
 		BallHitPaddleAngleFactor: 2.8, // Max ~64 degrees deflection (Pi / 2.8)
 
@@ -89,7 +89,7 @@ func DefaultConfig() Config {
 		GridBrickMaxLife:      3,
 
 		// Power-ups
-		PowerUpChance:           0.7,
+		PowerUpChance:           0.3,
 		PowerUpSpawnBallExpiry:  9 * time.Second,
 		PowerUpIncreaseMassAdd:  1,
 		PowerUpIncreaseMassSize: 2,
@@ -102,7 +102,7 @@ func E2ETestConfig() Config {
 	cfg := DefaultConfig()
 
 	// Ensure a non-empty grid for basic tests
-	cfg.GridFillDensity = 0.7 // Higher density
+	cfg.GridFillDensity = 0.7     // Higher density
 	cfg.GridClearCenterRadius = 1 // Smaller clear radius
 	cfg.GridClearWallDistance = 2 // Smaller wall distance
 	cfg.GridBrickMinLife = 1
@@ -195,6 +195,34 @@ func UltraFastGameConfig() Config {
 	// Adjust paddle size
 	cfg.PaddleLength = cfg.CellSize * 2 // 80
 	cfg.PaddleWidth = cfg.CellSize / 4  // 10
+
+	return cfg
+}
+
+// BrickCollisionTestConfig returns a config for testing ball-brick collision behavior.
+func BrickCollisionTestConfig() Config {
+	cfg := DefaultConfig() // Start with defaults
+
+	cfg.PowerUpChance = 0.0     // No power-ups to interfere
+	cfg.GridBrickMinLife = 1000 // Bricks are effectively indestructible
+	cfg.GridBrickMaxLife = 1000
+	cfg.GridFillDensity = 0.8     // Dense brick field
+	cfg.GridClearCenterRadius = 0 // Allow bricks in the center
+	cfg.GridClearWallDistance = 1 // Minimal wall clearance for more brick area
+
+	// Ball properties for robust collision detection
+	// Ensure BallRadius is < CellSize / 2
+	// Default CellSize = 900/18 = 50. Default BallRadius = 50/6 = ~8.
+	// Let's make it slightly larger for this test.
+	cfg.BallRadius = cfg.CellSize / 3 // e.g., 50/3 = ~16. (CellSize/2 = 25)
+
+	// Faster game simulation for more interactions
+	cfg.GameTickPeriod = 16 * time.Millisecond // ~60Hz physics
+	cfg.BroadcastRateHz = 60                   // High broadcast rate
+
+	// Ensure balls move at a reasonable speed
+	cfg.MinBallVelocity = cfg.CanvasSize / 100 // e.g., 900/100 = 9
+	cfg.MaxBallVelocity = cfg.CanvasSize / 70  // e.g., 900/70 = ~12
 
 	return cfg
 }

@@ -75,7 +75,7 @@ print_header "Running Standard E2E Tests"
 # Target only the 'test' package and run tests matching ^TestE2E_ but NOT StressTest*
 # Use -run 'TestE2E_(SinglePlayer|BallWall)' or similar specific patterns if needed
 # Or use grep -v to exclude stress tests
-E2E_TEST_PATTERN='^TestE2E_(SinglePlayer|BallWall)' # Adjust this pattern as needed
+E2E_TEST_PATTERN='^TestE2E_(SinglePlayer|BallWall|NonPhasingBallBrickPenetration)' # Adjust this pattern as needed
 run_command "Standard E2E tests" "go test ./test -v -race -run \"$E2E_TEST_PATTERN\""
 
 

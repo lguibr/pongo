@@ -16,7 +16,7 @@ type LocalGameState struct {
 	Paddles     [utils.MaxPlayers]*Paddle // Stores original game.Paddle
 	Balls       map[int]*Ball             // Stores original game.Ball
 	BrickStates []BrickStateUpdate        // Flat list of bricks with R3F coords (Exported)
-	cellSize    int                       // Cell size for geometry scaling
+	CellSize    int                       // Cell size for geometry scaling (Exported)
 	Scores      [utils.MaxPlayers]int32
 	// Add other fields if needed by specific tests
 }
@@ -28,7 +28,7 @@ func NewLocalGameState() *LocalGameState {
 		Paddles:     [utils.MaxPlayers]*Paddle{},
 		Balls:       make(map[int]*Ball),
 		BrickStates: make([]BrickStateUpdate, 0), // Initialize empty slice
-		cellSize:    0,
+		CellSize:    0,
 		Scores:      [utils.MaxPlayers]int32{},
 	}
 }
@@ -126,7 +126,7 @@ func ApplyUpdatesToLocalState(localState *LocalGameState, updates []interface{},
 					if paddle != nil {                         // Check if pointer is nil
 						paddle.X = update.X
 						paddle.Y = update.Y
-						paddle.Width = update.Width   // Update dimensions
+						paddle.Width = update.Width // Update dimensions
 						paddle.Height = update.Height
 						paddle.Vx = update.Vx
 						paddle.Vy = update.Vy
@@ -142,7 +142,7 @@ func ApplyUpdatesToLocalState(localState *LocalGameState, updates []interface{},
 		case "fullGridUpdate": // Handle the new full grid update format
 			var update FullGridUpdate
 			if err := json.Unmarshal(updateBytes, &update); err == nil {
-				localState.cellSize = update.CellSize // Store cell size
+				localState.CellSize = update.CellSize // Store cell size
 				// Directly replace the brick states list
 				localState.BrickStates = update.Bricks // Use exported field
 			} else {

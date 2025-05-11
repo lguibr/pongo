@@ -127,28 +127,15 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
 	}
 }
 
-// Move updates the ball's position based on velocity and clamps it within bounds. Called by BallActor.
+// Move updates the ball's position based on velocity.
+// Boundary clamping is removed; wall collisions are handled by GameActor's physics.
 func (ball *Ball) Move() {
 	// Update position
 	ball.X += ball.Vx
 	ball.Y += ball.Vy
 
-	// Clamp position to ensure the ball center stays within canvas boundaries,
-	// leaving space for the radius.
-	minCoord := ball.Radius
-	maxCoord := ball.canvasSize - ball.Radius
-
-	if ball.X < minCoord {
-		ball.X = minCoord
-	} else if ball.X > maxCoord {
-		ball.X = maxCoord
-	}
-
-	if ball.Y < minCoord {
-		ball.Y = minCoord
-	} else if ball.Y > maxCoord {
-		ball.Y = maxCoord
-	}
+	// Clamping to canvas boundaries is removed.
+	// Wall collision logic in GameActor will handle reflections.
 }
 
 // getCenterIndex calculates the grid cell indices for the ball's center.
