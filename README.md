@@ -1,6 +1,6 @@
 # PonGo: Multi-Room Pong/Breakout Hybrid
 
-![Coverage](https://img.shields.io/badge/Coverage-49.0%25-yellow)
+![Coverage](https://img.shields.io/badge/Coverage-49.9%25-yellow)
 
 <img
   src="https://raw.githubusercontent.com/lguibr/pongo/main/bitmap.png"
