@@ -37,6 +37,15 @@ jobs:
       - name: Download Go Modules
         run: go mod download
 
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Remove vendor directory if exists # Ensure module cache is used
+        run: rm -rf vendor
+
+      - name: Build Go Application (to ensure export data is available for linter)
+        run: go build -v ./...
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
