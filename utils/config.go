@@ -82,18 +82,18 @@ func DefaultConfig() Config {
 		PaddleVelocity: cellSize / 4, // 25
 
 		// Grid Generation (Symmetrical)
-		GridFillDensity:       0.7,
-		GridClearCenterRadius: 0, // Clear 5x5 area in center (radius 2)
+		GridFillDensity:       0.55,
+		GridClearCenterRadius: 1, // Clear 5x5 area in center (radius 2)
 		GridClearWallDistance: 3, // Keep 3 cells clear from walls
 		GridBrickMinLife:      1, // Bricks have 1-3 life
-		GridBrickMaxLife:      3,
+		GridBrickMaxLife:      7,
 
 		// Power-ups
-		PowerUpChance:           0.3,
-		PowerUpSpawnBallExpiry:  9 * time.Second,
-		PowerUpIncreaseMassAdd:  1,
+		PowerUpChance:           0.4,
+		PowerUpSpawnBallExpiry:  12 * time.Second,
+		PowerUpIncreaseMassAdd:  2,
 		PowerUpIncreaseMassSize: 2,
-		PowerUpIncreaseVelRatio: 1.1,
+		PowerUpIncreaseVelRatio: 1.09,
 	}
 }
 
