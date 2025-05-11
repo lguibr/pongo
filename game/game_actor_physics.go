@@ -82,11 +82,8 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 
 				if isNewPaddleCollision {
 					a.handlePaddleCollision(ctx, ball, ballActorPID, paddle, playerIndex) // Pass PID
-				} else {
-					// Ongoing collision: Ball is still intersecting paddle.
-					// Physics (reflection, ownership) were handled on first contact.
-					// No positional adjustment needed.
 				}
+				// Removed empty else branch for ongoing paddle collision
 			} else {
 				// Not intersecting, end any active collision tracking
 				a.activeCollisions.EndCollision(collisionKey)
@@ -135,11 +132,8 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 
 						if isNewBrickCollision { // Process collision only on first contact
 							a.handleBrickCollision(ctx, ball, ballActorPID, cell, r, c) // Pass PID
-						} else {
-							// Ongoing collision: Ball is still intersecting non-phasing brick.
-							// Damage/reflection handled on first contact.
-							// No positional adjustment needed.
 						}
+						// Removed empty else branch for ongoing brick collision
 					}
 				} else {
 					// If not intersecting this tick, ensure any active collision is ended

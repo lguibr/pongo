@@ -46,7 +46,7 @@ func brickCollisionTestWorker(
 	defer func() { _ = ws.Close() }()
 
 	localState := game.NewLocalGameState()
-	var assignedIndex int = -1
+	var assignedIndex int // Removed ineffectual assignment = -1
 
 	// Consume initial messages
 	var assignmentMsg game.PlayerAssignmentMessage
@@ -140,9 +140,7 @@ func brickCollisionTestWorker(
 							}
 						}
 					}
-				} else {
-					// Could be gameOver or other messages, ignore for this check
-				}
+				} // else removed empty branch
 			} else {
 				netErr, isNetErr := readErr.(net.Error)
 				if errors.Is(readErr, io.EOF) || strings.Contains(readErr.Error(), "closed") {

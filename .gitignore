@@ -5,3 +5,7 @@ data/
 .gopath/
 .gotmp
 vendor
+*.prof
+coverage.*
+*.log
+*.test

@@ -88,7 +88,7 @@ func TestGameActor_PhasingBall_DamagesBrickOnceNoReflect(t *testing.T) {
 	assert.True(t, ok, "Reply should be internalConfirmPhasingResponse")
 	assert.True(t, confirmResp.Exists, "Ball should exist for phasing confirmation")
 	assert.True(t, confirmResp.IsPhasing, "GameActor's cache for ball.Phasing should be true after trigger and before collision ticks")
-	if !(ok && confirmResp.Exists && confirmResp.IsPhasing) {
+	if !ok || !confirmResp.Exists || !confirmResp.IsPhasing {
 		t.FailNow() // Stop test if phasing wasn't set, as subsequent assertions will be misleading
 	}
 
@@ -191,7 +191,7 @@ func TestGameActor_PhasingBall_ReflectsWall(t *testing.T) {
 	assert.NoError(t, confirmErr)
 	confirmResp, ok := confirmReply.(internalConfirmPhasingResponse)
 	assert.True(t, ok && confirmResp.Exists && confirmResp.IsPhasing, "Ball should be phasing in cache before wall collision ticks")
-	if !(ok && confirmResp.Exists && confirmResp.IsPhasing) {
+	if !ok || !confirmResp.Exists || !confirmResp.IsPhasing {
 		t.FailNow()
 	}
 
@@ -286,7 +286,7 @@ func TestGameActor_PhasingBall_ReflectsPaddle(t *testing.T) {
 	assert.NoError(t, confirmErr)
 	confirmResp, ok := confirmReply.(internalConfirmPhasingResponse)
 	assert.True(t, ok && confirmResp.Exists && confirmResp.IsPhasing, "Ball should be phasing in cache before paddle collision ticks")
-	if !(ok && confirmResp.Exists && confirmResp.IsPhasing) {
+	if !ok || !confirmResp.Exists || !confirmResp.IsPhasing {
 		t.FailNow()
 	}
 
@@ -386,7 +386,7 @@ func TestGameActor_PhasingStopsAndStaysStoppedAfterPowerUp(t *testing.T) {
 	assert.NoError(t, confirmErr)
 	confirmResp, ok := confirmReply.(internalConfirmPhasingResponse)
 	assert.True(t, ok && confirmResp.Exists && confirmResp.IsPhasing, "Ball should be phasing in GameActor cache after trigger")
-	if !(ok && confirmResp.Exists && confirmResp.IsPhasing) {
+	if !ok || !confirmResp.Exists || !confirmResp.IsPhasing {
 		t.Fatal("Could not confirm ball is phasing after trigger")
 	}
 
