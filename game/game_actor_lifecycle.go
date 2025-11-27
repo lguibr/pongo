@@ -28,68 +28,100 @@ func (a *GameActor) handleStart(ctx bollywood.Context) {
 	// Tickers are started when the first player joins or via internal test message
 }
 
-// startTickers starts the physics and broadcast tickers.
-// Now callable internally via message or by handlePlayerConnect.
-func (a *GameActor) startTickers(ctx bollywood.Context) {
+// startPhysicsTicker starts the physics ticker.
+func (a *GameActor) startPhysicsTicker(ctx bollywood.Context) {
 	a.tickerMu.Lock()
-	defer a.tickerMu.Unlock() // Ensure unlock happens
+	defer a.tickerMu.Unlock()
 
 	if a.physicsTicker == nil {
 		a.physicsTicker = time.NewTicker(a.cfg.GameTickPeriod)
-		// Ensure channel is fresh if previously stopped
 		select {
-		case <-a.stopPhysicsCh: a.stopPhysicsCh = make(chan struct{})
+		case <-a.stopPhysicsCh:
+			a.stopPhysicsCh = make(chan struct{})
 		default:
 		}
 		stopCh := a.stopPhysicsCh
 		tickerCh := a.physicsTicker.C
-		// Unlock before starting goroutine to avoid deadlock if goroutine accesses mutex
-		// a.tickerMu.Unlock() // Moved to defer
 
 		go func() {
-			defer func() { if r := recover(); r != nil { fmt.Printf("PANIC recovered in GameActor %s Physics Ticker: %v\n", a.selfPID, r) } }()
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("PANIC recovered in GameActor %s Physics Ticker: %v\n", a.selfPID, r)
+				}
+			}()
 			for {
 				select {
-				case <-stopCh: return
+				case <-stopCh:
+					return
 				case _, ok := <-tickerCh:
-					if !ok { return }
-					if a.isStopping.Load() || a.gameOver.Load() { return }
-					currentEngine := a.engine; currentSelfPID := a.selfPID
-					if currentEngine != nil && currentSelfPID != nil { currentEngine.Send(currentSelfPID, GameTick{}, nil) } else { return }
+					if !ok {
+						return
+					}
+					if a.isStopping.Load() || a.gameOver.Load() {
+						return
+					}
+					currentEngine := a.engine
+					currentSelfPID := a.selfPID
+					if currentEngine != nil && currentSelfPID != nil {
+						currentEngine.Send(currentSelfPID, GameTick{}, nil)
+					} else {
+						return
+					}
 				}
 			}
 		}()
-	} // else { a.tickerMu.Unlock() } // Removed redundant unlock
+		fmt.Printf("GameActor %s: Physics ticker started.\n", a.selfPID)
+	}
+}
 
-	// a.tickerMu.Lock() // Lock already held
+// startBroadcastTicker starts the broadcast ticker.
+func (a *GameActor) startBroadcastTicker(ctx bollywood.Context) {
+	a.tickerMu.Lock()
+	defer a.tickerMu.Unlock()
+
 	if a.broadcastTicker == nil {
 		broadcastInterval := time.Second / time.Duration(a.cfg.BroadcastRateHz)
-		if broadcastInterval <= 0 { broadcastInterval = 16 * time.Millisecond } // Default to ~60Hz if config is 0 or less
+		if broadcastInterval <= 0 {
+			broadcastInterval = 16 * time.Millisecond
+		}
 		a.broadcastTicker = time.NewTicker(broadcastInterval)
-		// Ensure channel is fresh if previously stopped
 		select {
-		case <-a.stopBroadcastCh: a.stopBroadcastCh = make(chan struct{})
+		case <-a.stopBroadcastCh:
+			a.stopBroadcastCh = make(chan struct{})
 		default:
 		}
 		stopCh := a.stopBroadcastCh
 		tickerCh := a.broadcastTicker.C
-		// Unlock before starting goroutine
-		// a.tickerMu.Unlock() // Moved to defer
 
 		go func() {
-			defer func() { if r := recover(); r != nil { fmt.Printf("PANIC recovered in GameActor %s Broadcast Ticker: %v\n", a.selfPID, r) } }()
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("PANIC recovered in GameActor %s Broadcast Ticker: %v\n", a.selfPID, r)
+				}
+			}()
 			for {
 				select {
-				case <-stopCh: return
+				case <-stopCh:
+					return
 				case _, ok := <-tickerCh:
-					if !ok { return }
-					if a.isStopping.Load() || a.gameOver.Load() { return }
-					currentEngine := a.engine; currentSelfPID := a.selfPID
-					if currentEngine != nil && currentSelfPID != nil { currentEngine.Send(currentSelfPID, BroadcastTick{}, nil) } else { return }
+					if !ok {
+						return
+					}
+					if a.isStopping.Load() || a.gameOver.Load() {
+						return
+					}
+					currentEngine := a.engine
+					currentSelfPID := a.selfPID
+					if currentEngine != nil && currentSelfPID != nil {
+						currentEngine.Send(currentSelfPID, BroadcastTick{}, nil)
+					} else {
+						return
+					}
 				}
 			}
 		}()
-	} // else { a.tickerMu.Unlock() } // Removed redundant unlock
+		fmt.Printf("GameActor %s: Broadcast ticker started.\n", a.selfPID)
+	}
 }
 
 // stopTickers stops the physics and broadcast tickers safely using the mutex.
@@ -99,12 +131,20 @@ func (a *GameActor) stopTickers() {
 
 	if a.physicsTicker != nil {
 		a.physicsTicker.Stop()
-		select { case <-a.stopPhysicsCh: default: close(a.stopPhysicsCh) }
+		select {
+		case <-a.stopPhysicsCh:
+		default:
+			close(a.stopPhysicsCh)
+		}
 		a.physicsTicker = nil
 	}
 	if a.broadcastTicker != nil {
 		a.broadcastTicker.Stop()
-		select { case <-a.stopBroadcastCh: default: close(a.stopBroadcastCh) }
+		select {
+		case <-a.stopBroadcastCh:
+		default:
+			close(a.stopBroadcastCh)
+		}
 		a.broadcastTicker = nil
 	}
 }
@@ -132,27 +172,50 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 	broadcasterToStop := a.broadcasterPID
 
 	for i := 0; i < utils.MaxPlayers; i++ {
-		if pid := a.paddleActors[i]; pid != nil { paddlesToStop = append(paddlesToStop, pid); a.paddleActors[i] = nil }
+		if pid := a.paddleActors[i]; pid != nil {
+			paddlesToStop = append(paddlesToStop, pid)
+			a.paddleActors[i] = nil
+		}
 		a.paddles[i] = nil
 		if pInfo := a.players[i]; pInfo != nil {
-			if pInfo.Ws != nil { delete(a.connToIndex, pInfo.Ws) }
-			pInfo.Ws = nil; pInfo.IsConnected = false
+			if pInfo.Ws != nil {
+				delete(a.connToIndex, pInfo.Ws)
+			}
+			pInfo.Ws = nil
+			pInfo.IsConnected = false
 		}
-		a.players[i] = nil; a.playerConns[i] = nil
+		a.players[i] = nil
+		a.playerConns[i] = nil
 	}
 
 	for ballID, pid := range a.ballActors {
-		if pid != nil { ballsToStop = append(ballsToStop, pid) }
-		delete(a.ballActors, ballID); delete(a.balls, ballID)
+		if pid != nil {
+			ballsToStop = append(ballsToStop, pid)
+		}
+		delete(a.ballActors, ballID)
+		delete(a.balls, ballID)
 	}
 
-	if len(a.connToIndex) > 0 { a.connToIndex = make(map[*websocket.Conn]int) }
+	if len(a.connToIndex) > 0 {
+		a.connToIndex = make(map[*websocket.Conn]int)
+	}
 
 	currentEngine := a.engine
 	if currentEngine != nil {
-		if broadcasterToStop != nil && a.broadcasterPID != nil { currentEngine.Stop(broadcasterToStop); a.broadcasterPID = nil }
-		for _, pid := range paddlesToStop { if pid != nil { currentEngine.Stop(pid) } }
-		for _, pid := range ballsToStop { if pid != nil { currentEngine.Stop(pid) } }
+		if broadcasterToStop != nil && a.broadcasterPID != nil {
+			currentEngine.Stop(broadcasterToStop)
+			a.broadcasterPID = nil
+		}
+		for _, pid := range paddlesToStop {
+			if pid != nil {
+				currentEngine.Stop(pid)
+			}
+		}
+		for _, pid := range ballsToStop {
+			if pid != nil {
+				currentEngine.Stop(pid)
+			}
+		}
 	} else {
 		fmt.Printf("WARN: GameActor %s: Engine is nil during cleanupChildActorsAndConnections.\n", a.selfPID)
 	}
@@ -220,7 +283,9 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 				finalScores[i] = 0
 			}
 		}
-		if tie { winnerIndex = -1 }
+		if tie {
+			winnerIndex = -1
+		}
 		fmt.Printf("GameActor %s: GAME_OVER - Winner Index: %d (Score: %d)\n", a.selfPID, winnerIndex, highestScore)
 
 		// Send any remaining pending updates immediately

@@ -13,6 +13,15 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+// Phase represents the current state of the game room.
+type Phase int
+
+const (
+	PhaseLobby Phase = iota
+	PhaseCountingDown
+	PhasePlaying
+)
+
 // GameActor manages the overall game state and coordinates child actors for a single room.
 type GameActor struct {
 	cfg             utils.Config
@@ -34,6 +43,7 @@ type GameActor struct {
 	connToIndex     map[*websocket.Conn]int
 	playerConns     [utils.MaxPlayers]*websocket.Conn
 	gameOver        atomic.Bool // Flag to prevent multiple game over triggers
+	phase           Phase       // Current phase of the room
 
 	// Buffer for pending updates to broadcast
 	pendingUpdates []interface{} // Holds pointers to newly allocated update messages
@@ -45,6 +55,9 @@ type GameActor struct {
 	// Phasing Timers (Managed by GameActor)
 	phasingTimers   map[int]*time.Timer // Map ball ID to its phasing timer
 	phasingTimersMu sync.Mutex          // Protects phasingTimers map
+
+	// Countdown Timer
+	countdownTimer *time.Timer
 
 	// Performance Metrics
 	tickDurationSum time.Duration
@@ -64,6 +77,7 @@ type playerInfo struct {
 	Color       [3]int
 	Ws          *websocket.Conn // Can be nil in tests
 	IsConnected bool
+	IsReady     bool // Lobby readiness
 }
 
 // NewGameActorProducer creates a producer for the GameActor.
@@ -92,6 +106,7 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 			// Initialize metrics
 			tickDurationSum: 0,
 			tickCount:       0,
+			phase:           PhaseLobby,
 		}
 		ga.gameOver.Store(false) // Initialize game over flag
 		ga.isStopping.Store(false)
@@ -212,6 +227,14 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.handleDestroyExpiredBall(ctx, m.BallID)
 	case stopPhasingTimerMsg: // Handle internal timer expiry
 		a.handleStopPhasingTimerMsg(ctx, m.BallID)
+	case ForwardedPlayerReady:
+		a.handlePlayerReady(ctx, m.WsConn, m.IsReady)
+	case startCountdownMsg:
+		a.startCountdown(ctx)
+	case startGameMsg:
+		a.startGame(ctx)
+	case ForceStartGame:
+		a.handleForceStartGame(ctx)
 	// --- End Delegation ---
 
 	// --- Internal Test Messages ---
@@ -221,7 +244,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 			a.ballActors[m.Ball.Id] = m.PID
 		}
 	case internalStartTickersTestMsg: // Handle internal message for starting tickers in tests
-		a.startTickers(ctx)
+		a.startPhysicsTicker(ctx)
+		a.startBroadcastTicker(ctx)
 	case internalTestingAddPlayerAndStart: // Handle internal message for adding player and starting game in tests
 		a.handleInternalTestPlayerAdd(ctx, m.PlayerIndex)
 	case internalGetBallRequest: // Handle Ask request for ball state

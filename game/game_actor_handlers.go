@@ -3,6 +3,7 @@ package game
 import (
 	"fmt"
 	"math/rand"
+	"runtime/debug"
 	"time"
 
 	"github.com/lguibr/bollywood"
@@ -15,6 +16,16 @@ import (
 // handlePlayerConnect processes a player connection, sends initial state,
 // and generates PlayerJoined update.
 func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Conn) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("ERROR: Recovered from panic in handlePlayerConnect: %v\nStack: %s\n", r, string(debug.Stack()))
+			// Close the connection that caused the panic to avoid inconsistent state
+			if ws != nil {
+				_ = ws.Close()
+			}
+		}
+	}()
+
 	// Ensure ws is not nil for real connections
 	if ws == nil {
 		fmt.Printf("ERROR: GameActor %s: Received connect assignment with nil websocket connection.\n", a.selfPID)
@@ -68,7 +79,7 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 		}
 		// Use config when filling grid
 		a.canvas.Grid.FillSymmetrical(a.cfg)
-		a.startTickers(ctx)
+		a.startBroadcastTicker(ctx) // Only start broadcast ticker in lobby
 	} else if a.canvas == nil || a.canvas.Grid == nil {
 		fmt.Printf("ERROR: GameActor %s: Joining player %d but grid/canvas not initialized!\n", a.selfPID, playerIndex)
 		_ = ws.Close()
@@ -127,7 +138,11 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	a.paddleActors[playerIndex] = paddlePID
 
 	// --- Send Initial State Directly to Client using JSON.Send ---
-	assignmentMsg := PlayerAssignmentMessage{MessageType: "playerAssignment", PlayerIndex: playerIndex}
+	assignmentMsg := PlayerAssignmentMessage{
+		MessageType: "playerAssignment",
+		PlayerIndex: playerIndex,
+		Phase:       a.phaseToString(),
+	}
 	errAssign := websocket.JSON.Send(ws, assignmentMsg)
 	if errAssign != nil {
 		fmt.Printf("ERROR: GameActor %s: Failed to send PlayerAssignmentMessage to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, errAssign)
@@ -208,6 +223,21 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 	// Spawn initial Ball Actor (will generate BallSpawned update with R3F coords)
 	// Initial balls for players should not start phasing.
 	a.spawnBall(ctx, playerIndex, 0, 0, 0, true, false)
+
+	// --- Broadcast Lobby State ---
+	lobbyState := &LobbyStateUpdate{
+		MessageType: "lobbyState",
+		Players:     make([]LobbyPlayerState, 0),
+	}
+	for _, p := range a.players {
+		if p != nil && p.IsConnected {
+			lobbyState.Players = append(lobbyState.Players, LobbyPlayerState{
+				Index:   p.Index,
+				IsReady: p.IsReady,
+			})
+		}
+	}
+	a.addUpdate(lobbyState)
 
 	fmt.Printf("GameActor %s: Player %d (%s) setup complete with score %d.\n", a.selfPID, playerIndex, remoteAddr, initialPlayerScore)
 }
@@ -541,5 +571,156 @@ func (a *GameActor) handleStopPhasingTimerMsg(ctx bollywood.Context, ballID int)
 				a.engine.Send(ballActorPID, StopPhasingCommand{}, a.selfPID)
 			}
 		}
+	}
+}
+
+// --- Lobby Handlers ---
+
+// handlePlayerReady toggles a player's ready state and checks if all players are ready.
+func (a *GameActor) handlePlayerReady(ctx bollywood.Context, wsConn *websocket.Conn, isReady bool) {
+	if wsConn == nil {
+		return
+	}
+	playerIndex, found := a.connToIndex[wsConn]
+	if !found || a.players[playerIndex] == nil {
+		return
+	}
+
+	fmt.Printf("GameActor %s: Player %d set ready to %v\n", a.selfPID, playerIndex, isReady)
+
+	// Update readiness
+	a.players[playerIndex].IsReady = isReady
+
+	// Broadcast Lobby State
+	lobbyState := &LobbyStateUpdate{
+		MessageType: "lobbyState",
+		Players:     make([]LobbyPlayerState, 0),
+	}
+
+	allReady := true
+	playerCount := 0
+	for _, p := range a.players {
+		if p != nil && p.IsConnected {
+			playerCount++
+			lobbyState.Players = append(lobbyState.Players, LobbyPlayerState{
+				Index:   p.Index,
+				IsReady: p.IsReady,
+			})
+			if !p.IsReady {
+				allReady = false
+			}
+		}
+	}
+	a.addUpdate(lobbyState)
+
+	// Check if we should start countdown or cancel it
+	if allReady && playerCount > 0 {
+		if a.phase == PhaseLobby {
+			fmt.Printf("GameActor %s: All players ready. Starting countdown.\n", a.selfPID)
+			a.startCountdown(ctx)
+		}
+	} else {
+		if a.phase == PhaseCountingDown {
+			// Cancel countdown
+			if a.countdownTimer != nil {
+				a.countdownTimer.Stop()
+				a.countdownTimer = nil
+			}
+			a.phase = PhaseLobby
+			a.addUpdate(&GameStartCancelled{
+				MessageType: "gameStartCancelled",
+				Reason:      "A player is not ready",
+			})
+			fmt.Printf("GameActor %s: Countdown cancelled.\n", a.selfPID)
+		}
+	}
+}
+
+// startCountdown initiates the 3-second countdown.
+func (a *GameActor) startCountdown(ctx bollywood.Context) {
+	if a.phase != PhaseLobby {
+		return
+	}
+	a.phase = PhaseCountingDown
+
+	// Broadcast countdown start
+	a.addUpdate(&GameStartCountdown{
+		MessageType: "gameStartCountdown",
+		Seconds:     3,
+	})
+
+	// Start timer
+	a.countdownTimer = time.AfterFunc(3*time.Second, func() {
+		if a.engine != nil && a.selfPID != nil {
+			a.engine.Send(a.selfPID, startGameMsg{}, nil)
+		}
+	})
+}
+
+// startGame transitions the room to the playing phase.
+func (a *GameActor) startGame(ctx bollywood.Context) {
+	fmt.Printf("GameActor %s: startGame called. Current Phase: %v\n", a.selfPID, a.phase)
+	if a.phase != PhaseCountingDown {
+		return
+	}
+	a.phase = PhasePlaying
+	a.addUpdate(&GameStarted{MessageType: "gameStarted"})
+
+	// Notify RoomManager
+	if a.roomManagerPID != nil && a.engine != nil && a.selfPID != nil {
+		a.engine.Send(a.roomManagerPID, RoomPhaseUpdate{
+			RoomPID: a.selfPID,
+			Phase:   PhasePlaying,
+		}, a.selfPID)
+	}
+
+	// Start the game loop (tickers) if not already running
+	// (Tickers might be running for lobby physics if we wanted, but usually we start them here)
+	// In current implementation, tickers start on first player join.
+	// We might want to PAUSE physics in lobby?
+	// For now, let's leave physics running (warmup) but maybe reset positions?
+	// Let's just proceed with phase change.
+	a.startPhysicsTicker(ctx)
+}
+
+// handleForceStartGame transitions the room to the playing phase immediately.
+func (a *GameActor) handleForceStartGame(ctx bollywood.Context) {
+	fmt.Printf("GameActor %s: handleForceStartGame called. Current Phase: %v\n", a.selfPID, a.phase)
+	if a.phase == PhasePlaying {
+		return
+	}
+
+	// Cancel countdown if active
+	if a.countdownTimer != nil {
+		a.countdownTimer.Stop()
+		a.countdownTimer = nil
+	}
+
+	a.phase = PhasePlaying
+	a.addUpdate(&GameStarted{MessageType: "gameStarted"})
+
+	// Notify RoomManager
+	if a.roomManagerPID != nil && a.engine != nil && a.selfPID != nil {
+		a.engine.Send(a.roomManagerPID, RoomPhaseUpdate{
+			RoomPID: a.selfPID,
+			Phase:   PhasePlaying,
+		}, a.selfPID)
+	}
+
+	// Ensure tickers are running
+	a.startPhysicsTicker(ctx)
+}
+
+// phaseToString converts the Phase enum to a string expected by the frontend.
+func (a *GameActor) phaseToString() string {
+	switch a.phase {
+	case PhaseLobby:
+		return "lobby"
+	case PhaseCountingDown:
+		return "countingDown"
+	case PhasePlaying:
+		return "playing"
+	default:
+		return "lobby"
 	}
 }

@@ -147,6 +147,16 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 					Direction: msg.Payload,
 				}, a.selfPID)
 			}
+		case "playerReady":
+			var req game.PlayerReadyRequest
+			if err := json.Unmarshal(msg.Payload, &req); err == nil {
+				if a.isAssigned && a.gameActorPID != nil {
+					a.engine.Send(a.gameActorPID, game.ForwardedPlayerReady{
+						WsConn:  a.conn,
+						IsReady: req.IsReady,
+					}, a.selfPID)
+				}
+			}
 		default:
 			// fmt.Printf("ConnectionHandlerActor %s: Unknown message type: %s\n", a.connAddr, header.MessageType)
 		}

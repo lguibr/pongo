@@ -47,6 +47,7 @@ type RoomJoinedResponse struct {
 	Success     bool   `json:"success"`
 	RoomPID     string `json:"roomPID"` // Empty if failed
 	Code        string `json:"code"`    // The room code (useful for QuickPlay)
+	Phase       string `json:"phase"`   // "lobby", "countingDown", "playing"
 	Reason      string `json:"reason"`  // Error message if failed
 }
 
@@ -54,6 +55,7 @@ type RoomJoinedResponse struct {
 type PlayerAssignmentMessage struct {
 	MessageType string `json:"messageType"` // "playerAssignment"
 	PlayerIndex int    `json:"playerIndex"`
+	Phase       string `json:"phase"` // "lobby", "countingDown", "playing"
 }
 
 // InitialPaddleState includes R3F coordinates for initial state messages.
@@ -219,6 +221,12 @@ type AssignRoomResponse struct {
 // GameRoomEmpty notifies the RoomManager that a GameActor is finished or empty.
 type GameRoomEmpty struct {
 	RoomPID *bollywood.PID
+}
+
+// RoomPhaseUpdate notifies RoomManager of phase change.
+type RoomPhaseUpdate struct {
+	RoomPID *bollywood.PID
+	Phase   Phase
 }
 
 // GetRoomListRequest asks the RoomManager for the list of active rooms (used by HTTP handler via Ask).
@@ -407,3 +415,57 @@ type internalConfirmPhasingResponse struct {
 	IsPhasing bool
 	Exists    bool
 }
+
+// --- Lobby System Messages ---
+
+// LobbyPlayerState represents the readiness of a player in the lobby.
+type LobbyPlayerState struct {
+	Index   int  `json:"index"`
+	IsReady bool `json:"isReady"`
+}
+
+// LobbyStateUpdate sends the current state of the lobby (who is ready).
+type LobbyStateUpdate struct {
+	MessageType string             `json:"messageType"` // "lobbyState"
+	Players     []LobbyPlayerState `json:"players"`
+}
+
+// PlayerReadyRequest is sent by client to toggle ready state.
+type PlayerReadyRequest struct {
+	MessageType string `json:"messageType"` // "playerReady"
+	IsReady     bool   `json:"isReady"`
+}
+
+// GameStartCountdown signals that the game will start in X seconds.
+type GameStartCountdown struct {
+	MessageType string `json:"messageType"` // "gameStartCountdown"
+	Seconds     int    `json:"seconds"`
+}
+
+// GameStarted signals the actual start of the game (exit lobby).
+type GameStarted struct {
+	MessageType string `json:"messageType"` // "gameStarted"
+}
+
+// GameStartCancelled signals that the countdown was aborted.
+type GameStartCancelled struct {
+	MessageType string `json:"messageType"` // "gameStartCancelled"
+	Reason      string `json:"reason"`
+}
+
+// --- Internal Lobby Messages ---
+
+// ForwardedPlayerReady carries ready status from ConnectionHandler to GameActor.
+type ForwardedPlayerReady struct {
+	WsConn  *websocket.Conn
+	IsReady bool
+}
+
+// startCountdownMsg signals the actor to start the countdown timer.
+type startCountdownMsg struct{}
+
+// startGameMsg signals the actor to transition to Playing phase.
+type startGameMsg struct{}
+
+// ForceStartGame signals the actor to transition to Playing phase immediately (skipping lobby/countdown).
+type ForceStartGame struct{}

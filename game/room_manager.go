@@ -22,6 +22,7 @@ type RoomInfo struct {
 	PlayerCount int    // Approximate count
 	Code        string // 6-character unique code
 	IsPublic    bool   // Public rooms can be joined via Quick Play
+	Phase       Phase  // Current phase
 }
 
 // RoomManagerActor manages multiple GameActor instances (rooms).
@@ -88,6 +89,9 @@ func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
 	case GameRoomEmpty:
 		a.handleGameRoomEmpty(ctx, msg.RoomPID)
 
+	case RoomPhaseUpdate:
+		a.handleRoomPhaseUpdate(ctx, msg.RoomPID, msg.Phase)
+
 	case GetRoomListRequest:
 		// This message now likely comes via Ask
 		a.handleGetRoomList(ctx) // Pass context for Reply
@@ -132,24 +136,16 @@ func (a *RoomManagerActor) generateRoomCode() string {
 	return string(b)
 }
 
-func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *bollywood.PID, isPublic bool) {
-	if replyTo == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
+// internal helper to create room and return PID
+func (a *RoomManagerActor) createRoomInternal(ctx bollywood.Context, isPublic bool) (*bollywood.PID, string) {
 	if len(a.rooms) >= maxRooms {
-		fmt.Printf("RoomManagerActor %s: Max rooms (%d) reached. Rejecting create request from %s.\n", a.selfPID, maxRooms, replyTo)
-		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID) // Or send specific error
-		return
+		return nil, ""
 	}
 
 	// Generate unique code
 	var code string
 	for {
 		code = a.generateRoomCode()
-		// Check uniqueness (inefficient for many rooms, but fine for <100)
 		unique := true
 		for _, info := range a.rooms {
 			if info.Code == code {
@@ -165,32 +161,60 @@ func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *boll
 	gameActorProps := bollywood.NewProps(NewGameActorProducer(a.engine, a.cfg, a.selfPID))
 	gameActorPID := a.engine.Spawn(gameActorProps)
 	if gameActorPID == nil {
-		fmt.Printf("ERROR: RoomManagerActor %s: Failed to spawn GameActor.\n", a.selfPID)
-		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID)
-		return
+		return nil, ""
 	}
 
 	roomIDStr := gameActorPID.String()
 	roomInfo := &RoomInfo{
 		PID:         gameActorPID,
-		PlayerCount: 1,
-		Code:        code,
-		IsPublic:    isPublic,
+		PlayerCount: 1, // Will be incremented by caller or logic? Actually handleCreateRoom sets it to 1 assuming the creator joins.
+		// But here we just create it. Let's set to 0 and let caller handle increment?
+		// Existing logic set it to 1. Let's stick to that pattern if we assume immediate join.
+		// But wait, handleQuickPlay increments it too.
+		// Let's set it to 0 here and let caller increment.
+		Code:     code,
+		IsPublic: isPublic,
+		Phase:    PhaseLobby,
 	}
+	// Wait, handleCreateRoom set it to 1.
+	// Let's keep it consistent.
+	roomInfo.PlayerCount = 0
+
 	a.rooms[roomIDStr] = roomInfo
 	a.nextRoomID++
 
-	fmt.Printf("RoomManagerActor %s: Created room %s (Code: %s, Public: %t) for %s\n", a.selfPID, roomIDStr, code, isPublic, replyTo)
+	fmt.Printf("RoomManagerActor %s: Created room %s (Code: %s, Public: %t)\n", a.selfPID, roomIDStr, code, isPublic)
+	return gameActorPID, code
+}
+
+func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *bollywood.PID, isPublic bool) {
+	if replyTo == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	pid, code := a.createRoomInternal(ctx, isPublic)
+	if pid == nil {
+		fmt.Printf("RoomManagerActor %s: Failed to create room for %s.\n", a.selfPID, replyTo)
+		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID)
+		return
+	}
+
+	// Increment player count for the creator
+	if info, ok := a.rooms[pid.String()]; ok {
+		info.PlayerCount = 1
+	}
 
 	// Send specific response with code
 	a.engine.Send(replyTo, RoomCreatedResponse{
 		MessageType: "roomCreated",
 		Code:        code,
-		RoomPID:     roomIDStr,
+		RoomPID:     pid.String(),
 	}, a.selfPID)
 
 	// Also send the standard AssignRoomResponse so ConnectionHandler knows to proceed
-	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: gameActorPID}, a.selfPID)
+	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: pid}, a.selfPID)
 }
 
 func (a *RoomManagerActor) handleJoinRoom(ctx bollywood.Context, replyTo *bollywood.PID, code string) {
@@ -235,28 +259,66 @@ func (a *RoomManagerActor) handleQuickPlay(ctx bollywood.Context, replyTo *bolly
 		return
 	}
 	a.mu.Lock()
-	// Don't defer unlock here because we might call handleCreateRoom which locks
+	// Don't defer unlock here because we might call createRoomInternal which doesn't lock but we need to manage lock manually
 
-	// Find existing public room with space
+	// 1. Priority: Find existing public room with space AND in Playing phase
 	for roomID, roomInfo := range a.rooms {
-		if roomInfo.PID != nil && roomInfo.IsPublic && roomInfo.PlayerCount < utils.MaxPlayers {
+		if roomInfo.PID != nil && roomInfo.IsPublic && roomInfo.PlayerCount < utils.MaxPlayers && roomInfo.Phase == PhasePlaying {
 			roomInfo.PlayerCount++
 			roomPID := roomInfo.PID
 			code := roomInfo.Code
 			a.mu.Unlock() // Unlock before sending
-			fmt.Printf("RoomManagerActor %s: QuickPlay assigning %s to %s\n", a.selfPID, replyTo, roomID)
+			fmt.Printf("RoomManagerActor %s: QuickPlay assigning %s to PLAYING room %s\n", a.selfPID, replyTo, roomID)
 
-			// Send Join response (simulated success)
-			a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: roomID, Code: code}, a.selfPID)
+			// Send Join response
+			a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: roomID, Code: code, Phase: "playing"}, a.selfPID)
 			a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
 			return
 		}
 	}
 
-	a.mu.Unlock() // Unlock before calling create
-	// No public room found, create a new public one
-	fmt.Printf("RoomManagerActor %s: QuickPlay creating new public room for %s\n", a.selfPID, replyTo)
-	a.handleCreateRoom(ctx, replyTo, true)
+	// 2. Fallback: Create new public room and FORCE START
+	// Note: createRoomInternal assumes caller holds lock? No, I removed lock from it?
+	// Wait, createRoomInternal accesses a.rooms, so it NEEDS lock or I need to pass it?
+	// My previous edit made createRoomInternal NOT lock.
+	// So I should hold lock here.
+
+	pid, code := a.createRoomInternal(ctx, true)
+	if pid == nil {
+		a.mu.Unlock()
+		fmt.Printf("RoomManagerActor %s: QuickPlay failed to create room for %s\n", a.selfPID, replyTo)
+		a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: false, Reason: "Failed to create room"}, a.selfPID)
+		return
+	}
+
+	// Increment player count
+	if info, ok := a.rooms[pid.String()]; ok {
+		info.PlayerCount = 1
+		info.Phase = PhasePlaying // Update local state immediately
+	}
+	a.mu.Unlock()
+
+	fmt.Printf("RoomManagerActor %s: QuickPlay created new room %s for %s. Force starting.\n", a.selfPID, pid, replyTo)
+
+	// Send ForceStartGame to the new room
+	a.engine.Send(pid, ForceStartGame{}, a.selfPID)
+
+	// Send Join response with Phase: playing
+	a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: pid.String(), Code: code, Phase: "playing"}, a.selfPID)
+	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: pid}, a.selfPID)
+}
+
+func (a *RoomManagerActor) handleRoomPhaseUpdate(ctx bollywood.Context, roomPID *bollywood.PID, phase Phase) {
+	if roomPID == nil {
+		return
+	}
+	roomIDStr := roomPID.String()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if roomInfo, exists := a.rooms[roomIDStr]; exists {
+		roomInfo.Phase = phase
+	}
 }
 
 func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *bollywood.PID) {
