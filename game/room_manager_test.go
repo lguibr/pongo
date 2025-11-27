@@ -144,8 +144,8 @@ func TestRoomManager_GetRoomList(t *testing.T) {
 	mockRoomPID1 := &bollywood.PID{ID: "room-1"}
 	mockRoomPID2 := &bollywood.PID{ID: "room-2"}
 	managerActor.mu.Lock()
-	managerActor.rooms[mockRoomPID1.String()] = &RoomInfo{PID: mockRoomPID1, PlayerCount: 2}
-	managerActor.rooms[mockRoomPID2.String()] = &RoomInfo{PID: mockRoomPID2, PlayerCount: 4}
+	managerActor.rooms[mockRoomPID1.String()] = &RoomInfo{PID: mockRoomPID1, PlayerCount: 2, Code: "CODE1", IsPublic: true}
+	managerActor.rooms[mockRoomPID2.String()] = &RoomInfo{PID: mockRoomPID2, PlayerCount: 4, Code: "CODE2", IsPublic: false}
 	managerActor.mu.Unlock()
 
 	// Use Ask to get the room list
@@ -161,4 +161,10 @@ func TestRoomManager_GetRoomList(t *testing.T) {
 		assert.Equal(t, 2, listResponse.Rooms[mockRoomPID1.String()], "Player count for room-1 mismatch")
 		assert.Equal(t, 4, listResponse.Rooms[mockRoomPID2.String()], "Player count for room-2 mismatch")
 	}
+}
+
+func TestRoomManager_GenerateCode(t *testing.T) {
+	_, _, managerActor := setupRoomManagerTest(t)
+	code := managerActor.generateRoomCode()
+	assert.Len(t, code, 6, "Room code should be 6 characters")
 }

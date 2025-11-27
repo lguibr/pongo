@@ -17,6 +17,39 @@ type MessageHeader struct {
 
 // --- WebSocket Messages (Client <-> Server) ---
 
+// CreateRoomRequest asks to create a new room.
+type CreateRoomRequest struct {
+	MessageType string `json:"messageType"` // "createRoom"
+	IsPublic    bool   `json:"isPublic"`
+}
+
+// JoinRoomRequest asks to join a specific room by code.
+type JoinRoomRequest struct {
+	MessageType string `json:"messageType"` // "joinRoom"
+	Code        string `json:"code"`
+}
+
+// QuickPlayRequest asks to join any available public room or create one.
+type QuickPlayRequest struct {
+	MessageType string `json:"messageType"` // "quickPlay"
+}
+
+// RoomCreatedResponse confirms room creation and provides the code.
+type RoomCreatedResponse struct {
+	MessageType string `json:"messageType"` // "roomCreated"
+	Code        string `json:"code"`
+	RoomPID     string `json:"roomPID"`
+}
+
+// RoomJoinedResponse confirms joining a room.
+type RoomJoinedResponse struct {
+	MessageType string `json:"messageType"` // "roomJoined"
+	Success     bool   `json:"success"`
+	RoomPID     string `json:"roomPID"` // Empty if failed
+	Code        string `json:"code"`    // The room code (useful for QuickPlay)
+	Reason      string `json:"reason"`  // Error message if failed
+}
+
 // PlayerAssignmentMessage informs the client of their assigned index.
 type PlayerAssignmentMessage struct {
 	MessageType string `json:"messageType"` // "playerAssignment"
@@ -159,6 +192,23 @@ type BallOwnershipChange struct {
 // FindRoomRequest asks the RoomManager to find or create a room.
 type FindRoomRequest struct {
 	ReplyTo *bollywood.PID // PID of the actor requesting the room (ConnectionHandlerActor)
+}
+
+// CreateRoomActorRequest asks the RoomManager to create a new room.
+type CreateRoomActorRequest struct {
+	ReplyTo  *bollywood.PID
+	IsPublic bool
+}
+
+// JoinRoomActorRequest asks the RoomManager to join a specific room.
+type JoinRoomActorRequest struct {
+	ReplyTo *bollywood.PID
+	Code    string
+}
+
+// QuickPlayActorRequest asks the RoomManager to find a public room or create one.
+type QuickPlayActorRequest struct {
+	ReplyTo *bollywood.PID
 }
 
 // AssignRoomResponse is the reply from RoomManager with the assigned GameActor PID.

@@ -79,38 +79,77 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 
 	switch msg := ctx.Message().(type) {
 	case bollywood.Started:
-		if a.roomManagerPID != nil {
-			// Use engine.Send directly here as well for consistency
-			a.engine.Send(a.roomManagerPID, game.FindRoomRequest{ReplyTo: a.selfPID}, nil)
-		} else {
+		if a.roomManagerPID == nil {
 			fmt.Printf("ERROR: ConnectionHandlerActor %s: No RoomManagerPID. Stopping.\n", a.connAddr)
 			a.cleanup(ctx, fmt.Errorf("missing RoomManagerPID"))
+			return
+		}
+		fmt.Printf("DEBUG: ConnectionHandlerActor %s Started (New Code). Waiting for room request.\n", a.connAddr)
+		// Start readLoop immediately to receive room requests
+		go a.readLoop(a.engine, a.selfPID)
+
+	case game.RoomCreatedResponse:
+		// Forward to client
+		payload, _ := json.Marshal(msg)
+		websocket.Message.Send(a.conn, string(payload))
+
+	case game.RoomJoinedResponse:
+		// Forward to client
+		payload, _ := json.Marshal(msg)
+		websocket.Message.Send(a.conn, string(payload))
+		if !msg.Success {
+			// If join failed, we are not assigned
+			a.isAssigned = false
+			a.gameActorPID = nil
 		}
 
 	case game.AssignRoomResponse:
 		if msg.RoomPID == nil {
-			fmt.Printf("ConnectionHandlerActor %s: Received nil RoomPID assignment. Closing connection.\n", a.connAddr)
-			a.cleanup(ctx, fmt.Errorf("room assignment failed (nil PID)"))
+			fmt.Printf("ConnectionHandlerActor %s: Received nil RoomPID assignment.\n", a.connAddr)
+			// Do not close connection, let client retry or handle error via RoomJoinedResponse
 			return
 		}
 		a.gameActorPID = msg.RoomPID
 		a.isAssigned = true // Mark as assigned *before* starting readLoop
 		// Use engine.Send
 		a.engine.Send(a.gameActorPID, game.AssignPlayerToRoom{WsConn: a.conn}, a.selfPID)
-		// Pass engine and selfPID explicitly to readLoop
-		go a.readLoop(a.engine, a.selfPID) // Start readLoop *after* assignment is processed
+		// Read loop is already running, no need to start it again if we don't stop it
+		// But wait, we start readLoop in AssignRoomResponse in original code.
+		// We should start readLoop on Started now, OR keep it here but ensure we can handle messages before assignment.
+		// Actually, readLoop should be running to receive the "create/join" messages.
+		// So we must start readLoop on Started.
 
 	case game.InternalReadLoopMsg:
-		// Removed log: fmt.Printf("ConnectionHandlerActor %s: Received InternalReadLoopMsg\n", a.connAddr)
-		if a.isAssigned && a.gameActorPID != nil { // Check if assigned before forwarding
-			// Use engine.Send
-			a.engine.Send(a.gameActorPID, game.ForwardedPaddleDirection{
-				WsConn:    a.conn,
-				Direction: msg.Payload,
-			}, a.selfPID)
-		} // else { // Removed SA9003
-		// fmt.Printf("WARN: ConnectionHandlerActor %s received input before game assignment. Dropping.\n", a.connAddr) // Removed log
-		// }
+		// Parse message type
+		var header game.MessageHeader
+		if err := json.Unmarshal(msg.Payload, &header); err != nil {
+			fmt.Printf("ConnectionHandlerActor %s: Error unmarshalling header: %v\n", a.connAddr, err)
+			return
+		}
+
+		switch header.MessageType {
+		case "createRoom":
+			var req game.CreateRoomRequest
+			if err := json.Unmarshal(msg.Payload, &req); err == nil {
+				a.engine.Send(a.roomManagerPID, game.CreateRoomActorRequest{ReplyTo: a.selfPID, IsPublic: req.IsPublic}, a.selfPID)
+			}
+		case "joinRoom":
+			var req game.JoinRoomRequest
+			if err := json.Unmarshal(msg.Payload, &req); err == nil {
+				a.engine.Send(a.roomManagerPID, game.JoinRoomActorRequest{ReplyTo: a.selfPID, Code: req.Code}, a.selfPID)
+			}
+		case "quickPlay":
+			a.engine.Send(a.roomManagerPID, game.QuickPlayActorRequest{ReplyTo: a.selfPID}, a.selfPID)
+		case "direction":
+			if a.isAssigned && a.gameActorPID != nil {
+				a.engine.Send(a.gameActorPID, game.ForwardedPaddleDirection{
+					WsConn:    a.conn,
+					Direction: msg.Payload,
+				}, a.selfPID)
+			}
+		default:
+			// fmt.Printf("ConnectionHandlerActor %s: Unknown message type: %s\n", a.connAddr, header.MessageType)
+		}
 
 	case *net.OpError:
 		// fmt.Printf("ConnectionHandlerActor %s: Received *net.OpError: %v. Cleaning up.\n", a.connAddr, msg) // Removed log

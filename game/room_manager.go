@@ -3,8 +3,10 @@ package game
 
 import (
 	"fmt"
+	"math/rand"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/utils"
@@ -17,7 +19,9 @@ const maxRooms = 75 // Limit the number of concurrent rooms
 // RoomInfo holds information about an active game room.
 type RoomInfo struct {
 	PID         *bollywood.PID
-	PlayerCount int // Approximate count
+	PlayerCount int    // Approximate count
+	Code        string // 6-character unique code
+	IsPublic    bool   // Public rooms can be joined via Quick Play
 }
 
 // RoomManagerActor manages multiple GameActor instances (rooms).
@@ -65,9 +69,21 @@ func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
 	switch msg := ctx.Message().(type) {
 	case bollywood.Started:
 		fmt.Printf("RoomManagerActor %s: Started.\n", a.selfPID)
+		rand.Seed(time.Now().UnixNano()) // Seed random number generator
 
 	case FindRoomRequest:
-		a.handleFindRoom(ctx, msg.ReplyTo)
+		// Deprecated or used for internal fallback?
+		// For now, treat as QuickPlay
+		a.handleQuickPlay(ctx, msg.ReplyTo)
+
+	case CreateRoomActorRequest:
+		a.handleCreateRoom(ctx, msg.ReplyTo, msg.IsPublic)
+
+	case JoinRoomActorRequest:
+		a.handleJoinRoom(ctx, msg.ReplyTo, msg.Code)
+
+	case QuickPlayActorRequest:
+		a.handleQuickPlay(ctx, msg.ReplyTo)
 
 	case GameRoomEmpty:
 		a.handleGameRoomEmpty(ctx, msg.RoomPID)
@@ -105,52 +121,142 @@ func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
 
 // Handler Methods
 
-func (a *RoomManagerActor) handleFindRoom(ctx bollywood.Context, replyTo *bollywood.PID) {
+// Handler Methods
+
+func (a *RoomManagerActor) generateRoomCode() string {
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, 6)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *bollywood.PID, isPublic bool) {
 	if replyTo == nil {
-		fmt.Printf("WARN: RoomManagerActor %s received FindRoomRequest with nil ReplyTo.\n", a.selfPID)
 		return
 	}
-	a.mu.Lock() // Lock for writing (potential room creation)
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
-	// Find existing room
-	for roomID, roomInfo := range a.rooms { // Use roomID for logging
-		if roomInfo.PID != nil && roomInfo.PlayerCount < utils.MaxPlayers {
-			roomInfo.PlayerCount++ // Increment approximate count
-			roomPID := roomInfo.PID
-			a.mu.Unlock()                                                                                                                              // Unlock before sending reply
-			fmt.Printf("RoomManagerActor %s: Assigning %s to existing room %s (Player count: %d)\n", a.selfPID, replyTo, roomID, roomInfo.PlayerCount) // Log assignment
-			a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
-			return
+	if len(a.rooms) >= maxRooms {
+		fmt.Printf("RoomManagerActor %s: Max rooms (%d) reached. Rejecting create request from %s.\n", a.selfPID, maxRooms, replyTo)
+		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID) // Or send specific error
+		return
+	}
+
+	// Generate unique code
+	var code string
+	for {
+		code = a.generateRoomCode()
+		// Check uniqueness (inefficient for many rooms, but fine for <100)
+		unique := true
+		for _, info := range a.rooms {
+			if info.Code == code {
+				unique = false
+				break
+			}
+		}
+		if unique {
+			break
 		}
 	}
 
-	// Check max rooms
-	if len(a.rooms) >= maxRooms {
-		fmt.Printf("RoomManagerActor %s: Max rooms (%d) reached. Rejecting request from %s.\n", a.selfPID, maxRooms, replyTo)
-		a.mu.Unlock()
-		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID)
-		return
-	}
-
-	// Create new room
-	// Use PID as the key directly for simplicity and uniqueness
 	gameActorProps := bollywood.NewProps(NewGameActorProducer(a.engine, a.cfg, a.selfPID))
 	gameActorPID := a.engine.Spawn(gameActorProps)
 	if gameActorPID == nil {
-		fmt.Printf("ERROR: RoomManagerActor %s: Failed to spawn GameActor. Replying nil to %s.\n", a.selfPID, replyTo)
-		a.mu.Unlock()
+		fmt.Printf("ERROR: RoomManagerActor %s: Failed to spawn GameActor.\n", a.selfPID)
 		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: nil}, a.selfPID)
 		return
 	}
 
 	roomIDStr := gameActorPID.String()
-	roomInfo := &RoomInfo{PID: gameActorPID, PlayerCount: 1}
+	roomInfo := &RoomInfo{
+		PID:         gameActorPID,
+		PlayerCount: 1,
+		Code:        code,
+		IsPublic:    isPublic,
+	}
 	a.rooms[roomIDStr] = roomInfo
-	a.nextRoomID++ // Increment counter for potential future naming schemes
-	a.mu.Unlock()  // Unlock after modifying map
+	a.nextRoomID++
 
-	fmt.Printf("RoomManagerActor %s: Created new room %s for %s\n", a.selfPID, roomIDStr, replyTo)
+	fmt.Printf("RoomManagerActor %s: Created room %s (Code: %s, Public: %t) for %s\n", a.selfPID, roomIDStr, code, isPublic, replyTo)
+
+	// Send specific response with code
+	a.engine.Send(replyTo, RoomCreatedResponse{
+		MessageType: "roomCreated",
+		Code:        code,
+		RoomPID:     roomIDStr,
+	}, a.selfPID)
+
+	// Also send the standard AssignRoomResponse so ConnectionHandler knows to proceed
 	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: gameActorPID}, a.selfPID)
+}
+
+func (a *RoomManagerActor) handleJoinRoom(ctx bollywood.Context, replyTo *bollywood.PID, code string) {
+	if replyTo == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	var targetRoom *RoomInfo
+	var targetRoomID string
+
+	for id, info := range a.rooms {
+		if info.Code == code {
+			targetRoom = info
+			targetRoomID = id
+			break
+		}
+	}
+
+	if targetRoom == nil {
+		fmt.Printf("RoomManagerActor %s: Join failed - Room code %s not found.\n", a.selfPID, code)
+		a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: false, Reason: "Room not found"}, a.selfPID)
+		return
+	}
+
+	if targetRoom.PlayerCount >= utils.MaxPlayers {
+		fmt.Printf("RoomManagerActor %s: Join failed - Room %s is full.\n", a.selfPID, code)
+		a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: false, Reason: "Room is full"}, a.selfPID)
+		return
+	}
+
+	targetRoom.PlayerCount++
+	fmt.Printf("RoomManagerActor %s: Assigning %s to room %s (Code: %s)\n", a.selfPID, replyTo, targetRoomID, code)
+
+	a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: targetRoomID, Code: code}, a.selfPID)
+	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: targetRoom.PID}, a.selfPID)
+}
+
+func (a *RoomManagerActor) handleQuickPlay(ctx bollywood.Context, replyTo *bollywood.PID) {
+	if replyTo == nil {
+		return
+	}
+	a.mu.Lock()
+	// Don't defer unlock here because we might call handleCreateRoom which locks
+
+	// Find existing public room with space
+	for roomID, roomInfo := range a.rooms {
+		if roomInfo.PID != nil && roomInfo.IsPublic && roomInfo.PlayerCount < utils.MaxPlayers {
+			roomInfo.PlayerCount++
+			roomPID := roomInfo.PID
+			code := roomInfo.Code
+			a.mu.Unlock() // Unlock before sending
+			fmt.Printf("RoomManagerActor %s: QuickPlay assigning %s to %s\n", a.selfPID, replyTo, roomID)
+
+			// Send Join response (simulated success)
+			a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: roomID, Code: code}, a.selfPID)
+			a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
+			return
+		}
+	}
+
+	a.mu.Unlock() // Unlock before calling create
+	// No public room found, create a new public one
+	fmt.Printf("RoomManagerActor %s: QuickPlay creating new public room for %s\n", a.selfPID, replyTo)
+	a.handleCreateRoom(ctx, replyTo, true)
 }
 
 func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *bollywood.PID) {
