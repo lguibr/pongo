@@ -642,19 +642,34 @@ func (a *GameActor) startCountdown(ctx bollywood.Context) {
 		return
 	}
 	a.phase = PhaseCountingDown
+	// Start the countdown sequence at 3
+	a.handleCountdownTick(ctx, 3)
+}
 
-	// Broadcast countdown start
+// handleCountdownTick processes a tick of the countdown.
+func (a *GameActor) handleCountdownTick(ctx bollywood.Context, secondsRemaining int) {
+	if a.phase != PhaseCountingDown {
+		return // Countdown was cancelled or game started
+	}
+
+	// Broadcast current countdown value
 	a.addUpdate(&GameStartCountdown{
 		MessageType: "gameStartCountdown",
-		Seconds:     3,
+		Seconds:     secondsRemaining,
 	})
 
-	// Start timer
-	a.countdownTimer = time.AfterFunc(3*time.Second, func() {
-		if a.engine != nil && a.selfPID != nil {
-			a.engine.Send(a.selfPID, startGameMsg{}, nil)
-		}
-	})
+	if secondsRemaining > 0 {
+		// Schedule next tick or start game
+		a.countdownTimer = time.AfterFunc(1*time.Second, func() {
+			if a.engine != nil && a.selfPID != nil {
+				if secondsRemaining > 1 {
+					a.engine.Send(a.selfPID, CountdownTick{SecondsRemaining: secondsRemaining - 1}, nil)
+				} else {
+					a.engine.Send(a.selfPID, startGameMsg{}, nil)
+				}
+			}
+		})
+	}
 }
 
 // startGame transitions the room to the playing phase.

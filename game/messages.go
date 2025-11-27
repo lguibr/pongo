@@ -469,3 +469,8 @@ type startGameMsg struct{}
 
 // ForceStartGame signals the actor to transition to Playing phase immediately (skipping lobby/countdown).
 type ForceStartGame struct{}
+
+// CountdownTick signals the actor to decrement the countdown.
+type CountdownTick struct {
+	SecondsRemaining int
+}

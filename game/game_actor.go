@@ -235,6 +235,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.startGame(ctx)
 	case ForceStartGame:
 		a.handleForceStartGame(ctx)
+	case CountdownTick:
+		a.handleCountdownTick(ctx, m.SecondsRemaining)
 	// --- End Delegation ---
 
 	// --- Internal Test Messages ---
