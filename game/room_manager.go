@@ -89,6 +89,9 @@ func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
 	case GameRoomEmpty:
 		a.handleGameRoomEmpty(ctx, msg.RoomPID)
 
+	case PlayerLeftRoom:
+		a.handlePlayerLeftRoom(ctx, msg.RoomPID)
+
 	case RoomPhaseUpdate:
 		a.handleRoomPhaseUpdate(ctx, msg.RoomPID, msg.Phase)
 
@@ -340,6 +343,24 @@ func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *b
 
 	if pidToStop != nil && a.engine != nil {
 		a.engine.Stop(pidToStop) // Ensure engine is not nil before stopping
+	}
+}
+
+func (a *RoomManagerActor) handlePlayerLeftRoom(ctx bollywood.Context, roomPID *bollywood.PID) {
+	if roomPID == nil {
+		return
+	}
+	roomIDStr := roomPID.String()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if roomInfo, exists := a.rooms[roomIDStr]; exists {
+		if roomInfo.PlayerCount > 0 {
+			roomInfo.PlayerCount--
+			fmt.Printf("RoomManagerActor %s: Player left room %s. Count decremented to %d.\n", a.selfPID, roomIDStr, roomInfo.PlayerCount)
+		} else {
+			fmt.Printf("WARN: RoomManagerActor %s: Received PlayerLeftRoom for %s but count is already 0.\n", a.selfPID, roomIDStr)
+		}
 	}
 }
 

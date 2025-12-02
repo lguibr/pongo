@@ -70,7 +70,10 @@ func (a *GameActor) handleBroadcastTick(ctx bollywood.Context) {
 	}
 
 	if len(a.pendingUpdates) == 0 {
+		// Send a heartbeat (empty update) to keep the connection alive
+		// This is crucial for Cloud Run / Load Balancers to not drop the connection during idle lobby times
 		a.updatesMu.Unlock()
+		a.engine.Send(a.broadcasterPID, BroadcastUpdatesCommand{Updates: []interface{}{}}, a.selfPID)
 		return
 	}
 

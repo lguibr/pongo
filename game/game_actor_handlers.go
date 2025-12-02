@@ -16,6 +16,13 @@ import (
 // handlePlayerConnect processes a player connection, sends initial state,
 // and generates PlayerJoined update.
 func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Conn) {
+	// Cancel cleanup timer if active, as a player is joining
+	if a.roomCleanupTimer != nil {
+		fmt.Printf("GameActor %s: Player joining, cancelling room cleanup timer.\n", a.selfPID)
+		a.roomCleanupTimer.Stop()
+		a.roomCleanupTimer = nil
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("ERROR: Recovered from panic in handlePlayerConnect: %v\nStack: %s\n", r, string(debug.Stack()))
@@ -247,7 +254,17 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	if conn == nil {
 		return
 	}
-	connAddr := conn.RemoteAddr().String()
+	connAddr := "unknown"
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				connAddr = "unknown (panic)"
+			}
+		}()
+		if conn.RemoteAddr() != nil {
+			connAddr = conn.RemoteAddr().String()
+		}
+	}()
 	playerIndex, playerFound := a.connToIndex[conn]
 
 	if !playerFound || playerIndex < 0 || playerIndex >= utils.MaxPlayers || a.players[playerIndex] == nil || a.players[playerIndex].Ws != conn {
@@ -271,6 +288,21 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 		Index:       playerIndex,
 	}
 	a.addUpdate(playerLeftUpdate)
+
+	// --- Broadcast Lobby State (so Lobby UI updates) ---
+	lobbyState := &LobbyStateUpdate{
+		MessageType: "lobbyState",
+		Players:     make([]LobbyPlayerState, 0),
+	}
+	for _, p := range a.players {
+		if p != nil && p.IsConnected {
+			lobbyState.Players = append(lobbyState.Players, LobbyPlayerState{
+				Index:   p.Index,
+				IsReady: p.IsReady,
+			})
+		}
+	}
+	a.addUpdate(lobbyState)
 
 	// --- Stop Actors and Manage Persistent Ball ---
 	paddleToStop := a.paddleActors[playerIndex]
@@ -357,7 +389,6 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	}
 	roomIsEmpty := !playersLeft
 
-	roomManagerPID := a.roomManagerPID
 	selfPID := a.selfPID
 	engine := a.engine
 	broadcasterPID := a.broadcasterPID
@@ -377,17 +408,49 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 
 	fmt.Printf("GameActor %s: Player %d (%s) disconnected and cleaned up.\n", a.selfPID, playerIndex, connAddr)
 
+	// Notify RoomManager that a player has left (to decrement count)
+	if a.roomManagerPID != nil && a.selfPID != nil {
+		a.engine.Send(a.roomManagerPID, PlayerLeftRoom{RoomPID: a.selfPID}, nil)
+	}
+
 	// --- Notify RoomManager if Empty ---
 	if roomIsEmpty && !a.gameOver.Load() {
-		fmt.Printf("GameActor %s: Last player disconnected. Room is empty. Notifying RoomManager %s.\n", a.selfPID, roomManagerPID)
-		if roomManagerPID != nil && selfPID != nil {
-			engine.Send(roomManagerPID, GameRoomEmpty{RoomPID: selfPID}, nil)
+		// Instead of destroying immediately, start a grace period timer
+		fmt.Printf("GameActor %s: Room is empty. Starting cleanup timer for 30 seconds.\n", a.selfPID)
+		if a.roomCleanupTimer != nil {
+			a.roomCleanupTimer.Stop()
+		}
+		a.roomCleanupTimer = time.AfterFunc(30*time.Second, func() {
+			if a.engine != nil && a.selfPID != nil {
+				a.engine.Send(a.selfPID, RoomCleanupTimeout{}, nil)
+			}
+		})
+	}
+}
+
+// handleRoomCleanupTimeout is called when the empty room grace period expires.
+func (a *GameActor) handleRoomCleanupTimeout(ctx bollywood.Context) {
+	// Re-check if room is still empty (it should be, but good to verify)
+	playersLeft := false
+	for _, p := range a.players {
+		if p != nil && p.IsConnected {
+			playersLeft = true
+			break
+		}
+	}
+
+	if !playersLeft && !a.gameOver.Load() {
+		fmt.Printf("GameActor %s: Cleanup timer expired. Room still empty. Notifying RoomManager %s.\n", a.selfPID, a.roomManagerPID)
+		if a.roomManagerPID != nil && a.selfPID != nil {
+			a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
 		} else {
 			fmt.Printf("ERROR: GameActor %s cannot notify RoomManager, PID is nil. Stopping self.\n", a.selfPID)
-			if selfPID != nil {
-				engine.Stop(selfPID)
+			if a.selfPID != nil {
+				a.engine.Stop(a.selfPID)
 			}
 		}
+	} else {
+		fmt.Printf("GameActor %s: Cleanup timer expired but room is not empty or game over. Ignoring.\n", a.selfPID)
 	}
 }
 

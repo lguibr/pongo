@@ -59,6 +59,9 @@ type GameActor struct {
 	// Countdown Timer
 	countdownTimer *time.Timer
 
+	// Room Cleanup Timer (for grace period when empty)
+	roomCleanupTimer *time.Timer
+
 	// Performance Metrics
 	tickDurationSum time.Duration
 	tickCount       int64
@@ -237,6 +240,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.handleForceStartGame(ctx)
 	case CountdownTick:
 		a.handleCountdownTick(ctx, m.SecondsRemaining)
+	case RoomCleanupTimeout:
+		a.handleRoomCleanupTimeout(ctx)
 	// --- End Delegation ---
 
 	// --- Internal Test Messages ---
