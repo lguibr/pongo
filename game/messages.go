@@ -21,17 +21,20 @@ type MessageHeader struct {
 type CreateRoomRequest struct {
 	MessageType string `json:"messageType"` // "createRoom"
 	IsPublic    bool   `json:"isPublic"`
+	SessionID   string `json:"sessionId"`
 }
 
 // JoinRoomRequest asks to join a specific room by code.
 type JoinRoomRequest struct {
 	MessageType string `json:"messageType"` // "joinRoom"
 	Code        string `json:"code"`
+	SessionID   string `json:"sessionId"`
 }
 
 // QuickPlayRequest asks to join any available public room or create one.
 type QuickPlayRequest struct {
 	MessageType string `json:"messageType"` // "quickPlay"
+	SessionID   string `json:"sessionId"`
 }
 
 // RoomCreatedResponse confirms room creation and provides the code.
@@ -198,19 +201,22 @@ type FindRoomRequest struct {
 
 // CreateRoomActorRequest asks the RoomManager to create a new room.
 type CreateRoomActorRequest struct {
-	ReplyTo  *bollywood.PID
-	IsPublic bool
+	ReplyTo   *bollywood.PID
+	IsPublic  bool
+	SessionID string
 }
 
 // JoinRoomActorRequest asks the RoomManager to join a specific room.
 type JoinRoomActorRequest struct {
-	ReplyTo *bollywood.PID
-	Code    string
+	ReplyTo   *bollywood.PID
+	Code      string
+	SessionID string
 }
 
 // QuickPlayActorRequest asks the RoomManager to find a public room or create one.
 type QuickPlayActorRequest struct {
-	ReplyTo *bollywood.PID
+	ReplyTo   *bollywood.PID
+	SessionID string
 }
 
 // AssignRoomResponse is the reply from RoomManager with the assigned GameActor PID.
@@ -221,6 +227,12 @@ type AssignRoomResponse struct {
 // GameRoomEmpty notifies the RoomManager that a GameActor is finished or empty.
 type GameRoomEmpty struct {
 	RoomPID *bollywood.PID
+}
+
+// PlayerLeftRoom notifies RoomManager that a player has left the room.
+type PlayerLeftRoom struct {
+	RoomPID   *bollywood.PID
+	SessionID string
 }
 
 // RoomPhaseUpdate notifies RoomManager of phase change.
@@ -248,7 +260,8 @@ type InternalReadLoopMsg struct {
 
 // AssignPlayerToRoom tells the GameActor to add a player associated with a WebSocket connection.
 type AssignPlayerToRoom struct {
-	WsConn *websocket.Conn
+	WsConn    *websocket.Conn
+	SessionID string
 }
 
 // PlayerDisconnect tells the GameActor that a player's connection was lost.
@@ -303,6 +316,11 @@ type DestroyExpiredBall struct {
 // stopPhasingTimerMsg is an internal message sent by time.AfterFunc when a ball's phasing ends.
 type stopPhasingTimerMsg struct {
 	BallID int
+}
+
+// stopReconnectTimerMsg is an internal message sent by time.AfterFunc when a player's reconnect grace period ends.
+type stopReconnectTimerMsg struct {
+	PlayerIndex int
 }
 
 // --- BroadcasterActor Messages ---

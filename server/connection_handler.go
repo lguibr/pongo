@@ -33,6 +33,7 @@ type ConnectionHandlerActor struct {
 	done           chan struct{} // Channel to signal handler completion
 	isAssigned     bool          // Flag to track if assigned to a GameActor
 	closeOnce      sync.Once     // Ensures done channel is closed only once
+	sessionID      string        // Store session ID from request
 }
 
 // ConnectionHandlerArgs holds arguments for creating the actor.
@@ -112,7 +113,7 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		a.gameActorPID = msg.RoomPID
 		a.isAssigned = true // Mark as assigned *before* starting readLoop
 		// Use engine.Send
-		a.engine.Send(a.gameActorPID, game.AssignPlayerToRoom{WsConn: a.conn}, a.selfPID)
+		a.engine.Send(a.gameActorPID, game.AssignPlayerToRoom{WsConn: a.conn, SessionID: a.sessionID}, a.selfPID)
 		// Read loop is already running, no need to start it again if we don't stop it
 		// But wait, we start readLoop in AssignRoomResponse in original code.
 		// We should start readLoop on Started now, OR keep it here but ensure we can handle messages before assignment.
@@ -131,15 +132,21 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		case "createRoom":
 			var req game.CreateRoomRequest
 			if err := json.Unmarshal(msg.Payload, &req); err == nil {
-				a.engine.Send(a.roomManagerPID, game.CreateRoomActorRequest{ReplyTo: a.selfPID, IsPublic: req.IsPublic}, a.selfPID)
+				a.sessionID = req.SessionID
+				a.engine.Send(a.roomManagerPID, game.CreateRoomActorRequest{ReplyTo: a.selfPID, IsPublic: req.IsPublic, SessionID: req.SessionID}, a.selfPID)
 			}
 		case "joinRoom":
 			var req game.JoinRoomRequest
 			if err := json.Unmarshal(msg.Payload, &req); err == nil {
-				a.engine.Send(a.roomManagerPID, game.JoinRoomActorRequest{ReplyTo: a.selfPID, Code: req.Code}, a.selfPID)
+				a.sessionID = req.SessionID
+				a.engine.Send(a.roomManagerPID, game.JoinRoomActorRequest{ReplyTo: a.selfPID, Code: req.Code, SessionID: req.SessionID}, a.selfPID)
 			}
 		case "quickPlay":
-			a.engine.Send(a.roomManagerPID, game.QuickPlayActorRequest{ReplyTo: a.selfPID}, a.selfPID)
+			var req game.QuickPlayRequest
+			if err := json.Unmarshal(msg.Payload, &req); err == nil {
+				a.sessionID = req.SessionID
+				a.engine.Send(a.roomManagerPID, game.QuickPlayActorRequest{ReplyTo: a.selfPID, SessionID: req.SessionID}, a.selfPID)
+			}
 		case "direction":
 			if a.isAssigned && a.gameActorPID != nil {
 				a.engine.Send(a.gameActorPID, game.ForwardedPaddleDirection{

@@ -62,6 +62,9 @@ type GameActor struct {
 	// Room Cleanup Timer (for grace period when empty)
 	roomCleanupTimer *time.Timer
 
+	// Reconnection Timers
+	reconnectTimers map[int]*time.Timer // Map player index to timer
+
 	// Performance Metrics
 	tickDurationSum time.Duration
 	tickCount       int64
@@ -76,6 +79,7 @@ type GameActor struct {
 type playerInfo struct {
 	Index       int
 	ID          string
+	SessionID   string       // Unique session ID for reconnection
 	Score       atomic.Int32 // Use atomic Int32 for score
 	Color       [3]int
 	Ws          *websocket.Conn // Can be nil in tests
@@ -106,6 +110,7 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 			pendingUpdates:   make([]interface{}, 0, 128), // Pre-allocate some capacity
 			activeCollisions: NewCollisionTracker(),       // Initialize collision tracker
 			phasingTimers:    make(map[int]*time.Timer),   // Initialize phasing timers map
+			reconnectTimers:  make(map[int]*time.Timer),   // Initialize reconnect timers map
 			// Initialize metrics
 			tickDurationSum: 0,
 			tickCount:       0,
@@ -160,7 +165,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 	// Ignore messages if game is already over or stopping, except for system messages
 	if a.gameOver.Load() || a.isStopping.Load() {
 		switch ctx.Message().(type) {
-		case bollywood.Stopping, bollywood.Stopped, PlayerDisconnect, stopPhasingTimerMsg: // Allow phasing timer msg during cleanup
+		case bollywood.Stopping, bollywood.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
 			// Allow these messages during game over/stopping for cleanup
 		default:
 			// If it's an Ask request during shutdown, reply with an error
@@ -219,7 +224,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 
 	// --- Delegate to handlers defined in game_actor_handlers.go ---
 	case AssignPlayerToRoom:
-		a.handlePlayerConnect(ctx, m.WsConn)
+		a.handlePlayerConnect(ctx, m.WsConn, m.SessionID)
 	case PlayerDisconnect:
 		a.handlePlayerDisconnect(ctx, m.WsConn)
 	case ForwardedPaddleDirection:
@@ -230,6 +235,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.handleDestroyExpiredBall(ctx, m.BallID)
 	case stopPhasingTimerMsg: // Handle internal timer expiry
 		a.handleStopPhasingTimerMsg(ctx, m.BallID)
+	case stopReconnectTimerMsg:
+		a.handleStopReconnectTimerMsg(ctx, m.PlayerIndex)
 	case ForwardedPlayerReady:
 		a.handlePlayerReady(ctx, m.WsConn, m.IsReady)
 	case startCountdownMsg:
@@ -350,6 +357,7 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 		Color:       playerDataPtr.Color,
 		Ws:          nil,  // Explicitly nil for test player
 		IsConnected: true, // Mark as connected for game logic
+		SessionID:   "test-session",
 	}
 	player.Score.Store(playerDataPtr.Score)
 	a.players[playerIndex] = player

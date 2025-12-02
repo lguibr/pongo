@@ -19,10 +19,11 @@ const maxRooms = 75 // Limit the number of concurrent rooms
 // RoomInfo holds information about an active game room.
 type RoomInfo struct {
 	PID         *bollywood.PID
-	PlayerCount int    // Approximate count
-	Code        string // 6-character unique code
-	IsPublic    bool   // Public rooms can be joined via Quick Play
-	Phase       Phase  // Current phase
+	PlayerCount int             // Approximate count
+	Code        string          // 6-character unique code
+	IsPublic    bool            // Public rooms can be joined via Quick Play
+	Phase       Phase           // Current phase
+	Sessions    map[string]bool // Track active sessions to handle reconnections
 }
 
 // RoomManagerActor manages multiple GameActor instances (rooms).
@@ -75,22 +76,22 @@ func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
 	case FindRoomRequest:
 		// Deprecated or used for internal fallback?
 		// For now, treat as QuickPlay
-		a.handleQuickPlay(ctx, msg.ReplyTo)
+		a.handleQuickPlay(ctx, msg.ReplyTo, "")
 
 	case CreateRoomActorRequest:
-		a.handleCreateRoom(ctx, msg.ReplyTo, msg.IsPublic)
+		a.handleCreateRoom(ctx, msg.ReplyTo, msg.IsPublic, msg.SessionID)
 
 	case JoinRoomActorRequest:
-		a.handleJoinRoom(ctx, msg.ReplyTo, msg.Code)
+		a.handleJoinRoom(ctx, msg.ReplyTo, msg.Code, msg.SessionID)
 
 	case QuickPlayActorRequest:
-		a.handleQuickPlay(ctx, msg.ReplyTo)
+		a.handleQuickPlay(ctx, msg.ReplyTo, msg.SessionID)
 
 	case GameRoomEmpty:
 		a.handleGameRoomEmpty(ctx, msg.RoomPID)
 
 	case PlayerLeftRoom:
-		a.handlePlayerLeftRoom(ctx, msg.RoomPID)
+		a.handlePlayerLeftRoom(ctx, msg.RoomPID, msg.SessionID)
 
 	case RoomPhaseUpdate:
 		a.handleRoomPhaseUpdate(ctx, msg.RoomPID, msg.Phase)
@@ -170,18 +171,12 @@ func (a *RoomManagerActor) createRoomInternal(ctx bollywood.Context, isPublic bo
 	roomIDStr := gameActorPID.String()
 	roomInfo := &RoomInfo{
 		PID:         gameActorPID,
-		PlayerCount: 1, // Will be incremented by caller or logic? Actually handleCreateRoom sets it to 1 assuming the creator joins.
-		// But here we just create it. Let's set to 0 and let caller handle increment?
-		// Existing logic set it to 1. Let's stick to that pattern if we assume immediate join.
-		// But wait, handleQuickPlay increments it too.
-		// Let's set it to 0 here and let caller increment.
-		Code:     code,
-		IsPublic: isPublic,
-		Phase:    PhaseLobby,
+		PlayerCount: 0,
+		Code:        code,
+		IsPublic:    isPublic,
+		Phase:       PhaseLobby,
+		Sessions:    make(map[string]bool),
 	}
-	// Wait, handleCreateRoom set it to 1.
-	// Let's keep it consistent.
-	roomInfo.PlayerCount = 0
 
 	a.rooms[roomIDStr] = roomInfo
 	a.nextRoomID++
@@ -190,7 +185,7 @@ func (a *RoomManagerActor) createRoomInternal(ctx bollywood.Context, isPublic bo
 	return gameActorPID, code
 }
 
-func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *bollywood.PID, isPublic bool) {
+func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *bollywood.PID, isPublic bool, sessionID string) {
 	if replyTo == nil {
 		return
 	}
@@ -204,9 +199,12 @@ func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *boll
 		return
 	}
 
-	// Increment player count for the creator
+	// Increment player count for the creator and track session
 	if info, ok := a.rooms[pid.String()]; ok {
 		info.PlayerCount = 1
+		if sessionID != "" {
+			info.Sessions[sessionID] = true
+		}
 	}
 
 	// Send specific response with code
@@ -220,7 +218,7 @@ func (a *RoomManagerActor) handleCreateRoom(ctx bollywood.Context, replyTo *boll
 	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: pid}, a.selfPID)
 }
 
-func (a *RoomManagerActor) handleJoinRoom(ctx bollywood.Context, replyTo *bollywood.PID, code string) {
+func (a *RoomManagerActor) handleJoinRoom(ctx bollywood.Context, replyTo *bollywood.PID, code string, sessionID string) {
 	if replyTo == nil {
 		return
 	}
@@ -244,40 +242,90 @@ func (a *RoomManagerActor) handleJoinRoom(ctx bollywood.Context, replyTo *bollyw
 		return
 	}
 
-	if targetRoom.PlayerCount >= utils.MaxPlayers {
+	// Check if it's a reconnection
+	isReconnect := false
+	if sessionID != "" && targetRoom.Sessions[sessionID] {
+		isReconnect = true
+		fmt.Printf("RoomManagerActor %s: Reconnection detected for session %s in room %s\n", a.selfPID, sessionID, code)
+	}
+
+	if !isReconnect && targetRoom.PlayerCount >= utils.MaxPlayers {
 		fmt.Printf("RoomManagerActor %s: Join failed - Room %s is full.\n", a.selfPID, code)
 		a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: false, Reason: "Room is full"}, a.selfPID)
 		return
 	}
 
-	targetRoom.PlayerCount++
+	if !isReconnect {
+		targetRoom.PlayerCount++
+		if sessionID != "" {
+			targetRoom.Sessions[sessionID] = true
+		}
+	}
+
 	fmt.Printf("RoomManagerActor %s: Assigning %s to room %s (Code: %s)\n", a.selfPID, replyTo, targetRoomID, code)
 
 	a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: targetRoomID, Code: code}, a.selfPID)
 	a.engine.Send(replyTo, AssignRoomResponse{RoomPID: targetRoom.PID}, a.selfPID)
 }
 
-func (a *RoomManagerActor) handleQuickPlay(ctx bollywood.Context, replyTo *bollywood.PID) {
+func (a *RoomManagerActor) handleQuickPlay(ctx bollywood.Context, replyTo *bollywood.PID, sessionID string) {
 	if replyTo == nil {
 		return
 	}
 	a.mu.Lock()
 	// Don't defer unlock here because we might call createRoomInternal which doesn't lock but we need to manage lock manually
 
-	// 1. Priority: Find existing public room with space AND in Playing phase
-	for roomID, roomInfo := range a.rooms {
-		if roomInfo.PID != nil && roomInfo.IsPublic && roomInfo.PlayerCount < utils.MaxPlayers && roomInfo.Phase == PhasePlaying {
-			roomInfo.PlayerCount++
-			roomPID := roomInfo.PID
-			code := roomInfo.Code
-			a.mu.Unlock() // Unlock before sending
-			fmt.Printf("RoomManagerActor %s: QuickPlay assigning %s to PLAYING room %s\n", a.selfPID, replyTo, roomID)
+	// 1. Priority: Find existing public room with space
+	// Preference order: Lobby > CountingDown > Playing
+	var bestMatch *RoomInfo
+	var bestMatchID string
 
-			// Send Join response
-			a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: roomID, Code: code, Phase: "playing"}, a.selfPID)
-			a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
-			return
+	for roomID, roomInfo := range a.rooms {
+		if roomInfo.PID != nil && roomInfo.IsPublic && roomInfo.PlayerCount < utils.MaxPlayers {
+			// If we find a Lobby room, it's the best match, take it immediately
+			if roomInfo.Phase == PhaseLobby {
+				bestMatch = roomInfo
+				bestMatchID = roomID
+				break
+			}
+			// If we find a Countdown room, it's a good match, but keep looking for Lobby
+			if roomInfo.Phase == PhaseCountingDown {
+				if bestMatch == nil || bestMatch.Phase == PhasePlaying {
+					bestMatch = roomInfo
+					bestMatchID = roomID
+				}
+			}
+			// If we find a Playing room, it's a fallback match
+			if roomInfo.Phase == PhasePlaying {
+				if bestMatch == nil {
+					bestMatch = roomInfo
+					bestMatchID = roomID
+				}
+			}
 		}
+	}
+
+	if bestMatch != nil {
+		bestMatch.PlayerCount++
+		if sessionID != "" {
+			bestMatch.Sessions[sessionID] = true
+		}
+		roomPID := bestMatch.PID
+		code := bestMatch.Code
+		phaseStr := "lobby"
+		if bestMatch.Phase == PhaseCountingDown {
+			phaseStr = "countingDown"
+		} else if bestMatch.Phase == PhasePlaying {
+			phaseStr = "playing"
+		}
+
+		a.mu.Unlock() // Unlock before sending
+		fmt.Printf("RoomManagerActor %s: QuickPlay assigning %s to %s room %s\n", a.selfPID, replyTo, phaseStr, bestMatchID)
+
+		// Send Join response
+		a.engine.Send(replyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: true, RoomPID: bestMatchID, Code: code, Phase: phaseStr}, a.selfPID)
+		a.engine.Send(replyTo, AssignRoomResponse{RoomPID: roomPID}, a.selfPID)
+		return
 	}
 
 	// 2. Fallback: Create new public room and FORCE START
@@ -298,6 +346,9 @@ func (a *RoomManagerActor) handleQuickPlay(ctx bollywood.Context, replyTo *bolly
 	if info, ok := a.rooms[pid.String()]; ok {
 		info.PlayerCount = 1
 		info.Phase = PhasePlaying // Update local state immediately
+		if sessionID != "" {
+			info.Sessions[sessionID] = true
+		}
 	}
 	a.mu.Unlock()
 
@@ -346,7 +397,7 @@ func (a *RoomManagerActor) handleGameRoomEmpty(ctx bollywood.Context, roomPID *b
 	}
 }
 
-func (a *RoomManagerActor) handlePlayerLeftRoom(ctx bollywood.Context, roomPID *bollywood.PID) {
+func (a *RoomManagerActor) handlePlayerLeftRoom(ctx bollywood.Context, roomPID *bollywood.PID, sessionID string) {
 	if roomPID == nil {
 		return
 	}
@@ -357,6 +408,9 @@ func (a *RoomManagerActor) handlePlayerLeftRoom(ctx bollywood.Context, roomPID *
 	if roomInfo, exists := a.rooms[roomIDStr]; exists {
 		if roomInfo.PlayerCount > 0 {
 			roomInfo.PlayerCount--
+			if sessionID != "" {
+				delete(roomInfo.Sessions, sessionID)
+			}
 			fmt.Printf("RoomManagerActor %s: Player left room %s. Count decremented to %d.\n", a.selfPID, roomIDStr, roomInfo.PlayerCount)
 		} else {
 			fmt.Printf("WARN: RoomManagerActor %s: Received PlayerLeftRoom for %s but count is already 0.\n", a.selfPID, roomIDStr)
