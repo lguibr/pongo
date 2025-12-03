@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/lguibr/bollywood"
 	"golang.org/x/net/websocket"
@@ -35,18 +36,26 @@ func (a *BroadcasterActor) Receive(ctx bollywood.Context) {
 	defer func() {
 		if r := recover(); r != nil {
 			pidStr := "unknown"
-			if a.selfPID != nil { pidStr = a.selfPID.String() }
+			if a.selfPID != nil {
+				pidStr = a.selfPID.String()
+			}
 			fmt.Printf("PANIC recovered in BroadcasterActor %s Receive: %v\nStack trace:\n%s\n", pidStr, r, string(debug.Stack()))
 		}
 	}()
 
-	if a.selfPID == nil { a.selfPID = ctx.Self() }
+	if a.selfPID == nil {
+		a.selfPID = ctx.Self()
+	}
 
 	switch msg := ctx.Message().(type) {
 	case bollywood.Started:
 		// Actor started
 	case AddClient:
-		if msg.Conn != nil { a.mu.Lock(); a.clients[msg.Conn] = true; a.mu.Unlock() }
+		if msg.Conn != nil {
+			a.mu.Lock()
+			a.clients[msg.Conn] = true
+			a.mu.Unlock()
+		}
 	case RemoveClient:
 		if msg.Conn != nil {
 			a.mu.Lock()
@@ -71,16 +80,22 @@ func (a *BroadcasterActor) Receive(ctx bollywood.Context) {
 
 // broadcastUpdates sends a batch of game updates to all registered clients using JSON.Send.
 func (a *BroadcasterActor) broadcastUpdates(ctx bollywood.Context, updates []interface{}) {
-	if len(updates) == 0 { return }
+	if len(updates) == 0 {
+		return
+	}
 
 	a.mu.RLock()
 	clientsToSend := make([]*websocket.Conn, 0, len(a.clients))
-	for conn := range a.clients { clientsToSend = append(clientsToSend, conn) }
+	for conn := range a.clients {
+		clientsToSend = append(clientsToSend, conn)
+	}
 	a.mu.RUnlock()
 
-	if len(clientsToSend) == 0 { return }
+	if len(clientsToSend) == 0 {
+		return
+	}
 
-	batchMsg := GameUpdatesBatch{ MessageType: "gameUpdates", Updates: updates }
+	batchMsg := GameUpdatesBatch{MessageType: "gameUpdates", Updates: updates}
 
 	disconnectedClients := []*websocket.Conn{}
 	for _, ws := range clientsToSend {
@@ -96,29 +111,43 @@ func (a *BroadcasterActor) broadcastUpdates(ctx bollywood.Context, updates []int
 
 			if isClosedErr || isBufferErr {
 				disconnectedClients = append(disconnectedClients, ws)
-				if isBufferErr { fmt.Printf("WARN: BroadcasterActor %s: Buffer space error for client %s. Marking for disconnect.\n", a.selfPID, ws.RemoteAddr()) }
+				if isBufferErr {
+					fmt.Printf("WARN: BroadcasterActor %s: Buffer space error for client %s. Marking for disconnect.\n", a.selfPID, ws.RemoteAddr())
+				}
 			} else {
 				fmt.Printf("ERROR: BroadcasterActor %s: Failed to write update batch to client %s: %v\n", a.selfPID, ws.RemoteAddr(), errSend)
 			}
 		}
 	}
 
-	if len(disconnectedClients) > 0 { a.handleDisconnects(ctx, disconnectedClients) }
+	if len(disconnectedClients) > 0 {
+		a.handleDisconnects(ctx, disconnectedClients)
+	}
 }
 
 // broadcastGameOverAndClose sends the GameOverMessage using JSON.Send and then closes all connections.
 func (a *BroadcasterActor) broadcastGameOverAndClose(ctx bollywood.Context, msg GameOverMessage) {
 	a.mu.RLock()
 	clientsToSend := make([]*websocket.Conn, 0, len(a.clients))
-	for conn := range a.clients { clientsToSend = append(clientsToSend, conn) }
+	for conn := range a.clients {
+		clientsToSend = append(clientsToSend, conn)
+	}
 	a.mu.RUnlock()
 
-	if len(clientsToSend) == 0 { return }
+	if len(clientsToSend) == 0 {
+		return
+	}
 
 	for _, ws := range clientsToSend {
 		errSend := websocket.JSON.Send(ws, msg)
-		if errSend != nil { fmt.Printf("WARN: BroadcasterActor %s: Failed to send GameOverMessage to client %s: %v\n", a.selfPID, ws.RemoteAddr(), errSend) }
+		if errSend != nil {
+			fmt.Printf("WARN: BroadcasterActor %s: Failed to send GameOverMessage to client %s: %v\n", a.selfPID, ws.RemoteAddr(), errSend)
+		}
 	}
+
+	// Wait a bit to ensure the message is flushed/received before closing
+	time.Sleep(500 * time.Millisecond)
+
 	a.closeAllConnections(ctx)
 }
 
@@ -126,7 +155,9 @@ func (a *BroadcasterActor) broadcastGameOverAndClose(ctx bollywood.Context, msg 
 func (a *BroadcasterActor) closeAllConnections(ctx bollywood.Context) {
 	a.mu.Lock()
 	clientsToClose := make([]*websocket.Conn, 0, len(a.clients))
-	for conn := range a.clients { clientsToClose = append(clientsToClose, conn) }
+	for conn := range a.clients {
+		clientsToClose = append(clientsToClose, conn)
+	}
 	a.clients = make(map[*websocket.Conn]bool) // Clear the map correctly
 	a.mu.Unlock()
 
@@ -134,7 +165,9 @@ func (a *BroadcasterActor) closeAllConnections(ctx bollywood.Context) {
 		// fmt.Printf("Broadcaster %s: Closing %d connections.\n", a.selfPID, len(clientsToClose)) // Removed log
 		for _, ws := range clientsToClose {
 			_ = ws.Close()
-			if a.gameActorPID != nil && ctx.Engine() != nil { ctx.Engine().Send(a.gameActorPID, PlayerDisconnect{WsConn: ws}, a.selfPID) }
+			if a.gameActorPID != nil && ctx.Engine() != nil {
+				ctx.Engine().Send(a.gameActorPID, PlayerDisconnect{WsConn: ws}, a.selfPID)
+			}
 		}
 	}
 }
@@ -149,6 +182,8 @@ func (a *BroadcasterActor) handleDisconnects(ctx bollywood.Context, disconnected
 	a.mu.Unlock()
 
 	if a.gameActorPID != nil && ctx.Engine() != nil {
-		for _, ws := range disconnectedClients { ctx.Engine().Send(a.gameActorPID, PlayerDisconnect{WsConn: ws}, a.selfPID) }
+		for _, ws := range disconnectedClients {
+			ctx.Engine().Send(a.gameActorPID, PlayerDisconnect{WsConn: ws}, a.selfPID)
+		}
 	}
 }
