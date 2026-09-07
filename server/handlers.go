@@ -1,4 +1,3 @@
-
 package server
 
 import (
@@ -9,8 +8,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/game"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 
 	"golang.org/x/net/websocket"
 )
@@ -18,6 +17,12 @@ import (
 // HandleSubscribe sets up the WebSocket connection and spawns a ConnectionHandlerActor.
 func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 	return func(ws *websocket.Conn) {
+		if s.activeConnections.Add(1) > 512 {
+			s.activeConnections.Add(-1)
+			_ = ws.Close()
+			return
+		}
+		defer s.activeConnections.Add(-1)
 		connectionAddr := ws.RemoteAddr().String()
 		fmt.Printf("HandleSubscribe: New connection attempt from %s\n", connectionAddr)
 

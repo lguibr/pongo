@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
 )

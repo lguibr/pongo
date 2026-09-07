@@ -6,7 +6,7 @@ import (
 	"fmt"
 	// "time" // Removed unused import
 
-	"github.com/lguibr/bollywood"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 )
 
@@ -16,8 +16,8 @@ import (
 // It updates its internal state based on commands and sends state updates
 // back to the GameActor when relevant state changes.
 type BallActor struct {
-	state        *Ball        // Use a pointer to the Ball state
-	cfg          utils.Config // Store config
+	state        *Ball          // Use a pointer to the Ball state
+	cfg          utils.Config   // Store config
 	gameActorPID *bollywood.PID // PID of the GameActor (parent)
 	// phasingTimer *time.Timer    // REMOVED: Timer is now managed by GameActor
 	selfPID *bollywood.PID // Store self PID

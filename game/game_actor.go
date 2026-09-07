@@ -8,7 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/transport"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -24,26 +25,39 @@ const (
 
 // GameActor manages the overall game state and coordinates child actors for a single room.
 type GameActor struct {
-	cfg             utils.Config
-	canvas          *Canvas
-	players         [utils.MaxPlayers]*playerInfo // State managed serially by actor
-	paddles         [utils.MaxPlayers]*Paddle     // Local cache, authoritative state for simulation
-	paddleActors    [utils.MaxPlayers]*bollywood.PID
-	balls           map[int]*Ball // Local cache, authoritative state for simulation
-	ballActors      map[int]*bollywood.PID
-	engine          *bollywood.Engine
-	physicsTicker   *time.Ticker // Ticker for physics/game logic
-	stopPhysicsCh   chan struct{}
-	broadcastTicker *time.Ticker // Ticker for broadcasting state
-	stopBroadcastCh chan struct{}
-	tickerMu        sync.Mutex // Mutex to protect ticker fields and channels
-	selfPID         *bollywood.PID
-	roomManagerPID  *bollywood.PID
-	broadcasterPID  *bollywood.PID // PID of the dedicated broadcaster actor
-	connToIndex     map[*websocket.Conn]int
-	playerConns     [utils.MaxPlayers]*websocket.Conn
-	gameOver        atomic.Bool // Flag to prevent multiple game over triggers
-	phase           Phase       // Current phase of the room
+	finalDeliveryHandedOff bool
+	reconnectGeneration    uint64
+	expiryTimers           map[int]*time.Timer
+	countdownGeneration    uint64
+	cleanupGeneration      uint64
+	phasingGeneration      map[int]uint64
+	gridDirty              bool
+	gridInitialized        bool
+	forceStartPending      bool
+	nextBallID             int
+	physicsPending         bollywood.PendingTick
+	broadcastPending       bollywood.PendingTick
+	lastHeartbeat          time.Time
+	cfg                    utils.Config
+	canvas                 *Canvas
+	players                [utils.MaxPlayers]*playerInfo // State managed serially by actor
+	paddles                [utils.MaxPlayers]*Paddle     // Local cache, authoritative state for simulation
+	paddleActors           [utils.MaxPlayers]*bollywood.PID
+	balls                  map[int]*Ball // Local cache, authoritative state for simulation
+	ballActors             map[int]*bollywood.PID
+	engine                 *bollywood.Engine
+	physicsTicker          *time.Ticker // Ticker for physics/game logic
+	stopPhysicsCh          chan struct{}
+	broadcastTicker        *time.Ticker // Ticker for broadcasting state
+	stopBroadcastCh        chan struct{}
+	tickerMu               sync.Mutex // Mutex to protect ticker fields and channels
+	selfPID                *bollywood.PID
+	roomManagerPID         *bollywood.PID
+	broadcasterPID         *bollywood.PID // PID of the dedicated broadcaster actor
+	connToIndex            map[*websocket.Conn]int
+	playerConns            [utils.MaxPlayers]*websocket.Conn
+	gameOver               atomic.Bool // Flag to prevent multiple game over triggers
+	phase                  Phase       // Current phase of the room
 
 	// Buffer for pending updates to broadcast
 	pendingUpdates []interface{} // Holds pointers to newly allocated update messages
@@ -77,14 +91,16 @@ type GameActor struct {
 
 // playerInfo holds state associated with a connected player/websocket.
 type playerInfo struct {
-	Index       int
-	ID          string
-	SessionID   string       // Unique session ID for reconnection
-	Score       atomic.Int32 // Use atomic Int32 for score
-	Color       [3]int
-	Ws          *websocket.Conn // Can be nil in tests
-	IsConnected bool
-	IsReady     bool // Lobby readiness
+	DisconnectGeneration uint64
+	Index                int
+	ID                   string
+	SessionID            string       // Unique session ID for reconnection
+	Score                atomic.Int32 // Use atomic Int32 for score
+	Color                [3]int
+	Client               *transport.Client
+	Ws                   *websocket.Conn // Can be nil in tests
+	IsConnected          bool
+	IsReady              bool // Lobby readiness
 }
 
 // NewGameActorProducer creates a producer for the GameActor.
@@ -165,7 +181,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 	// Ignore messages if game is already over or stopping, except for system messages
 	if a.gameOver.Load() || a.isStopping.Load() {
 		switch ctx.Message().(type) {
-		case bollywood.Stopping, bollywood.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
+		case AssignPlayerToRoom, bollywood.Stopping, bollywood.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
 			// Allow these messages during game over/stopping for cleanup
 		default:
 			// If it's an Ask request during shutdown, reply with an error
@@ -182,6 +198,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.handleStart(ctx)
 
 	case GameTick: // Message from physicsTicker
+		a.physicsPending.Clear()
 		start := time.Now()
 
 		// 1. Move entities based on current velocity/direction (updates cache)
@@ -205,26 +222,13 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.tickCount++
 		a.metricsMu.Unlock()
 
-	case PaddleStateUpdate: // Update cache with state from PaddleActor
-		if paddle := a.paddles[m.Index]; paddle != nil {
-			paddle.Direction = m.Direction
-		}
-
-	case BallStateUpdate: // Update cache with state from BallActor
-		if ball := a.balls[m.ID]; ball != nil {
-			ball.Vx = m.Vx // Update velocity from BallActor
-			ball.Vy = m.Vy
-			ball.Radius = m.Radius
-			ball.Mass = m.Mass
-			ball.Phasing = m.Phasing // Crucially update phasing state from BallActor
-		}
-
 	case BroadcastTick: // Message from broadcastTicker
+		a.broadcastPending.Clear()
 		a.handleBroadcastTick(ctx)
 
 	// --- Delegate to handlers defined in game_actor_handlers.go ---
 	case AssignPlayerToRoom:
-		a.handlePlayerConnect(ctx, m.WsConn, m.SessionID)
+		a.handleAdmission(ctx, m)
 	case PlayerDisconnect:
 		a.handlePlayerDisconnect(ctx, m.WsConn)
 	case ForwardedPaddleDirection:
@@ -234,21 +238,31 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 	case DestroyExpiredBall:
 		a.handleDestroyExpiredBall(ctx, m.BallID)
 	case stopPhasingTimerMsg: // Handle internal timer expiry
-		a.handleStopPhasingTimerMsg(ctx, m.BallID)
+		if m.Generation == a.phasingGeneration[m.BallID] {
+			a.handleStopPhasingTimerMsg(ctx, m.BallID)
+		}
 	case stopReconnectTimerMsg:
-		a.handleStopReconnectTimerMsg(ctx, m.PlayerIndex)
+		if m.PlayerIndex >= 0 && m.PlayerIndex < utils.MaxPlayers && a.players[m.PlayerIndex] != nil && a.players[m.PlayerIndex].DisconnectGeneration == m.Generation {
+			a.handleStopReconnectTimerMsg(ctx, m.PlayerIndex)
+		}
 	case ForwardedPlayerReady:
 		a.handlePlayerReady(ctx, m.WsConn, m.IsReady)
 	case startCountdownMsg:
 		a.startCountdown(ctx)
 	case startGameMsg:
-		a.startGame(ctx)
+		if m.Generation == a.countdownGeneration {
+			a.startGame(ctx)
+		}
 	case ForceStartGame:
 		a.handleForceStartGame(ctx)
 	case CountdownTick:
-		a.handleCountdownTick(ctx, m.SecondsRemaining)
+		if m.Generation == a.countdownGeneration {
+			a.handleCountdownTick(ctx, m.SecondsRemaining)
+		}
 	case RoomCleanupTimeout:
-		a.handleRoomCleanupTimeout(ctx)
+		if m.Generation == a.cleanupGeneration {
+			a.handleRoomCleanupTimeout(ctx)
+		}
 	// --- End Delegation ---
 
 	// --- Internal Test Messages ---
@@ -289,12 +303,9 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		ctx.Reply(resp)
 	case internalTriggerStartPhasingPowerUp:
 		ball, ballExists := a.balls[m.BallID]
-		ballActorPID, actorExists := a.ballActors[m.BallID]
-		if ballExists && actorExists && ball != nil && ballActorPID != nil {
-			// Apply phasing regardless of current state to reset timer if already phasing
+		if ballExists && ball != nil {
 			ball.Phasing = true
-			a.startPhasingTimer(ball.Id) // This will stop existing timer and start new one
-			a.engine.Send(ballActorPID, SetPhasingCommand{}, a.selfPID)
+			a.startPhasingTimer(ball.Id)
 		}
 	case internalConfirmPhasingRequest:
 		ball, exists := a.balls[m.BallID]
@@ -362,18 +373,7 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 	player.Score.Store(playerDataPtr.Score)
 	a.players[playerIndex] = player
 
-	// Create paddle data and actor
-	paddleDataPtr := NewPaddle(a.cfg, playerIndex)
-	a.paddles[playerIndex] = paddleDataPtr
-	paddleProducer := NewPaddleActorProducer(*paddleDataPtr, a.selfPID, a.cfg)
-	paddlePID := a.engine.Spawn(bollywood.NewProps(paddleProducer))
-	if paddlePID == nil {
-		fmt.Printf("ERROR: GameActor %s failed to spawn PaddleActor for test player %d\n", a.selfPID, playerIndex)
-		a.players[playerIndex] = nil
-		a.paddles[playerIndex] = nil
-		return
-	}
-	a.paddleActors[playerIndex] = paddlePID
+	a.paddles[playerIndex] = NewPaddle(a.cfg, playerIndex)
 
 	// Do not spawn ball here automatically for this test message, let tests control ball spawning
 }

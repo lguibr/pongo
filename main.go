@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url" // Import url package
+	"os/signal"
 	"strings" // Import strings package
+	"syscall"
 	"time"
 
-	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/game"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/server"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
@@ -165,12 +169,23 @@ func main() {
 	// 5. Determine Port and Start Server
 	listenAddr := ":" + servicePort
 	fmt.Printf("Server starting on address %s\n", listenAddr)
-	err := http.ListenAndServe(listenAddr, nil)
-	if err != nil {
-		fmt.Printf("FATAL: http.ListenAndServe on %s failed: %v\n", listenAddr, err)
-		// Handle shutdown gracefully
-		fmt.Println("Shutting down engine...")
-		engine.Shutdown(5 * time.Second) // Allow actors time to stop
-		fmt.Println("Engine shutdown complete.")
+	httpServer := &http.Server{Addr: listenAddr, ReadHeaderTimeout: 5 * time.Second}
+	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- httpServer.ListenAndServe() }()
+	select {
+	case err := <-serveErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			fmt.Printf("HTTP server: %v\n", err)
+		}
+	case <-shutdown.Done():
+	}
+	// HTTP shutdown does not own hijacked WebSockets; stop room/connection actors first.
+	engine.Shutdown(5 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		fmt.Printf("HTTP shutdown: %v\n", err)
 	}
 }

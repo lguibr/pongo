@@ -44,6 +44,7 @@ func brickCollisionTestWorker(
 		return
 	}
 	defer func() { _ = ws.Close() }()
+	quickPlayHandshake(t, ws)
 
 	localState := game.NewLocalGameState()
 	var assignedIndex int // Removed ineffectual assignment = -1
@@ -77,7 +78,7 @@ func brickCollisionTestWorker(
 		case <-cmdTicker.C:
 			if assignedIndex != -1 { // Only send if assigned
 				direction := directions[randGen.Intn(len(directions))]
-				cmd := game.Direction{Direction: direction}
+				cmd := map[string]string{"messageType": "direction", "direction": direction}
 				if sendErr := websocket.JSON.Send(ws, cmd); sendErr != nil {
 					if errors.Is(sendErr, io.EOF) || strings.Contains(sendErr.Error(), "closed") {
 						return

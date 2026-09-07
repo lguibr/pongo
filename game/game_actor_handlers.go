@@ -1,12 +1,14 @@
 package game
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/lguibr/pongo/internal/transport"
 	"math/rand"
 	"runtime/debug"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -15,11 +17,12 @@ import (
 
 // handlePlayerConnect processes a player connection, sends initial state,
 // and generates PlayerJoined update.
-func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Conn, sessionID string) {
+func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Conn, sessionID string, client *transport.Client, replyTo *bollywood.PID, response interface{}) (admitted bool) {
 	// Cancel cleanup timer if active, as a player is joining
 	if a.roomCleanupTimer != nil {
 		fmt.Printf("GameActor %s: Player joining, cancelling room cleanup timer.\n", a.selfPID)
 		a.roomCleanupTimer.Stop()
+		a.cleanupGeneration++
 		a.roomCleanupTimer = nil
 	}
 
@@ -28,7 +31,10 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 			fmt.Printf("ERROR: Recovered from panic in handlePlayerConnect: %v\nStack: %s\n", r, string(debug.Stack()))
 			// Close the connection that caused the panic to avoid inconsistent state
 			if ws != nil {
-				_ = ws.Close()
+				client.Close()
+				if admitted {
+					a.handlePlayerDisconnect(ctx, ws)
+				}
 			}
 		}
 	}()
@@ -51,7 +57,7 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 		for i, p := range a.players {
 			if p != nil {
 				fmt.Printf("GameActor %s: Checking player %d for reconnect. Stored SessionID: %s, Incoming: %s, Connected: %v\n", a.selfPID, i, p.SessionID, sessionID, p.IsConnected)
-				if !p.IsConnected && p.SessionID == sessionID {
+				if sessionID != "" && !p.IsConnected && p.SessionID == sessionID {
 					playerIndex = i
 					fmt.Printf("GameActor %s: MATCH FOUND! Reconnecting player %d (Session: %s)\n", a.selfPID, playerIndex, sessionID)
 					break
@@ -72,7 +78,7 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 
 	if playerIndex == -1 {
 		fmt.Printf("WARN: GameActor %s: Room is full (%d players). Rejecting connection %s.\n", a.selfPID, utils.MaxPlayers, remoteAddr)
-		_ = ws.Close()
+		client.Close()
 		return
 	}
 
@@ -102,17 +108,19 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 		initialPlayerScore = totalScoreOfExistingPlayers / int32(existingPlayerCountForAvgScore)
 	}
 
-	if isFirstPlayerInRoom {
+	if !a.gridInitialized {
 		fmt.Printf("GameActor %s: First player joined. Initializing grid and starting tickers.\n", a.selfPID)
 		if a.canvas == nil {
 			a.canvas = NewCanvas(a.cfg.CanvasSize, a.cfg.GridSize)
 		}
 		// Use config when filling grid
 		a.canvas.Grid.FillSymmetrical(a.cfg)
+		a.gridInitialized = true
+		a.gridDirty = true
 		a.startBroadcastTicker(ctx) // Only start broadcast ticker in lobby
 	} else if a.canvas == nil || a.canvas.Grid == nil {
 		fmt.Printf("ERROR: GameActor %s: Joining player %d but grid/canvas not initialized!\n", a.selfPID, playerIndex)
-		_ = ws.Close()
+		client.Close()
 		return
 	}
 
@@ -133,12 +141,6 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 			paddleDataPtr := NewPaddle(a.cfg, playerIndex)
 			a.paddles[playerIndex] = paddleDataPtr
 
-			// Check if actor exists, if not spawn it
-			if a.paddleActors[playerIndex] == nil {
-				paddleProducer := NewPaddleActorProducer(*paddleDataPtr, a.selfPID, a.cfg)
-				paddlePID := a.engine.Spawn(bollywood.NewProps(paddleProducer))
-				a.paddleActors[playerIndex] = paddlePID
-			}
 		}
 	} else {
 		// New Player
@@ -161,34 +163,34 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 		paddleDataPtr := NewPaddle(a.cfg, playerIndex) // Returns *Paddle
 		a.paddles[playerIndex] = paddleDataPtr         // Store pointer in cache
 
-		// Spawn Paddle Actor
-		paddleProducer := NewPaddleActorProducer(*paddleDataPtr, a.selfPID, a.cfg) // Pass copy to producer
-		paddlePID := a.engine.Spawn(bollywood.NewProps(paddleProducer))
-		if paddlePID == nil {
-			fmt.Printf("ERROR: GameActor %s failed to spawn PaddleActor for player %d\n", a.selfPID, playerIndex)
-			delete(a.connToIndex, ws)
-			a.players[playerIndex] = nil
-			a.paddles[playerIndex] = nil
-			a.playerConns[playerIndex] = nil
-			if a.broadcasterPID != nil {
-				a.engine.Send(a.broadcasterPID, RemoveClient{Conn: ws}, a.selfPID)
-			}
-			_ = ws.Close()
-			return
-		}
-		a.paddleActors[playerIndex] = paddlePID
 	}
 
+	player.Client = client
 	a.connToIndex[ws] = playerIndex
 	a.playerConns[playerIndex] = ws
+	admitted = true
+	if !a.engine.Send(replyTo, AssignRoomResponse{RoomPID: a.selfPID}, a.selfPID) {
+		a.handlePlayerDisconnect(ctx, ws)
+		return
+	}
+	a.cancelCountdown(ctx)
+	if response != nil {
+		if client.Send(response) != nil {
+			a.handlePlayerDisconnect(ctx, ws)
+			return
+		}
+	}
 
-	// --- Send Initial State Directly to Client using JSON.Send ---
+	if a.forceStartPending {
+		a.handleForceStartGame(ctx)
+	}
+	// Queue initial state after the handler has received its room identity.
 	assignmentMsg := PlayerAssignmentMessage{
 		MessageType: "playerAssignment",
 		PlayerIndex: playerIndex,
 		Phase:       a.phaseToString(),
 	}
-	errAssign := websocket.JSON.Send(ws, assignmentMsg)
+	errAssign := client.Send(assignmentMsg)
 	if errAssign != nil {
 		fmt.Printf("ERROR: GameActor %s: Failed to send PlayerAssignmentMessage to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, errAssign)
 		a.handlePlayerDisconnect(ctx, ws) // Trigger disconnect handling
@@ -245,7 +247,7 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 		Paddles:     existingPaddlesWithCoords, // Now includes R3F coords
 		Balls:       existingBallsWithCoords,   // Now includes R3F coords
 	}
-	errEntities := websocket.JSON.Send(ws, initialEntitiesMsg)
+	errEntities := client.Send(initialEntitiesMsg)
 	if errEntities != nil {
 		fmt.Printf("ERROR: GameActor %s: Failed to send InitialPlayersAndBallsState to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, errEntities)
 		a.handlePlayerDisconnect(ctx, ws) // Trigger disconnect handling
@@ -284,7 +286,16 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 
 	// Spawn initial Ball Actor (will generate BallSpawned update with R3F coords)
 	// Initial balls for players should not start phasing.
-	a.spawnBall(ctx, playerIndex, 0, 0, 0, true, false)
+	hasPermanent := false
+	for _, ball := range a.balls {
+		if ball.IsPermanent && ball.OwnerIndex == playerIndex {
+			hasPermanent = true
+			break
+		}
+	}
+	if !hasPermanent {
+		a.spawnBall(ctx, playerIndex, 0, 0, 0, true, false)
+	}
 
 	// --- Broadcast Lobby State ---
 	lobbyState := &LobbyStateUpdate{
@@ -303,58 +314,21 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 
 	// --- Register with Broadcaster ---
 	if a.broadcasterPID != nil {
-		a.engine.Send(a.broadcasterPID, AddClient{Conn: ws}, a.selfPID)
+		a.engine.Send(a.broadcasterPID, AddClient{Conn: ws, Client: client}, a.selfPID)
 	} else {
 		fmt.Printf("WARN: GameActor %s: BroadcasterPID is nil. Client %s will not receive updates.\n", a.selfPID, remoteAddr)
 	}
 
-	// --- Send Initial Grid State Immediately ---
-	// This ensures the client has the bricks to render the game (R3FCanvas waits for brickStates > 0)
-	// without waiting for the next broadcast tick (which might be delayed or interval-based).
-	if a.canvas != nil && a.canvas.Grid != nil {
-		brickUpdates := []BrickStateUpdate{}
-		rows := len(a.canvas.Grid)
-		if rows > 0 {
-			cols := len(a.canvas.Grid[0])
-			for r := 0; r < rows; r++ {
-				for c := 0; c < cols; c++ {
-					cell := a.canvas.Grid[r][c]
-					if cell.Data != nil {
-						// Calculate R3F coords for cell center
-						r3fX, r3fY := mapToR3FCoords(int(float64(c)*float64(a.cfg.GridSize)+float64(a.cfg.GridSize)/2), int(float64(r)*float64(a.cfg.GridSize)+float64(a.cfg.GridSize)/2), a.cfg.CanvasSize)
-						brickUpdates = append(brickUpdates, BrickStateUpdate{
-							X:    r3fX,
-							Y:    r3fY,
-							Life: cell.Data.Life,
-							Type: cell.Data.Type,
-						})
-					}
-				}
-			}
-		}
-
-		fullGridUpdate := FullGridUpdate{
-			MessageType: "fullGridUpdate",
-			CellSize:    a.cfg.GridSize,
-			Bricks:      brickUpdates,
-		}
-
-		// Wrap in batch as client expects updates in batch or specific messages
-		// Client handles isFullGridUpdate inside isGameUpdatesBatch
-		batchMsg := GameUpdatesBatch{
-			MessageType: "gameUpdates",
-			Updates:     []interface{}{fullGridUpdate},
-		}
-
-		errGrid := websocket.JSON.Send(ws, batchMsg)
-		if errGrid != nil {
-			fmt.Printf("WARN: GameActor %s: Failed to send initial FullGridUpdate to player %d: %v\n", a.selfPID, playerIndex, errGrid)
-		} else {
-			fmt.Printf("GameActor %s: Sent initial FullGridUpdate to player %d.\n", a.selfPID, playerIndex)
-		}
+	if err := client.Send(GameUpdatesBatch{MessageType: "gameUpdates", Updates: []interface{}{a.fullGridUpdate()}}); err != nil {
+		a.handlePlayerDisconnect(ctx, ws)
+		return
+	}
+	if a.forceStartPending {
+		a.handleForceStartGame(ctx)
 	}
 
-	fmt.Printf("GameActor %s: Player %d (%s) setup complete with score %d.\n", a.selfPID, playerIndex, remoteAddr, initialPlayerScore)
+	return
+
 }
 
 // handlePlayerDisconnect processes disconnect and generates PlayerLeft update.
@@ -388,7 +362,12 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	}
 
 	fmt.Printf("GameActor %s: Handling disconnect for player %d (%s)\n", a.selfPID, playerIndex, connAddr)
-	pInfo.IsConnected = false // Mark as disconnected first
+	pInfo.IsConnected = false
+	pInfo.IsReady = false
+	if paddle := a.paddles[playerIndex]; paddle != nil {
+		paddle.Direction = ""
+	}
+	a.cancelCountdown(ctx)
 
 	// Generate PlayerLeft update *before* stopping actors/cleaning state
 	playerLeftUpdate := &PlayerLeft{
@@ -448,9 +427,12 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	if a.reconnectTimers[playerIndex] != nil {
 		a.reconnectTimers[playerIndex].Stop()
 	}
+	a.reconnectGeneration++
+	a.players[playerIndex].DisconnectGeneration = a.reconnectGeneration
+	generation := a.players[playerIndex].DisconnectGeneration
 	a.reconnectTimers[playerIndex] = time.AfterFunc(30*time.Second, func() {
 		if a.engine != nil && a.selfPID != nil {
-			a.engine.Send(a.selfPID, stopReconnectTimerMsg{PlayerIndex: playerIndex}, nil)
+			a.engine.Send(a.selfPID, stopReconnectTimerMsg{PlayerIndex: playerIndex, Generation: generation}, nil)
 		}
 	})
 
@@ -507,13 +489,13 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx bollywood.Context, playerInd
 	a.paddleActors[playerIndex] = nil
 	a.paddles[playerIndex] = nil // Clear paddle cache
 
-	ownedBallIDs := []int{}
-	ownedPermanentBallIDs := []int{}
-	for ballID, ball := range a.balls {
-		if ball != nil && ball.OwnerIndex == playerIndex {
-			ownedBallIDs = append(ownedBallIDs, ballID)
+	for id, ball := range a.balls {
+		if ball.OwnerIndex == playerIndex {
 			if ball.IsPermanent {
-				ownedPermanentBallIDs = append(ownedPermanentBallIDs, ballID)
+				ball.OwnerIndex = -1
+				a.addUpdate(&BallOwnershipChange{MessageType: "ballOwnerChanged", ID: id, NewOwnerIndex: -1})
+			} else {
+				a.handleDestroyExpiredBall(ctx, id)
 			}
 		}
 	}
@@ -553,9 +535,11 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx bollywood.Context, playerInd
 		if a.roomCleanupTimer != nil {
 			a.roomCleanupTimer.Stop()
 		}
+		a.cleanupGeneration++
+		generation := a.cleanupGeneration
 		a.roomCleanupTimer = time.AfterFunc(30*time.Second, func() {
 			if a.engine != nil && a.selfPID != nil {
-				a.engine.Send(a.selfPID, RoomCleanupTimeout{}, nil)
+				a.engine.Send(a.selfPID, RoomCleanupTimeout{Generation: generation}, nil)
 			}
 		})
 	}
@@ -610,14 +594,17 @@ func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websock
 		return
 	}
 	playerIndex, playerFound := a.connToIndex[wsConn]
-	var pid *bollywood.PID
-	isValidPlayer := playerFound && playerIndex >= 0 && playerIndex < utils.MaxPlayers && a.players[playerIndex] != nil && a.players[playerIndex].IsConnected && a.players[playerIndex].Ws == wsConn
-	if isValidPlayer {
-		pid = a.paddleActors[playerIndex]
+	if !playerFound || playerIndex < 0 || playerIndex >= utils.MaxPlayers || a.players[playerIndex] == nil || !a.players[playerIndex].IsConnected {
+		return
 	}
-	if pid != nil {
-		a.engine.Send(pid, PaddleDirectionMessage{Direction: directionData}, ctx.Self())
+	var direction Direction
+	if json.Unmarshal(directionData, &direction) != nil {
+		return
 	}
+	if paddle := a.paddles[playerIndex]; paddle != nil {
+		paddle.Direction = utils.DirectionFromString(direction.Direction)
+	}
+
 }
 
 // --- Ball Handlers ---
@@ -629,159 +616,63 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 		fmt.Printf("WARN: GameActor %s received spawnBall request with invalid owner index %d.\n", a.selfPID, ownerIndex)
 		return
 	}
-	ownerValidAndConnected := false
-	ownerWs := (*websocket.Conn)(nil) // Keep track of original Ws if owner exists
-	if ownerIndex != -1 {
-		if a.players[ownerIndex] != nil && a.players[ownerIndex].IsConnected {
-			ownerValidAndConnected = true
-			ownerWs = a.players[ownerIndex].Ws // Store the Ws associated with this player index
-		}
-	}
-
-	cfg := a.cfg
-	selfPID := a.selfPID
-	engine := a.engine
-	canvasSize := cfg.CanvasSize
-	if ownerIndex != -1 && !ownerValidAndConnected {
+	if ownerIndex >= 0 && (a.players[ownerIndex] == nil || !a.players[ownerIndex].IsConnected) {
 		return
 	}
-	if selfPID == nil || engine == nil {
-		fmt.Printf("ERROR: GameActor %s cannot spawn ball, self PID or engine is nil.\n", a.selfPID)
-		return
+	a.nextBallID++
+	ballID := a.nextBallID
+	// Test fixtures may use fixed IDs; never replace an existing entity.
+	for a.balls[ballID] != nil {
+		a.nextBallID++
+		ballID = a.nextBallID
 	}
-
-	ballID := time.Now().Nanosecond() + ownerIndex + rand.Intn(1000)
-	ballDataPtr := NewBall(cfg, x, y, ownerIndex, ballID, isPermanent) // Returns *Ball
-
-	ballProducer := NewBallActorProducer(*ballDataPtr, selfPID, cfg) // Pass copy to producer
-	ballPID := engine.Spawn(bollywood.NewProps(ballProducer))
-	if ballPID == nil {
-		fmt.Printf("ERROR: GameActor %s failed to spawn BallActor for owner %d, ball %d\n", a.selfPID, ownerIndex, ballID)
-		return
+	ball := NewBall(a.cfg, x, y, ownerIndex, ballID, isPermanent)
+	a.balls[ballID] = ball
+	if setInitialPhasing {
+		ball.Phasing = true
+		a.startPhasingTimer(ballID)
 	}
-
-	// Re-verify owner connection before adding (important due to async nature)
-	// Check if owner is still connected AND if the Ws connection matches (if applicable)
-	stillValid := false
-	if ownerIndex == -1 {
-		stillValid = true // Ownerless balls are always valid to add
-	} else if a.players[ownerIndex] != nil && a.players[ownerIndex].IsConnected && a.players[ownerIndex].Ws == ownerWs {
-		stillValid = true
-	}
-
-	if stillValid {
-		a.balls[ballID] = ballDataPtr // Store pointer in cache
-		a.ballActors[ballID] = ballPID
-
-		// Calculate initial R3F coords
-		r3fX, r3fY := mapToR3FCoords(ballDataPtr.X, ballDataPtr.Y, canvasSize)
-
-		// Generate BallSpawned update with R3F coords
-		spawnUpdate := &BallSpawned{
-			MessageType: "ballSpawned",
-			Ball:        *ballDataPtr, // Dereference pointer to copy
-			R3fX:        r3fX,
-			R3fY:        r3fY,
-		}
-		a.addUpdate(spawnUpdate)
-
-		// If initial phasing is requested (e.g., by a power-up), update cache, send command, and start GameActor timer
-		if setInitialPhasing {
-			ballDataPtr.Phasing = true  // Update cache immediately
-			a.startPhasingTimer(ballID) // Start GameActor's timer
-			// Send SetPhasingCommand to BallActor so its internal state matches
-			engine.Send(ballPID, SetPhasingCommand{}, selfPID)
-		}
-
-	} else {
-		fmt.Printf("WARN: GameActor %s: Owner %d disconnected or changed before BallActor %s could be fully registered. Stopping actor.\n", a.selfPID, ownerIndex, ballPID)
-		engine.Stop(ballPID)
-		return
-	}
-
+	rx, ry := mapToR3FCoords(ball.X, ball.Y, a.cfg.CanvasSize)
+	a.addUpdate(&BallSpawned{MessageType: "ballSpawned", Ball: *ball, R3fX: rx, R3fY: ry})
 	if !isPermanent && expireIn > 0 {
-		randomOffset := time.Duration(rand.Intn(4000)-2000) * time.Millisecond
-		actualExpireIn := expireIn + randomOffset
-		if actualExpireIn <= 0 {
-			actualExpireIn = 500 * time.Millisecond
+		offset := time.Duration(rand.Intn(4000)-2000) * time.Millisecond
+		duration := expireIn + offset
+		if duration <= 0 {
+			duration = 500 * time.Millisecond
 		}
-		time.AfterFunc(actualExpireIn, func() {
-			currentSelfPID := selfPID
-			currentEngine := engine
-			if currentEngine != nil && currentSelfPID != nil {
-				currentEngine.Send(currentSelfPID, DestroyExpiredBall{BallID: ballID}, nil)
-			}
-		})
+		if a.expiryTimers == nil {
+			a.expiryTimers = make(map[int]*time.Timer)
+		}
+		a.expiryTimers[ballID] = time.AfterFunc(duration, func() { a.engine.Send(a.selfPID, DestroyExpiredBall{BallID: ballID}, nil) })
 	}
 }
 
-// handleDestroyExpiredBall stops actor and generates BallRemoved update.
 func (a *GameActor) handleDestroyExpiredBall(ctx bollywood.Context, ballID int) {
-	pidToStop, actorExists := a.ballActors[ballID]
-	ballState, stateExists := a.balls[ballID]
-
-	if stateExists && ballState != nil && ballState.IsPermanent {
-		return // Don't destroy permanent balls via expiry timer
-	}
-
-	currentEngine := a.engine
-	if currentEngine == nil {
-		fmt.Printf("ERROR: GameActor %s: Engine is nil in handleDestroyExpiredBall.\n", a.selfPID)
-		if stateExists {
-			delete(a.balls, ballID)
-		}
-		if actorExists {
-			delete(a.ballActors, ballID)
-		}
+	ball := a.balls[ballID]
+	if ball == nil || ball.IsPermanent {
 		return
 	}
-
-	// Check if both actor and state exist before proceeding
-	if actorExists && stateExists && pidToStop != nil {
-		delete(a.balls, ballID)
-		delete(a.ballActors, ballID)
-		a.stopPhasingTimer(ballID) // Stop phasing timer if it exists
-		currentEngine.Stop(pidToStop)
-		// Generate BallRemoved update
-		removedUpdate := &BallRemoved{
-			MessageType: "ballRemoved",
-			ID:          ballID,
-		}
-		a.addUpdate(removedUpdate)
-	} else {
-		// Clean up maps even if one part is missing (e.g., state removed but actor stop failed)
-		if stateExists {
-			delete(a.balls, ballID)
-		}
-		if actorExists {
-			delete(a.ballActors, ballID)
-			if pidToStop != nil {
-				// Attempt to stop actor even if state was missing
-				currentEngine.Stop(pidToStop)
-			}
-		}
-		a.stopPhasingTimer(ballID) // Attempt to stop timer regardless
+	delete(a.balls, ballID)
+	if timer := a.expiryTimers[ballID]; timer != nil {
+		timer.Stop()
+		delete(a.expiryTimers, ballID)
 	}
+	delete(a.phasingGeneration, ballID)
+	if pid := a.ballActors[ballID]; pid != nil {
+		a.engine.Stop(pid)
+		delete(a.ballActors, ballID)
+	}
+	a.stopPhasingTimer(ballID)
+	for _, key := range a.activeCollisions.GetActiveCollisionsForKey1(ballID) {
+		a.activeCollisions.EndCollision(key)
+	}
+	a.addUpdate(&BallRemoved{MessageType: "ballRemoved", ID: ballID})
 }
 
-// handleStopPhasingTimerMsg is called internally when a phasing timer expires.
-// It now updates the GameActor's cache and sends StopPhasingCommand to BallActor.
 func (a *GameActor) handleStopPhasingTimerMsg(ctx bollywood.Context, ballID int) {
-	a.phasingTimersMu.Lock()
-	delete(a.phasingTimers, ballID) // Remove timer reference
-	a.phasingTimersMu.Unlock()
-
-	ball, ballExists := a.balls[ballID]
-	ballActorPID, actorPIDExists := a.ballActors[ballID]
-
-	if ballExists && ball != nil {
-		if ball.Phasing { // Only update cache if cache thinks it's phasing
-			ball.Phasing = false // Update cache immediately
-			// Send StopPhasingCommand to BallActor to synchronize its state
-			if actorPIDExists && ballActorPID != nil && a.engine != nil && a.selfPID != nil {
-				a.engine.Send(ballActorPID, StopPhasingCommand{}, a.selfPID)
-			}
-		}
+	a.stopPhasingTimer(ballID)
+	if ball := a.balls[ballID]; ball != nil {
+		ball.Phasing = false
 	}
 }
 
@@ -831,19 +722,7 @@ func (a *GameActor) handlePlayerReady(ctx bollywood.Context, wsConn *websocket.C
 			a.startCountdown(ctx)
 		}
 	} else {
-		if a.phase == PhaseCountingDown {
-			// Cancel countdown
-			if a.countdownTimer != nil {
-				a.countdownTimer.Stop()
-				a.countdownTimer = nil
-			}
-			a.phase = PhaseLobby
-			a.addUpdate(&GameStartCancelled{
-				MessageType: "gameStartCancelled",
-				Reason:      "A player is not ready",
-			})
-			fmt.Printf("GameActor %s: Countdown cancelled.\n", a.selfPID)
-		}
+		a.cancelCountdown(ctx)
 	}
 }
 
@@ -853,6 +732,8 @@ func (a *GameActor) startCountdown(ctx bollywood.Context) {
 		return
 	}
 	a.phase = PhaseCountingDown
+	a.countdownGeneration++
+	a.engine.Send(a.roomManagerPID, RoomPhaseUpdate{RoomPID: a.selfPID, Phase: a.phase}, a.selfPID)
 	// Start the countdown sequence at 3
 	a.handleCountdownTick(ctx, 3)
 }
@@ -871,12 +752,13 @@ func (a *GameActor) handleCountdownTick(ctx bollywood.Context, secondsRemaining 
 
 	if secondsRemaining > 0 {
 		// Schedule next tick or start game
+		generation := a.countdownGeneration
 		a.countdownTimer = time.AfterFunc(1*time.Second, func() {
 			if a.engine != nil && a.selfPID != nil {
 				if secondsRemaining > 1 {
-					a.engine.Send(a.selfPID, CountdownTick{SecondsRemaining: secondsRemaining - 1}, nil)
+					a.engine.Send(a.selfPID, CountdownTick{SecondsRemaining: secondsRemaining - 1, Generation: generation}, nil)
 				} else {
-					a.engine.Send(a.selfPID, startGameMsg{}, nil)
+					a.engine.Send(a.selfPID, startGameMsg{Generation: generation}, nil)
 				}
 			}
 		})
@@ -911,6 +793,12 @@ func (a *GameActor) startGame(ctx bollywood.Context) {
 
 // handleForceStartGame transitions the room to the playing phase immediately.
 func (a *GameActor) handleForceStartGame(ctx bollywood.Context) {
+	if !a.gridInitialized {
+		a.forceStartPending = true
+		return
+	}
+	a.forceStartPending = false
+
 	fmt.Printf("GameActor %s: handleForceStartGame called. Current Phase: %v\n", a.selfPID, a.phase)
 	if a.phase == PhasePlaying {
 		return
@@ -949,4 +837,70 @@ func (a *GameActor) phaseToString() string {
 	default:
 		return "lobby"
 	}
+}
+
+// handleAdmission validates before sending success, and rolls back reservations
+// if the connection disappears before it becomes a room member.
+func (a *GameActor) handleAdmission(ctx bollywood.Context, m AssignPlayerToRoom) {
+	reject := func(reason string) {
+		a.engine.Send(a.roomManagerPID, AdmissionRejected{RoomPID: a.selfPID, SessionID: m.SessionID, Reserved: m.Reserved, ReplyTo: m.ReplyTo}, a.selfPID)
+		a.engine.Send(m.ReplyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: false, Reason: reason}, a.selfPID)
+	}
+	if a.isStopping.Load() || a.gameOver.Load() {
+		reject("Room is closing")
+		return
+	}
+	if m.Client == nil || m.WsConn == nil {
+		reject("Invalid connection")
+		return
+	}
+	select {
+	case <-m.Client.Done():
+		reject("Connection closed")
+		return
+	default:
+	}
+	available := false
+	for _, p := range a.players {
+		if p == nil {
+			available = true
+			continue
+		}
+		if m.SessionID != "" && p.SessionID == m.SessionID {
+			if p.IsConnected {
+				reject("Session already connected")
+				return
+			}
+			available = true
+		}
+	}
+	if !available {
+		reject("Room is full")
+		return
+	}
+	if m.AutoStart {
+		a.forceStartPending = true
+	}
+	admitted := a.handlePlayerConnect(ctx, m.WsConn, m.SessionID, m.Client, m.ReplyTo, m.Response)
+	if !admitted {
+		reject("Admission failed")
+		return
+	}
+	// A committed player slot owns its reservation, including reconnect grace.
+	a.engine.Send(a.roomManagerPID, AdmissionAccepted{RoomPID: a.selfPID, ReplyTo: m.ReplyTo}, a.selfPID)
+
+}
+
+func (a *GameActor) cancelCountdown(ctx bollywood.Context) {
+	if a.phase != PhaseCountingDown {
+		return
+	}
+	a.countdownGeneration++
+	if a.countdownTimer != nil {
+		a.countdownTimer.Stop()
+		a.countdownTimer = nil
+	}
+	a.phase = PhaseLobby
+	a.addUpdate(&GameStartCancelled{MessageType: "gameStartCancelled", Reason: "Lobby membership or readiness changed"})
+	a.engine.Send(a.roomManagerPID, RoomPhaseUpdate{RoomPID: a.selfPID, Phase: a.phase}, a.selfPID)
 }

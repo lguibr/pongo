@@ -1,16 +1,17 @@
-
 package server
 
 import (
 	"fmt"
+	"sync/atomic"
 
-	"github.com/lguibr/bollywood"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 )
 
 // Server holds references needed for handling requests.
 type Server struct {
-	engine         *bollywood.Engine
-	roomManagerPID *bollywood.PID // Changed from gameActorPID
+	activeConnections atomic.Int64
+	engine            *bollywood.Engine
+	roomManagerPID    *bollywood.PID // Changed from gameActorPID
 }
 
 // New creates a new Server instance.

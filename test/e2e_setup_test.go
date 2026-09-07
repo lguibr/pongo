@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/game"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/server"
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +39,7 @@ func SetupE2ETest(t *testing.T, cfg utils.Config) E2ESetupResult {
 	s := httptest.NewServer(websocket.Handler(testServer.HandleSubscribe()))
 
 	wsURL := "ws" + strings.TrimPrefix(s.URL, "http") // Use strings package here
-	origin := "http://localhost/" // Standard origin for local tests
+	origin := "http://localhost/"                     // Standard origin for local tests
 
 	return E2ESetupResult{
 		Engine:         engine,
@@ -54,10 +54,10 @@ func SetupE2ETest(t *testing.T, cfg utils.Config) E2ESetupResult {
 // TeardownE2ETest shuts down the engine and closes the server.
 func TeardownE2ETest(t *testing.T, setupResult E2ESetupResult, shutdownTimeout time.Duration) {
 	t.Helper()
-	if setupResult.Server != nil {
-		setupResult.Server.Close()
-	}
 	if setupResult.Engine != nil {
 		setupResult.Engine.Shutdown(shutdownTimeout)
+	}
+	if setupResult.Server != nil {
+		setupResult.Server.Close()
 	}
 }

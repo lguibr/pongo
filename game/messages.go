@@ -2,9 +2,10 @@
 package game
 
 import (
+	"github.com/lguibr/pongo/internal/transport"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -201,6 +202,8 @@ type FindRoomRequest struct {
 
 // CreateRoomActorRequest asks the RoomManager to create a new room.
 type CreateRoomActorRequest struct {
+	Conn      *websocket.Conn
+	Client    *transport.Client
 	ReplyTo   *bollywood.PID
 	IsPublic  bool
 	SessionID string
@@ -208,6 +211,8 @@ type CreateRoomActorRequest struct {
 
 // JoinRoomActorRequest asks the RoomManager to join a specific room.
 type JoinRoomActorRequest struct {
+	Conn      *websocket.Conn
+	Client    *transport.Client
 	ReplyTo   *bollywood.PID
 	Code      string
 	SessionID string
@@ -215,6 +220,8 @@ type JoinRoomActorRequest struct {
 
 // QuickPlayActorRequest asks the RoomManager to find a public room or create one.
 type QuickPlayActorRequest struct {
+	Conn      *websocket.Conn
+	Client    *transport.Client
 	ReplyTo   *bollywood.PID
 	SessionID string
 }
@@ -260,6 +267,11 @@ type InternalReadLoopMsg struct {
 
 // AssignPlayerToRoom tells the GameActor to add a player associated with a WebSocket connection.
 type AssignPlayerToRoom struct {
+	Client    *transport.Client
+	ReplyTo   *bollywood.PID
+	Response  interface{}
+	Reserved  bool
+	AutoStart bool
 	WsConn    *websocket.Conn
 	SessionID string
 }
@@ -315,11 +327,13 @@ type DestroyExpiredBall struct {
 
 // stopPhasingTimerMsg is an internal message sent by time.AfterFunc when a ball's phasing ends.
 type stopPhasingTimerMsg struct {
-	BallID int
+	Generation uint64
+	BallID     int
 }
 
 // stopReconnectTimerMsg is an internal message sent by time.AfterFunc when a player's reconnect grace period ends.
 type stopReconnectTimerMsg struct {
+	Generation  uint64
 	PlayerIndex int
 }
 
@@ -327,7 +341,8 @@ type stopReconnectTimerMsg struct {
 
 // AddClient tells the Broadcaster to start sending updates to a new connection.
 type AddClient struct {
-	Conn *websocket.Conn
+	Client *transport.Client
+	Conn   *websocket.Conn
 }
 
 // RemoveClient tells the Broadcaster to stop sending updates to a connection.
@@ -483,12 +498,26 @@ type ForwardedPlayerReady struct {
 type startCountdownMsg struct{}
 
 // startGameMsg signals the actor to transition to Playing phase.
-type startGameMsg struct{}
+type startGameMsg struct{ Generation uint64 }
 
 // ForceStartGame signals the actor to transition to Playing phase immediately (skipping lobby/countdown).
 type ForceStartGame struct{}
 
 // CountdownTick signals the actor to decrement the countdown.
 type CountdownTick struct {
+	Generation       uint64
 	SecondsRemaining int
+}
+
+// AdmissionRejected rolls back only a newly reserved slot.
+type AdmissionRejected struct {
+	ReplyTo   *bollywood.PID
+	RoomPID   *bollywood.PID
+	SessionID string
+	Reserved  bool
+}
+
+type AdmissionAccepted struct {
+	RoomPID *bollywood.PID
+	ReplyTo *bollywood.PID
 }

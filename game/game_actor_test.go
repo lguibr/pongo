@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lguibr/bollywood" // Import bollywood
+	bollywood "github.com/lguibr/pongo/internal/actor" // Import bollywood
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert" // Use testify for assertions
 	"golang.org/x/net/websocket"         // Import websocket
@@ -131,7 +131,7 @@ func (p *TestGameActorProducer) Produce() bollywood.Actor {
 	ga.stopPhysicsCh = make(chan struct{})   // Initialize channels
 	ga.stopBroadcastCh = make(chan struct{})
 	ga.pendingUpdates = make([]interface{}, 0, 128)
-	ga.activeCollisions = NewCollisionTracker() // Initialize collision tracker
+	ga.activeCollisions = NewCollisionTracker()  // Initialize collision tracker
 	ga.phasingTimers = make(map[int]*time.Timer) // Initialize phasing timers map
 	ga.gameOver.Store(false)
 	ga.isStopping.Store(false)
@@ -185,13 +185,13 @@ func TestGameActor_BrickCollisionAndGridUpdate(t *testing.T) {
 	// 3. Create the initial GameActor state instance
 	gameActorInstance := &GameActor{
 		// Set initial state fields directly
-		canvas:        NewCanvas(cfg.CanvasSize, gridSize),
-		players:       [utils.MaxPlayers]*playerInfo{},
-		paddles:       [utils.MaxPlayers]*Paddle{},
-		balls:         make(map[int]*Ball),
-		ballActors:    make(map[int]*bollywood.PID),
-		connToIndex:   make(map[*websocket.Conn]int),
-		playerConns:   [utils.MaxPlayers]*websocket.Conn{},
+		canvas:      NewCanvas(cfg.CanvasSize, gridSize),
+		players:     [utils.MaxPlayers]*playerInfo{},
+		paddles:     [utils.MaxPlayers]*Paddle{},
+		balls:       make(map[int]*Ball),
+		ballActors:  make(map[int]*bollywood.PID),
+		connToIndex: make(map[*websocket.Conn]int),
+		playerConns: [utils.MaxPlayers]*websocket.Conn{},
 		// Metrics, etc. will be initialized by producer
 	}
 	// --- Pre-Spawn State Setup (apply to gameActorInstance) ---
@@ -220,11 +220,11 @@ func TestGameActor_BrickCollisionAndGridUpdate(t *testing.T) {
 	assert.True(t, waitForGameActorReady(t, engine, gameActorPID, 500*time.Millisecond), "GameActor did not become ready")
 
 	// 6. Add ONLY the test ball using internal message (NO player/default balls)
-	ballID := 99999 // Use a fixed ID for the test ball
+	ballID := 99999                                          // Use a fixed ID for the test ball
 	testBall := NewBall(cfg, ballX, ballY, -1, ballID, true) // Owner -1 (ownerless)
 	testBall.Vx = ballVx
 	testBall.Vy = ballVy
-	testBall.Phasing = false // Start non-phasing
+	testBall.Phasing = false            // Start non-phasing
 	mockBallActor := &MockSimpleActor{} // Use the simple mock from phasing test
 	mockBallActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBallActor }))
 	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: testBall, PID: mockBallActorPID}, nil)

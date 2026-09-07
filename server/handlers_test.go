@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/game"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/websocket"
 )
@@ -126,7 +126,7 @@ func waitForManagerMessage(t *testing.T, mockManager *MockRoomManager, targetTyp
 
 // --- Tests ---
 
-func TestHandleSubscribe_SendsFindRequest(t *testing.T) {
+func TestHandleSubscribe_ForwardsQuickPlayRequest(t *testing.T) {
 	server, engine, mockManager, _ := setupServerWithMockManager(t)
 	defer engine.Shutdown(2 * time.Second)
 
@@ -139,12 +139,12 @@ func TestHandleSubscribe_SendsFindRequest(t *testing.T) {
 	assert.NotNil(t, ws, "WebSocket connection should not be nil")
 	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
 
-	// Use correct message type
-	msg, found := waitForManagerMessage(t, mockManager, game.FindRoomRequest{}, 1*time.Second)
-	assert.True(t, found, "MockRoomManager should have received FindRoomRequest")
+	assert.NoError(t, websocket.JSON.Send(ws, game.QuickPlayRequest{MessageType: "quickPlay", SessionID: "test-session"}))
+	msg, found := waitForManagerMessage(t, mockManager, game.QuickPlayActorRequest{}, 1*time.Second)
+	assert.True(t, found, "MockRoomManager should have received QuickPlayActorRequest")
 
 	if found {
-		req, ok := msg.(game.FindRoomRequest)
+		req, ok := msg.(game.QuickPlayActorRequest)
 		assert.True(t, ok)
 		assert.NotNil(t, req.ReplyTo, "Request should contain a non-nil ReplyTo PID")
 	}

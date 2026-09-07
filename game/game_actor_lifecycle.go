@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	bollywood "github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket" // Added import
 )
@@ -63,7 +63,7 @@ func (a *GameActor) startPhysicsTicker(ctx bollywood.Context) {
 					currentEngine := a.engine
 					currentSelfPID := a.selfPID
 					if currentEngine != nil && currentSelfPID != nil {
-						currentEngine.Send(currentSelfPID, GameTick{}, nil)
+						a.physicsPending.Send(currentEngine, currentSelfPID, GameTick{})
 					} else {
 						return
 					}
@@ -80,7 +80,14 @@ func (a *GameActor) startBroadcastTicker(ctx bollywood.Context) {
 	defer a.tickerMu.Unlock()
 
 	if a.broadcastTicker == nil {
-		broadcastInterval := time.Second / time.Duration(a.cfg.BroadcastRateHz)
+		rate := a.cfg.BroadcastRateHz
+		if rate <= 0 {
+			rate = 40
+		}
+		broadcastInterval := time.Second / time.Duration(rate)
+		if broadcastInterval < a.cfg.GameTickPeriod {
+			broadcastInterval = a.cfg.GameTickPeriod
+		}
 		if broadcastInterval <= 0 {
 			broadcastInterval = 16 * time.Millisecond
 		}
@@ -113,7 +120,7 @@ func (a *GameActor) startBroadcastTicker(ctx bollywood.Context) {
 					currentEngine := a.engine
 					currentSelfPID := a.selfPID
 					if currentEngine != nil && currentSelfPID != nil {
-						currentEngine.Send(currentSelfPID, BroadcastTick{}, nil)
+						a.broadcastPending.Send(currentEngine, currentSelfPID, BroadcastTick{})
 					} else {
 						return
 					}
@@ -155,7 +162,20 @@ func (a *GameActor) performCleanup() {
 		fmt.Printf("GameActor %s: Performing cleanup...\n", a.selfPID)
 		a.stopTickers()
 		a.cleanupChildActorsAndConnections()
-		a.cleanupPhasingTimers() // Clean up phasing timers
+		a.cleanupPhasingTimers()
+		if a.countdownTimer != nil {
+			a.countdownTimer.Stop()
+		}
+		if a.roomCleanupTimer != nil {
+			a.roomCleanupTimer.Stop()
+		}
+		for _, timer := range a.expiryTimers {
+			timer.Stop()
+		}
+		for _, timer := range a.reconnectTimers {
+			timer.Stop()
+		}
+
 		a.logPerformanceMetrics()
 		fmt.Printf("GameActor %s: Cleanup complete.\n", a.selfPID)
 	})
@@ -178,6 +198,9 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 		}
 		a.paddles[i] = nil
 		if pInfo := a.players[i]; pInfo != nil {
+			if !a.finalDeliveryHandedOff && pInfo.Client != nil {
+				pInfo.Client.Close()
+			}
 			if pInfo.Ws != nil {
 				delete(a.connToIndex, pInfo.Ws)
 			}
@@ -196,6 +219,7 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 		delete(a.balls, ballID)
 	}
 
+	a.balls = make(map[int]*Ball)
 	if len(a.connToIndex) > 0 {
 		a.connToIndex = make(map[*websocket.Conn]int)
 	}
@@ -297,7 +321,8 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 				MessageType: "gameOver", WinnerIndex: winnerIndex, FinalScores: finalScores,
 				Reason: "All bricks destroyed", RoomPID: a.selfPID.String(),
 			}
-			a.engine.Send(a.broadcasterPID, gameOverMsg, a.selfPID)
+			a.finalDeliveryHandedOff = a.engine.Send(a.broadcasterPID, gameOverMsg, a.selfPID)
+			a.broadcasterPID = nil // Broadcaster owns final delivery and its own termination.
 		}
 
 		// Notify RoomManager
@@ -315,11 +340,13 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 
 // handleStopping is called when the actor receives the Stopping message.
 func (a *GameActor) handleStopping(ctx bollywood.Context) {
-	if a.isStopping.CompareAndSwap(false, true) {
-		fmt.Printf("GameActor %s: Stopping.\n", a.selfPID)
-		a.gameOver.Store(true) // Ensure game over flag is set
-		a.performCleanup()     // Perform cleanup once
+	a.isStopping.Store(true)
+	a.gameOver.Store(true)
+	a.performCleanup()
+	if a.roomManagerPID != nil {
+		a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, a.selfPID)
 	}
+
 }
 
 // handleStopped is called when the actor receives the Stopped message.

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	// "github.com/lguibr/bollywood" // No longer needed directly
+	// bollywood "github.com/lguibr/pongo/internal/actor" // No longer needed directly
 	"github.com/lguibr/pongo/game"
 	// "github.com/lguibr/pongo/server" // No longer needed directly
 	"github.com/lguibr/pongo/utils"
@@ -83,6 +83,7 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 		t.FailNow()
 	}
 	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
+	quickPlayHandshake(t, ws)
 
 	// 3. Read initial messages (Assignment + Initial Entities) - Consume them
 	var assignmentMsg game.PlayerAssignmentMessage
@@ -124,7 +125,7 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 
 	// 5. Send Input (Move Right -> Down for Player 0)
 	fmt.Println("E2E Test: Sending 'ArrowRight' input...")
-	directionCmd := game.Direction{Direction: "ArrowRight"}
+	directionCmd := map[string]string{"messageType": "direction", "direction": "ArrowRight"}
 	err = websocket.JSON.Send(ws, directionCmd)
 	assert.NoError(t, err, "Should send direction without error")
 
@@ -143,7 +144,7 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 
 	// 7. Send Stop Input
 	fmt.Println("E2E Test: Sending 'Stop' input...")
-	stopCmd := game.Direction{Direction: "Stop"}
+	stopCmd := map[string]string{"messageType": "direction", "direction": "Stop"}
 	err = websocket.JSON.Send(ws, stopCmd)
 	assert.NoError(t, err, "Should send stop direction without error")
 
@@ -183,6 +184,7 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 		t.FailNow()
 	}
 	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
+	quickPlayHandshake(t, ws)
 
 	// 3. Read initial messages (Assignment + Initial Entities)
 	var assignmentMsg game.PlayerAssignmentMessage
