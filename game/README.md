@@ -1,49 +1,71 @@
+# Game package
 
-# Game Logic Module
+Room logic for PonGo: the room manager, one game actor per room, the broadcaster and the
+game data types.
 
-This module contains the core gameplay logic, state management, and actor implementations for the PonGo game, built using the [Bollywood Actor Library](https://github.com/lguibr/bollywood). It features a decoupled architecture where high-frequency physics simulation is separated from fixed-rate network broadcasting of atomic state changes.
+## Ownership
 
-## Overview
+`RoomManagerActor` (`room_manager.go`) keeps room codes, public Quick Play rooms, slot
+reservations and pending admissions. It creates a `GameActor` per room. A slot is
+released only when an admission is rejected or a player's reconnect grace expires.
 
-The game logic is orchestrated by actors. A central `RoomManagerActor` manages multiple `GameActor` instances. A temporary `ConnectionHandlerActor` (in the Server module) manages each WebSocket connection. Each `GameActor` spawns child actors for game entities (`PaddleActor`, `BallActor`) and a dedicated `BroadcasterActor` for state dissemination.
+`GameActor` owns everything in its room: players, paddles, balls, the brick grid, scores
+and phase. Only its own goroutine touches that state, so none of it is behind a lock.
+Tickers and timers never read the actor; they send it messages, and timer messages carry
+a generation number so a stale expiry is ignored.
 
--   **RoomManagerActor**: Manages the lifecycle of `GameActor` instances.
--   **ConnectionHandlerActor (in Server module)**: Manages a single WebSocket connection.
--   **GameActor**: Represents a single game room. Manages core game state and the authoritative local cache of entity states.
-    -   **Physics Simulation (High Frequency):** Runs an internal `physicsTicker`. On each `GameTick`:
-        1.  `moveEntities()`: Updates positions of paddles and balls in its local cache based on their current velocities from the *previous* tick.
-        2.  `detectCollisions()`: Performs collision detection using the updated cache. Resolves collisions by updating cached entity velocities (e.g., reflecting ball velocity). **Crucially, direct position adjustments (snapping) are avoided; only velocities are changed to ensure continuous movement.** Sends commands to child actors to update their internal states. Handles scoring and power-ups. Generates atomic event updates.
-        3.  `generatePositionUpdates()`: Creates `BallPositionUpdate` and `PaddlePositionUpdate` messages from the final cached state of the current tick.
-        4.  `resetPerTickCollisionFlags()`: Resets `Collided` flags in the cache for the next tick.
-        5.  Checks for game end condition.
-    -   **State Broadcasting (Fixed Rate):** Runs an internal `broadcastTicker`. On each `BroadcastTick`, it generates a `FullGridUpdate` and sends all pending atomic updates as a batch to its `BroadcasterActor`.
-    -   **Game Logic:** Implements scoring, "hit own wall" logic, "persistent ball" logic, power-ups, and game over conditions.
-    -   **Phasing Ball Logic:** Phasing balls pass through bricks but reflect normally off walls/paddles without resetting their phasing timer or triggering scoring (for wall hits).
-    -   **Cleanup:** Reliably stops internal tickers and child actors.
--   **BroadcasterActor**: Manages WebSocket connections for its room and broadcasts game state updates.
--   **Child Actors (PaddleActor, BallActor)**: Manage internal state (direction, velocity, phasing) based on commands from `GameActor`. They **do not** calculate their own positions.
--   **State:** Game state is distributed. `GameActor` holds the authoritative state for its room and entity caches. Clients reconstruct state from atomic updates.
--   **Physics & Rules:** Collision detection and response (velocity reflection) are handled within `GameActor`. Ball positions are *not* forcibly adjusted on collision.
--   **Communication:** Actors communicate via messages. `GameActor` sends batched updates to `BroadcasterActor`, which sends JSON to clients.
+`BroadcasterActor` (`broadcaster_actor.go`) encodes each batch of updates once and hands
+the same bytes to every client's writer (`internal/transport`). A client whose output
+queue overflows is disconnected; the room never waits on a socket.
 
-## Key Components (Consolidated)
+## Tick loop
 
-*   **room_manager.go**: Top-level coordinator.
-*   **game_actor.go**: `GameActor` struct, producer, `Receive` loop.
-*   **game_actor_handlers.go**: `GameActor` message handlers.
-*   **game_actor_physics.go**: `GameActor` physics simulation (`detectCollisions`, collision handlers, power-ups).
-*   **game_actor_state.go**: `GameActor` internal state updates (`moveEntities`, `generatePositionUpdates`, `resetPerTickCollisionFlags`, `handleBroadcastTick`, R3F mapping).
-*   **game_actor_lifecycle.go**: `GameActor` lifecycle management.
-*   **broadcaster_actor.go**: Broadcasting logic.
-*   **paddle_actor.go, ball_actor.go**: Entity actor logic.
-*   **paddle.go, ball.go, etc.**: Data structures. `Move()` methods update cached objects based on velocity.
-*   **messages.go**: Actor and atomic update message definitions.
-*   **grid.go, cell.go**: Grid/Cell structures and generation.
-*   **collision_tracker.go**: Tracks ongoing collisions.
+Physics runs every `GameTickPeriod` (25 ms by default):
 
-## Related Modules
+1. `moveEntities` moves paddles and balls by their velocity.
+2. `detectCollisions` reflects velocities off walls, paddles and bricks and applies
+   scoring, brick damage and power-ups. Positions are never snapped.
+3. `generatePositionUpdates` queues position messages.
+4. `resetPerTickCollisionFlags` clears the one-tick collision flags.
+5. `checkGameOver` ends the game when no bricks remain.
 
-*   [Bollywood Actor Library](https://github.com/lguibr/bollywood)
-*   [Server](../server/README.md)
-*   [Utilities](../utils/README.md)
-*   [Main Project](../README.md)
+Broadcasting runs at `BroadcastRateHz` and never faster than physics. The full grid is
+sent when a player joins and after a brick changes; an idle room sends an empty batch
+every 15 seconds. Ticks are coalesced, so a room that falls behind skips ticks instead
+of queueing them.
+
+## Players
+
+- **Admission** (`game_actor_admission.go`): validate the request, pick a slot (a
+  returning session gets the slot held for it), give a new player the average score of
+  the connected players, fill the grid for the first player, send the assignment and
+  initial state, then announce the player.
+- **Disconnect** (`game_actor_disconnect.go`): the slot, paddle and balls are held for
+  30 seconds. When the grace expires, the player's permanent balls become ownerless, the
+  temporary ones are removed and the room manager frees the slot. A room left with no
+  connected players closes after another 30 seconds.
+- **Lobby** (`game_actor_lobby.go`): readiness, the 3-second countdown and entering play.
+  Quick Play rooms start as soon as the grid exists.
+
+## Files
+
+| File | Holds |
+| --- | --- |
+| `room_manager.go` | Room codes, reservations and admission tracking |
+| `game_actor.go` | `GameActor` state, constructor and message dispatch |
+| `game_actor_admission.go` | Admission and joining |
+| `game_actor_disconnect.go` | Disconnect, reconnect grace and empty-room close |
+| `game_actor_lobby.go` | Readiness, countdown and phase changes |
+| `game_actor_entities.go` | Paddle input, ball spawn and expiry, end of phasing |
+| `game_actor_physics.go` | Collisions, scoring, bricks, power-ups and phasing timers |
+| `game_actor_state.go` | Update batching and the full-grid snapshot |
+| `game_actor_lifecycle.go` | Start, tickers, cleanup, game over and metrics |
+| `broadcaster_actor.go` | Encode once and fan out to client writers |
+| `messages.go` | Wire messages and internal actor messages |
+| `ball.go`, `paddle.go`, `player.go` | Entity data and movement |
+| `grid.go`, `cell.go`, `canvas.go` | Brick grid generation and the canvas |
+| `collision_tracker.go` | Ongoing ball–paddle and ball–brick contacts |
+| `test_utils.go` | Helpers shared with the end-to-end tests |
+
+See [the server package](../server/README.md), [ADR 0001](../docs/adr/0001-room-state-and-delivery.md)
+and [ADR 0002](../docs/adr/0002-remove-compatibility-layer.md).

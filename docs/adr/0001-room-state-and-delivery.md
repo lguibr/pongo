@@ -1,7 +1,8 @@
 # Room-owned state and bounded network IO
 
 Date: 2026-09-07
-Status: implemented on refactor/room-performance
+Status: implemented on refactor/room-performance. The compatibility clause for the
+legacy entity actors is superseded by [ADR 0002](0002-remove-compatibility-layer.md).
 
 ## Problem
 
