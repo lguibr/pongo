@@ -73,8 +73,6 @@ func (p *TestGameActorProducer) Produce() actor.Actor {
 	ga.pendingUpdates = make([]interface{}, 0, 128)
 	ga.activeCollisions = NewCollisionTracker()  // Initialize collision tracker
 	ga.phasingTimers = make(map[int]*time.Timer) // Initialize phasing timers map
-	ga.gameOver.Store(false)
-	ga.isStopping.Store(false)
 	// The GameActor's Started handler will now skip spawning its own broadcaster
 	return ga
 }

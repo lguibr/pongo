@@ -191,7 +191,8 @@ func (a *GameActor) handleWallCollision(ctx actor.Context, ball *Ball, wallIndex
 
 		if isConcederActive {
 			// Conceder loses points
-			newScore := concederPlayer.Score.Add(-1)
+			concederPlayer.Score--
+			newScore := concederPlayer.Score
 			a.addUpdate(&ScoreUpdate{MessageType: "scoreUpdate", Index: concederIndex, Score: newScore})
 
 			// Scorer gains points (if valid, connected, and not the same as conceder)
@@ -203,7 +204,8 @@ func (a *GameActor) handleWallCollision(ctx actor.Context, ball *Ball, wallIndex
 			isScorerActive := isScorerValid && scorerPlayer != nil && scorerPlayer.IsConnected
 
 			if isScorerActive && scorerIndex != concederIndex {
-				newScore := scorerPlayer.Score.Add(1)
+				scorerPlayer.Score++
+				newScore := scorerPlayer.Score
 				a.addUpdate(&ScoreUpdate{MessageType: "scoreUpdate", Index: scorerIndex, Score: newScore})
 			}
 
@@ -378,7 +380,8 @@ func (a *GameActor) damageBrick(ctx actor.Context, ball *Ball, cell *Cell, r, c 
 		// Award score to ball owner
 		scorerIndex := ball.OwnerIndex
 		if scorerIndex >= 0 && scorerIndex < utils.MaxPlayers && a.players[scorerIndex] != nil && a.players[scorerIndex].IsConnected {
-			newScore := a.players[scorerIndex].Score.Add(int32(brickLevel))
+			a.players[scorerIndex].Score += int32(brickLevel)
+			newScore := a.players[scorerIndex].Score
 			a.addUpdate(&ScoreUpdate{MessageType: "scoreUpdate", Index: scorerIndex, Score: newScore})
 		}
 
@@ -468,9 +471,6 @@ func makeBrickID(row, col, gridSize int) int {
 
 // startPhasingTimer starts a timer for a ball's phasing duration.
 func (a *GameActor) startPhasingTimer(ballID int) {
-	a.phasingTimersMu.Lock()
-	defer a.phasingTimersMu.Unlock()
-
 	// Stop existing timer for this ball, if any
 	if timer, exists := a.phasingTimers[ballID]; exists && timer != nil {
 		timer.Stop()
@@ -483,20 +483,15 @@ func (a *GameActor) startPhasingTimer(ballID int) {
 	a.phasingGeneration[ballID]++
 	generation := a.phasingGeneration[ballID]
 	// Create new timer
+	engine, self := a.engine, a.selfPID
 	timer := time.AfterFunc(a.cfg.BallPhasingTime, func() {
-		// Send message back to self to handle timer expiry in actor context
-		if a.engine != nil && a.selfPID != nil {
-			a.engine.Send(a.selfPID, stopPhasingTimerMsg{BallID: ballID, Generation: generation}, nil)
-		}
+		engine.Send(self, stopPhasingTimerMsg{BallID: ballID, Generation: generation}, nil)
 	})
 	a.phasingTimers[ballID] = timer
 }
 
 // stopPhasingTimer stops and removes the phasing timer for a ball.
 func (a *GameActor) stopPhasingTimer(ballID int) {
-	a.phasingTimersMu.Lock()
-	defer a.phasingTimersMu.Unlock()
-
 	if timer, exists := a.phasingTimers[ballID]; exists && timer != nil {
 		timer.Stop()
 		delete(a.phasingTimers, ballID)

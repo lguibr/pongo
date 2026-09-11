@@ -97,7 +97,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 		if p != nil && i != playerIndex { // Check other players
 			isFirstPlayerInRoom = false
 			if p.IsConnected {
-				totalScoreOfExistingPlayers += p.Score.Load()
+				totalScoreOfExistingPlayers += p.Score
 				existingPlayerCountForAvgScore++
 			}
 		}
@@ -155,7 +155,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 			IsConnected: true,
 			SessionID:   sessionID,
 		}
-		player.Score.Store(initialPlayerScore) // Set initial score atomically
+		player.Score = initialPlayerScore
 
 		a.players[playerIndex] = player
 
@@ -210,7 +210,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 				Index: pInfo.Index,
 				Id:    pInfo.ID,
 				Color: pInfo.Color,
-				Score: pInfo.Score.Load(),
+				Score: pInfo.Score,
 			}
 			existingPlayers = append(existingPlayers, pData)
 		}
@@ -268,7 +268,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 			Index: pInfo.Index,
 			Id:    pInfo.ID,
 			Color: pInfo.Color,
-			Score: pInfo.Score.Load(),
+			Score: pInfo.Score,
 		}
 
 		playerJoinedMsg := &PlayerJoined{
@@ -418,9 +418,7 @@ func (a *GameActor) handlePlayerDisconnect(ctx actor.Context, conn *websocket.Co
 	a.players[playerIndex].DisconnectGeneration = a.reconnectGeneration
 	generation := a.players[playerIndex].DisconnectGeneration
 	a.reconnectTimers[playerIndex] = time.AfterFunc(30*time.Second, func() {
-		if a.engine != nil && a.selfPID != nil {
-			a.engine.Send(a.selfPID, stopReconnectTimerMsg{PlayerIndex: playerIndex, Generation: generation}, nil)
-		}
+		engine.Send(selfPID, stopReconnectTimerMsg{PlayerIndex: playerIndex, Generation: generation}, nil)
 	})
 
 	// Notify RoomManager that a player has left (to decrement count)
@@ -509,17 +507,16 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx actor.Context, playerIndex i
 		}
 	}
 
-	if !playersLeft && !a.gameOver.Load() {
+	if !playersLeft && !a.gameOver {
 		fmt.Printf("GameActor %s: Room is empty after timeout. Starting cleanup timer.\n", a.selfPID)
 		if a.roomCleanupTimer != nil {
 			a.roomCleanupTimer.Stop()
 		}
 		a.cleanupGeneration++
 		generation := a.cleanupGeneration
+		engine, self := a.engine, a.selfPID
 		a.roomCleanupTimer = time.AfterFunc(30*time.Second, func() {
-			if a.engine != nil && a.selfPID != nil {
-				a.engine.Send(a.selfPID, RoomCleanupTimeout{Generation: generation}, nil)
-			}
+			engine.Send(self, RoomCleanupTimeout{Generation: generation}, nil)
 		})
 	}
 
@@ -550,7 +547,7 @@ func (a *GameActor) handleRoomCleanupTimeout(ctx actor.Context) {
 		}
 	}
 
-	if !playersLeft && !a.gameOver.Load() {
+	if !playersLeft && !a.gameOver {
 		fmt.Printf("GameActor %s: Cleanup timer expired. Room still empty. Notifying RoomManager %s.\n", a.selfPID, a.roomManagerPID)
 		if a.roomManagerPID != nil && a.selfPID != nil {
 			a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
@@ -622,7 +619,8 @@ func (a *GameActor) spawnBall(ctx actor.Context, ownerIndex, x, y int, expireIn 
 		if a.expiryTimers == nil {
 			a.expiryTimers = make(map[int]*time.Timer)
 		}
-		a.expiryTimers[ballID] = time.AfterFunc(duration, func() { a.engine.Send(a.selfPID, DestroyExpiredBall{BallID: ballID}, nil) })
+		engine, self := a.engine, a.selfPID
+		a.expiryTimers[ballID] = time.AfterFunc(duration, func() { engine.Send(self, DestroyExpiredBall{BallID: ballID}, nil) })
 	}
 }
 
@@ -728,13 +726,12 @@ func (a *GameActor) handleCountdownTick(ctx actor.Context, secondsRemaining int)
 	if secondsRemaining > 0 {
 		// Schedule next tick or start game
 		generation := a.countdownGeneration
+		engine, self := a.engine, a.selfPID
 		a.countdownTimer = time.AfterFunc(1*time.Second, func() {
-			if a.engine != nil && a.selfPID != nil {
-				if secondsRemaining > 1 {
-					a.engine.Send(a.selfPID, CountdownTick{SecondsRemaining: secondsRemaining - 1, Generation: generation}, nil)
-				} else {
-					a.engine.Send(a.selfPID, startGameMsg{Generation: generation}, nil)
-				}
+			if secondsRemaining > 1 {
+				engine.Send(self, CountdownTick{SecondsRemaining: secondsRemaining - 1, Generation: generation}, nil)
+			} else {
+				engine.Send(self, startGameMsg{Generation: generation}, nil)
 			}
 		})
 	}
@@ -821,7 +818,7 @@ func (a *GameActor) handleAdmission(ctx actor.Context, m AssignPlayerToRoom) {
 		a.engine.Send(a.roomManagerPID, AdmissionRejected{RoomPID: a.selfPID, SessionID: m.SessionID, Reserved: m.Reserved, ReplyTo: m.ReplyTo}, a.selfPID)
 		a.engine.Send(m.ReplyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: false, Reason: reason}, a.selfPID)
 	}
-	if a.isStopping.Load() || a.gameOver.Load() {
+	if a.isStopping || a.gameOver {
 		reject("Room is closing")
 		return
 	}

@@ -28,130 +28,60 @@ func (a *GameActor) handleStart(ctx actor.Context) {
 	// Tickers are started when the first player joins or via internal test message
 }
 
-// startPhysicsTicker starts the physics ticker.
+// startPhysicsTicker starts the physics ticker once.
 func (a *GameActor) startPhysicsTicker(ctx actor.Context) {
-	a.tickerMu.Lock()
-	defer a.tickerMu.Unlock()
-
-	if a.physicsTicker == nil {
-		a.physicsTicker = time.NewTicker(a.cfg.GameTickPeriod)
-		select {
-		case <-a.stopPhysicsCh:
-			a.stopPhysicsCh = make(chan struct{})
-		default:
-		}
-		stopCh := a.stopPhysicsCh
-		tickerCh := a.physicsTicker.C
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("PANIC recovered in GameActor %s Physics Ticker: %v\n", a.selfPID, r)
-				}
-			}()
-			for {
-				select {
-				case <-stopCh:
-					return
-				case _, ok := <-tickerCh:
-					if !ok {
-						return
-					}
-					if a.isStopping.Load() || a.gameOver.Load() {
-						return
-					}
-					currentEngine := a.engine
-					currentSelfPID := a.selfPID
-					if currentEngine != nil && currentSelfPID != nil {
-						a.physicsPending.Send(currentEngine, currentSelfPID, GameTick{})
-					} else {
-						return
-					}
-				}
-			}
-		}()
-		fmt.Printf("GameActor %s: Physics ticker started.\n", a.selfPID)
+	if a.physicsTicker != nil {
+		return
 	}
+	a.physicsTicker = time.NewTicker(a.cfg.GameTickPeriod)
+	a.stopPhysicsCh = make(chan struct{})
+	go forwardTicks(a.physicsTicker.C, a.stopPhysicsCh, &a.physicsPending, a.engine, a.selfPID, GameTick{})
 }
 
-// startBroadcastTicker starts the broadcast ticker.
+// startBroadcastTicker starts the broadcast ticker once. It never runs faster than physics.
 func (a *GameActor) startBroadcastTicker(ctx actor.Context) {
-	a.tickerMu.Lock()
-	defer a.tickerMu.Unlock()
+	if a.broadcastTicker != nil {
+		return
+	}
+	rate := a.cfg.BroadcastRateHz
+	if rate <= 0 {
+		rate = 40
+	}
+	interval := time.Second / time.Duration(rate)
+	if interval < a.cfg.GameTickPeriod {
+		interval = a.cfg.GameTickPeriod
+	}
+	if interval <= 0 {
+		interval = 16 * time.Millisecond
+	}
+	a.broadcastTicker = time.NewTicker(interval)
+	a.stopBroadcastCh = make(chan struct{})
+	go forwardTicks(a.broadcastTicker.C, a.stopBroadcastCh, &a.broadcastPending, a.engine, a.selfPID, BroadcastTick{})
+}
 
-	if a.broadcastTicker == nil {
-		rate := a.cfg.BroadcastRateHz
-		if rate <= 0 {
-			rate = 40
-		}
-		broadcastInterval := time.Second / time.Duration(rate)
-		if broadcastInterval < a.cfg.GameTickPeriod {
-			broadcastInterval = a.cfg.GameTickPeriod
-		}
-		if broadcastInterval <= 0 {
-			broadcastInterval = 16 * time.Millisecond
-		}
-		a.broadcastTicker = time.NewTicker(broadcastInterval)
+// forwardTicks turns ticker fires into coalesced actor messages until stop is closed.
+// It uses only the values it is given and never reads the actor's fields.
+func forwardTicks(ticks <-chan time.Time, stop <-chan struct{}, pending *actor.PendingTick, engine *actor.Engine, self *actor.PID, msg interface{}) {
+	for {
 		select {
-		case <-a.stopBroadcastCh:
-			a.stopBroadcastCh = make(chan struct{})
-		default:
+		case <-stop:
+			return
+		case <-ticks:
+			pending.Send(engine, self, msg)
 		}
-		stopCh := a.stopBroadcastCh
-		tickerCh := a.broadcastTicker.C
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("PANIC recovered in GameActor %s Broadcast Ticker: %v\n", a.selfPID, r)
-				}
-			}()
-			for {
-				select {
-				case <-stopCh:
-					return
-				case _, ok := <-tickerCh:
-					if !ok {
-						return
-					}
-					if a.isStopping.Load() || a.gameOver.Load() {
-						return
-					}
-					currentEngine := a.engine
-					currentSelfPID := a.selfPID
-					if currentEngine != nil && currentSelfPID != nil {
-						a.broadcastPending.Send(currentEngine, currentSelfPID, BroadcastTick{})
-					} else {
-						return
-					}
-				}
-			}
-		}()
-		fmt.Printf("GameActor %s: Broadcast ticker started.\n", a.selfPID)
 	}
 }
 
-// stopTickers stops the physics and broadcast tickers safely using the mutex.
+// stopTickers stops both tickers and their forwarding goroutines.
 func (a *GameActor) stopTickers() {
-	a.tickerMu.Lock()
-	defer a.tickerMu.Unlock()
-
 	if a.physicsTicker != nil {
 		a.physicsTicker.Stop()
-		select {
-		case <-a.stopPhysicsCh:
-		default:
-			close(a.stopPhysicsCh)
-		}
+		close(a.stopPhysicsCh)
 		a.physicsTicker = nil
 	}
 	if a.broadcastTicker != nil {
 		a.broadcastTicker.Stop()
-		select {
-		case <-a.stopBroadcastCh:
-		default:
-			close(a.stopBroadcastCh)
-		}
+		close(a.stopBroadcastCh)
 		a.broadcastTicker = nil
 	}
 }
@@ -183,9 +113,7 @@ func (a *GameActor) performCleanup() {
 
 // cleanupChildActorsAndConnections closes clients, clears room state and stops the broadcaster.
 func (a *GameActor) cleanupChildActorsAndConnections() {
-	a.updatesMu.Lock()
 	a.pendingUpdates = a.pendingUpdates[:0]
-	a.updatesMu.Unlock()
 
 	for i := 0; i < utils.MaxPlayers; i++ {
 		a.paddles[i] = nil
@@ -210,8 +138,6 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 
 // cleanupPhasingTimers stops all active phasing timers.
 func (a *GameActor) cleanupPhasingTimers() {
-	a.phasingTimersMu.Lock()
-	defer a.phasingTimersMu.Unlock()
 	for id, timer := range a.phasingTimers {
 		if timer != nil {
 			timer.Stop()
@@ -222,7 +148,7 @@ func (a *GameActor) cleanupPhasingTimers() {
 
 // checkGameOver checks if all bricks are destroyed and triggers the end sequence.
 func (a *GameActor) checkGameOver(ctx actor.Context) {
-	if a.gameOver.Load() || a.canvas == nil || a.canvas.Grid == nil {
+	if a.gameOver || a.canvas == nil || a.canvas.Grid == nil {
 		return
 	}
 	allBricksGone := true
@@ -239,13 +165,8 @@ func (a *GameActor) checkGameOver(ctx actor.Context) {
 	}
 
 	if allBricksGone {
-		if !a.gameOver.CompareAndSwap(false, true) {
-			return // Already processing game over
-		}
-		// if !a.isStopping.CompareAndSwap(false, true) { // Removed SA9003
-		// If not already stopping, mark as stopping now due to game over
-		// }
-		a.isStopping.CompareAndSwap(false, true) // Mark as stopping if game over triggered
+		a.gameOver = true
+		a.isStopping = true
 
 		fmt.Printf("GameActor %s: GAME_OVER - All bricks destroyed.\n", a.selfPID)
 
@@ -255,7 +176,7 @@ func (a *GameActor) checkGameOver(ctx actor.Context) {
 		tie := false
 		for i, p := range a.players {
 			if p != nil {
-				score := p.Score.Load()
+				score := p.Score
 				finalScores[i] = score
 				if p.IsConnected {
 					if score > highestScore {
@@ -303,8 +224,8 @@ func (a *GameActor) checkGameOver(ctx actor.Context) {
 
 // handleStopping is called when the actor receives the Stopping message.
 func (a *GameActor) handleStopping(ctx actor.Context) {
-	a.isStopping.Store(true)
-	a.gameOver.Store(true)
+	a.isStopping = true
+	a.gameOver = true
 	a.performCleanup()
 	if a.roomManagerPID != nil {
 		a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, a.selfPID)
@@ -319,8 +240,6 @@ func (a *GameActor) handleStopped(ctx actor.Context) {
 
 // logPerformanceMetrics calculates and prints the average tick duration.
 func (a *GameActor) logPerformanceMetrics() {
-	a.metricsMu.Lock()
-	defer a.metricsMu.Unlock()
 	if a.tickCount > 0 {
 		avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
 		fmt.Printf("PERF_METRIC GameActor %s: AvgPhysicsTick=%v Ticks=%d\n", a.selfPID, avgDuration, a.tickCount)

@@ -7,9 +7,7 @@ import (
 )
 
 func (a *GameActor) addUpdate(msg interface{}) {
-	a.updatesMu.Lock()
 	a.pendingUpdates = append(a.pendingUpdates, msg)
-	a.updatesMu.Unlock()
 }
 
 // fullGridUpdate preserves the client's complete-grid replacement contract.
@@ -40,13 +38,11 @@ func (a *GameActor) handleBroadcastTick(ctx actor.Context) {
 		}
 		a.gridDirty = false
 	}
-	a.updatesMu.Lock()
 	// Hand over ownership of the immutable batch without copying the slice.
 	updates := a.pendingUpdates
 	if len(updates) > 0 {
 		a.pendingUpdates = make([]interface{}, 0, len(updates))
 	}
-	a.updatesMu.Unlock()
 	if len(updates) == 0 && time.Since(a.lastHeartbeat) < 15*time.Second {
 		return
 	}

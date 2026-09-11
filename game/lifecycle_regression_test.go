@@ -35,7 +35,7 @@ func TestGameOverAlwaysCleansChildrenAndTimers(t *testing.T) {
 	a.handleStart(c)
 	a.startPhasingTimer(1)
 	a.checkGameOver(c) // Empty grid -> gameOver sets isStopping before Stopping.
-	if !a.isStopping.Load() {
+	if !a.isStopping {
 		t.Fatal("did not end game")
 	}
 	a.handleStopping(c)
@@ -62,7 +62,7 @@ func TestRoomEntitiesDoNotSpawnActors(t *testing.T) {
 func TestForceStartWaitsForInitializedGrid(t *testing.T) {
 	a, c := newLocalRoom(t)
 	a.handleForceStartGame(c)
-	if a.physicsTicker != nil || !a.forceStartPending || a.gameOver.Load() {
+	if a.physicsTicker != nil || !a.forceStartPending || a.gameOver {
 		t.Fatal("started uninitialized room")
 	}
 }

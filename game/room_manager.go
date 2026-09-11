@@ -8,7 +8,6 @@ import (
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 	"strings"
-	"sync"
 )
 
 const maxRooms = 75
@@ -32,7 +31,6 @@ type RoomManagerActor struct {
 	engine  *actor.Engine
 	cfg     utils.Config
 	rooms   map[string]*RoomInfo
-	mu      sync.RWMutex
 	selfPID *actor.PID
 }
 
@@ -53,8 +51,6 @@ func (a *RoomManagerActor) Receive(ctx actor.Context) {
 	if a.pending == nil {
 		a.pending = make(map[string]pendingAdmission)
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	switch m := ctx.Message().(type) {
 	case CreateRoomActorRequest:
 		a.admit(m.ReplyTo, m.Conn, m.Client, m.SessionID, "", true, m.IsPublic, false)

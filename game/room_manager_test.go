@@ -30,9 +30,7 @@ func TestRoomManager_StartsEmpty(t *testing.T) {
 	engine, _, managerActor := setupRoomManagerTest(t)
 	defer engine.Shutdown(1 * time.Second)
 
-	managerActor.mu.RLock()
 	assert.Empty(t, managerActor.rooms, "Room manager should start with no rooms")
-	managerActor.mu.RUnlock()
 }
 
 func TestRoomManager_GetRoomList(t *testing.T) {
@@ -42,10 +40,8 @@ func TestRoomManager_GetRoomList(t *testing.T) {
 	// Manually add some mock rooms to the manager's state for testing GetRoomList
 	mockRoomPID1 := &actor.PID{ID: "room-1"}
 	mockRoomPID2 := &actor.PID{ID: "room-2"}
-	managerActor.mu.Lock()
 	managerActor.rooms[mockRoomPID1.String()] = &RoomInfo{PID: mockRoomPID1, PlayerCount: 2, Code: "CODE1", IsPublic: true}
 	managerActor.rooms[mockRoomPID2.String()] = &RoomInfo{PID: mockRoomPID2, PlayerCount: 4, Code: "CODE2", IsPublic: false}
-	managerActor.mu.Unlock()
 
 	// Use Ask to get the room list
 	reply, err := engine.Ask(rmPID, GetRoomListRequest{}, 500*time.Millisecond)

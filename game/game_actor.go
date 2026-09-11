@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/lguibr/pongo/internal/actor"
@@ -48,25 +47,22 @@ type GameActor struct {
 	stopPhysicsCh          chan struct{}
 	broadcastTicker        *time.Ticker // Ticker for broadcasting state
 	stopBroadcastCh        chan struct{}
-	tickerMu               sync.Mutex // Mutex to protect ticker fields and channels
 	selfPID                *actor.PID
 	roomManagerPID         *actor.PID
 	broadcasterPID         *actor.PID // PID of the dedicated broadcaster actor
 	connToIndex            map[*websocket.Conn]int
 	playerConns            [utils.MaxPlayers]*websocket.Conn
-	gameOver               atomic.Bool // Flag to prevent multiple game over triggers
-	phase                  Phase       // Current phase of the room
+	gameOver               bool  // Set once the game has ended or the room is stopping
+	phase                  Phase // Current phase of the room
 
 	// Buffer for pending updates to broadcast
 	pendingUpdates []interface{} // Holds pointers to newly allocated update messages
-	updatesMu      sync.Mutex    // Protects pendingUpdates slice
 
 	// Collision Tracking
 	activeCollisions *CollisionTracker // Tracks ongoing collisions (ball-brick, ball-paddle)
 
 	// Phasing Timers (Managed by GameActor)
-	phasingTimers   map[int]*time.Timer // Map ball ID to its phasing timer
-	phasingTimersMu sync.Mutex          // Protects phasingTimers map
+	phasingTimers map[int]*time.Timer // Map ball ID to its phasing timer
 
 	// Countdown Timer
 	countdownTimer *time.Timer
@@ -80,11 +76,10 @@ type GameActor struct {
 	// Performance Metrics
 	tickDurationSum time.Duration
 	tickCount       int64
-	metricsMu       sync.Mutex // Protect metrics during updates
 
 	// Cleanup control
-	cleanupOnce sync.Once   // Ensures cleanup happens only once
-	isStopping  atomic.Bool // Indicates if Stopping message has been received
+	cleanupOnce sync.Once // Ensures cleanup happens only once
+	isStopping  bool      // Set when the room starts stopping
 }
 
 // playerInfo holds state associated with a connected player/websocket.
@@ -92,8 +87,8 @@ type playerInfo struct {
 	DisconnectGeneration uint64
 	Index                int
 	ID                   string
-	SessionID            string       // Unique session ID for reconnection
-	Score                atomic.Int32 // Use atomic Int32 for score
+	SessionID            string // Unique session ID for reconnection
+	Score                int32
 	Color                [3]int
 	Client               *transport.Client
 	Ws                   *websocket.Conn // Can be nil in tests
@@ -128,8 +123,6 @@ func NewGameActorProducer(engine *actor.Engine, cfg utils.Config, roomManagerPID
 			tickCount:       0,
 			phase:           PhaseLobby,
 		}
-		ga.gameOver.Store(false) // Initialize game over flag
-		ga.isStopping.Store(false)
 		return ga
 	}
 }
@@ -152,7 +145,7 @@ func (a *GameActor) Receive(ctx actor.Context) {
 				a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
 			}
 			// Explicitly stop self if panic occurred before normal shutdown sequence
-			if !a.isStopping.Load() && a.engine != nil && a.selfPID != nil {
+			if !a.isStopping && a.engine != nil && a.selfPID != nil {
 				a.engine.Stop(a.selfPID)
 			}
 			// Reply with error if it was an Ask request
@@ -175,7 +168,7 @@ func (a *GameActor) Receive(ctx actor.Context) {
 	}
 
 	// Ignore messages if game is already over or stopping, except for system messages
-	if a.gameOver.Load() || a.isStopping.Load() {
+	if a.gameOver || a.isStopping {
 		switch ctx.Message().(type) {
 		case AssignPlayerToRoom, actor.Stopping, actor.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
 			// Allow these messages during game over/stopping for cleanup
@@ -213,10 +206,8 @@ func (a *GameActor) Receive(ctx actor.Context) {
 		a.checkGameOver(ctx)
 
 		duration := time.Since(start)
-		a.metricsMu.Lock()
 		a.tickDurationSum += duration
 		a.tickCount++
-		a.metricsMu.Unlock()
 
 	case BroadcastTick: // Message from broadcastTicker
 		a.broadcastPending.Clear()
@@ -363,7 +354,7 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx actor.Context, playerIndex i
 		IsConnected: true, // Mark as connected for game logic
 		SessionID:   "test-session",
 	}
-	player.Score.Store(playerDataPtr.Score)
+	player.Score = playerDataPtr.Score
 	a.players[playerIndex] = player
 
 	a.paddles[playerIndex] = NewPaddle(a.cfg, playerIndex)
