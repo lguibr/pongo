@@ -215,7 +215,7 @@ func (a *GameActor) Receive(ctx actor.Context) {
 		a.broadcastPending.Clear()
 		a.handleBroadcastTick(ctx)
 
-	// --- Delegate to handlers defined in game_actor_handlers.go ---
+	// --- Handlers live in game_actor_admission.go, _disconnect.go, _entities.go and _lobby.go ---
 	case AssignPlayerToRoom:
 		a.handleAdmission(ctx, m)
 	case PlayerDisconnect:

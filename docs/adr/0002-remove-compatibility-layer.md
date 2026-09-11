@@ -1,7 +1,7 @@
 # Remove the compatibility layer around the room runtime
 
 Date: 2026-09-11
-Status: implemented on refactor/backend-cleanup; supersedes the compatibility clause of ADR 0001
+Status: implemented on refactor/room-performance; supersedes the compatibility clause of ADR 0001
 
 ## Context
 
@@ -19,8 +19,9 @@ and the module still targeted Go 1.19.
   tracked; builds use the module cache.
 - Import the runtime as `actor`.
 - Game and room-manager state is touched only by the owning actor's goroutine, so the
-  mutexes and atomics on it are removed. Ticker and timer callbacks receive the engine
-  and PID when they are created and never read actor fields.
+  mutexes and atomics on it are removed, the `CollisionTracker` lock included. Ticker
+  and timer callbacks receive the engine, the PID and, for tickers, the atomic
+  `PendingTick` flag when they are created, and never read actor fields.
 - Log through `log/slog`: debug for room chatter, info for lifecycle events and per-room
   metrics, warn and error for failures. `PONGO_LOG_LEVEL` selects the level. The runtime
   logs recovered actor panics with their stack.
