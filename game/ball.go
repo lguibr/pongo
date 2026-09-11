@@ -11,12 +11,10 @@ import (
 // --- Ball Struct (State Holder) ---
 
 type Ball struct {
-	X  int `json:"x"`
-	Y  int `json:"y"`
-	Vx int `json:"vx"`
-	Vy int `json:"vy"`
-	// Ax int `json:"ax"` // Acceleration - removed
-	// Ay int `json:"ay"` // Acceleration - removed
+	X           int  `json:"x"`
+	Y           int  `json:"y"`
+	Vx          int  `json:"vx"`
+	Vy          int  `json:"vy"`
 	Radius      int  `json:"radius"`
 	Id          int  `json:"id"`         // Unique ID (e.g., timestamp + index)
 	OwnerIndex  int  `json:"ownerIndex"` // Index of the player who last hit it (-1 for ownerless)
@@ -118,15 +116,11 @@ func NewBall(cfg utils.Config, x, y, ownerIndex, index int, isPermanent bool) *B
 	}
 }
 
-// Move updates the ball's position based on velocity.
-// Boundary clamping is removed; wall collisions are handled by GameActor's physics.
+// Move updates the ball's position by its velocity. The ball is not clamped to the
+// canvas; wall collisions in the room's physics reflect it.
 func (ball *Ball) Move() {
-	// Update position
 	ball.X += ball.Vx
 	ball.Y += ball.Vy
-
-	// Clamping to canvas boundaries is removed.
-	// Wall collision logic in GameActor will handle reflections.
 }
 
 // getCenterIndex calculates the grid cell indices for the ball's center.

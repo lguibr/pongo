@@ -140,7 +140,7 @@ func brickCollisionTestWorker(
 							}
 						}
 					}
-				} // else removed empty branch
+				}
 			} else {
 				netErr, isNetErr := readErr.(net.Error)
 				if errors.Is(readErr, io.EOF) || strings.Contains(readErr.Error(), "closed") {
