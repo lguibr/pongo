@@ -19,17 +19,11 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// checkOrigin parses the Origin header. Any origin is accepted; a missing one is
-// allowed for non-browser clients. Only a malformed header is rejected.
+// checkOrigin rejects a malformed Origin header; any well-formed origin passes. A
+// request without Origin passes here, but the x/net handshake then refuses it with 403.
 func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
 	config.Origin, err = websocket.Origin(config, req)
-	if err != nil {
-		return err
-	}
-	if config.Origin == nil {
-		slog.Debug("websocket origin header missing; allowing", "host", req.Host)
-	}
-	return nil
+	return err
 }
 
 func main() {
@@ -80,7 +74,8 @@ func main() {
 		port = "8080" // Cloud Run sets PORT; 8080 is its default
 	}
 	listenAddr := ":" + port
-	httpServer := &http.Server{Addr: listenAddr, ReadHeaderTimeout: 5 * time.Second}
+	// net/http reports accept and handler failures through ErrorLog; keep them at error level.
+	httpServer := &http.Server{Addr: listenAddr, ReadHeaderTimeout: 5 * time.Second, ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelError)}
 	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	serveErr := make(chan error, 1)

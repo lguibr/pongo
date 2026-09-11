@@ -23,6 +23,7 @@ HTTP and WebSocket entry points.
 - Writes through a `transport.Client`: one ordered writer and a 64-frame queue per socket.
 
 `main.go` wraps `/subscribe` with a scheme check suited to Cloud Run's TLS termination.
-The origin check only parses the `Origin` header: any well-formed origin is accepted.
+The `Origin` header is required: any well-formed origin is accepted, and an upgrade
+without one is refused with 403.
 
 See [the game package](../game/README.md).
