@@ -1,4 +1,3 @@
-// File: test/helpers.go
 package test
 
 import (

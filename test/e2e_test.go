@@ -1,4 +1,3 @@
-// File: test/e2e_test.go
 package test
 
 import (
@@ -41,10 +40,7 @@ func waitForStateCondition(t *testing.T, ws *websocket.Conn, localState *game.Lo
 				if condition(localState) {                                  // Check condition again
 					return true
 				}
-			} // else { // Removed SA9003
-			// Could be another message type (e.g., gameOver), ignore for condition check
-			// t.Logf("Received non-batch message: %s", string(rawMsg))
-			// }
+			} // Other message types, such as gameOver, do not affect the condition.
 		} else {
 			// Simplify error checking for closed connections
 			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed network connection") || strings.Contains(err.Error(), "reset by peer") {

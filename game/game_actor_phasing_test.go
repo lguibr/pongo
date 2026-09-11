@@ -1,4 +1,3 @@
-// File: game/game_actor_phasing_test.go
 package game
 
 import (
@@ -14,11 +13,11 @@ import (
 func TestGameActor_PhasingBall_DamagesBrickOnceNoReflect(t *testing.T) {
 	// 1. Setup Engine and Config
 	engine := actor.NewEngine()
-	defer engine.Shutdown(testShutdownTimeout) // Use existing constant
+	defer engine.Shutdown(testShutdownTimeout)
 	cfg := utils.DefaultConfig()
 	cfg.GameTickPeriod = 10 * time.Millisecond   // Faster ticks
 	cfg.BallPhasingTime = 200 * time.Millisecond // Ensure phasing is active
-	cfg.PowerUpChance = 0.0                      // <<< DISABLE POWERUPS >>>
+	cfg.PowerUpChance = 0.0                      // No power-ups
 
 	gridSize := cfg.GridSize
 	cellSize := cfg.CellSize

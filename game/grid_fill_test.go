@@ -1,4 +1,3 @@
-// File: game/grid_fill_test.go
 package game
 
 import (
@@ -12,13 +11,9 @@ import (
 // NOTE: This test now uses FillSymmetrical internally for checks.
 func TestGrid_Fill(t *testing.T) {
 	type FillTestCase struct {
-		name   string
+		name     string
 		gridSize int
-		// numberOfVectors int // Removed unused field
-		// maxVectorSize   int // Removed unused field
-		// randomWalkers   int // Removed unused field
-		// randomSteps     int // Removed unused field
-		panics bool
+		panics   bool
 	}
 
 	testCases := []FillTestCase{

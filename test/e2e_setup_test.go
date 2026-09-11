@@ -1,9 +1,8 @@
-// File: test/e2e_setup_test.go
 package test
 
 import (
 	"net/http/httptest"
-	"strings" // ADDED import
+	"strings"
 	"testing"
 	"time"
 

@@ -1,4 +1,3 @@
-// File: utils/constants.go
 package utils
 
 import "time"

@@ -1,7 +1,7 @@
 package server
 
 import (
-	"encoding/json" // Import errors
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -137,7 +137,7 @@ func TestHandleSubscribe_ForwardsQuickPlayRequest(t *testing.T) {
 }
 
 func TestHandleGetRooms_QueriesManagerAndReturnsList(t *testing.T) {
-	server, engine, mockManager, _ := setupServerWithMockManager(t) // Use underscore for managerPID if not needed directly
+	server, engine, mockManager, _ := setupServerWithMockManager(t)
 	defer engine.Shutdown(2 * time.Second)
 
 	// Configure mock response
@@ -149,12 +149,11 @@ func TestHandleGetRooms_QueriesManagerAndReturnsList(t *testing.T) {
 	mockManager.ShouldReply = true
 	mockManager.mu.Unlock()
 
-	req, err := http.NewRequest("GET", "/rooms/", nil) // Use correct path
+	req, err := http.NewRequest("GET", "/rooms/", nil)
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(server.HandleGetRooms()) // Use correct handler
-
+	handler := http.HandlerFunc(server.HandleGetRooms())
 	handler.ServeHTTP(rr, req)
 
 	// Check if RoomManager received the request
@@ -172,7 +171,7 @@ func TestHandleGetRooms_QueriesManagerAndReturnsList(t *testing.T) {
 }
 
 func TestHandleGetRooms_HandlesManagerTimeout(t *testing.T) {
-	server, engine, mockManager, _ := setupServerWithMockManager(t) // Use underscore for managerPID if not needed directly
+	server, engine, mockManager, _ := setupServerWithMockManager(t)
 	// Use a shorter shutdown to speed up test end
 	defer engine.Shutdown(1 * time.Second)
 
@@ -180,12 +179,11 @@ func TestHandleGetRooms_HandlesManagerTimeout(t *testing.T) {
 	mockManager.ShouldReply = false // Configure mock to not reply
 	mockManager.mu.Unlock()
 
-	req, err := http.NewRequest("GET", "/rooms/", nil) // Use correct path
+	req, err := http.NewRequest("GET", "/rooms/", nil)
 	assert.NoError(t, err)
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(server.HandleGetRooms()) // Use correct handler
-
+	handler := http.HandlerFunc(server.HandleGetRooms())
 	// Run the handler in a goroutine so we can timeout waiting for it
 	handlerDone := make(chan bool)
 	go func() {

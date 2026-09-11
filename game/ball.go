@@ -1,4 +1,3 @@
-// File: game/ball.go
 package game
 
 import (

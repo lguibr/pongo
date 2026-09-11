@@ -1,4 +1,3 @@
-// File: game/paddle_test.go
 package game
 
 import (

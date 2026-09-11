@@ -1,4 +1,3 @@
-// File: game/grid.go
 package game
 
 import (

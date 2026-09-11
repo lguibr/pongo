@@ -1,4 +1,3 @@
-// File: game/collision_tracker_test.go
 package game
 
 import (

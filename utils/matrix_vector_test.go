@@ -1,4 +1,3 @@
-// File: utils/matrix_vector_test.go
 package utils
 
 import (

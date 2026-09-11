@@ -1,4 +1,3 @@
-// File: game/game_actor_lifecycle.go
 package game
 
 import (
@@ -7,7 +6,7 @@ import (
 
 	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
-	"golang.org/x/net/websocket" // Added import
+	"golang.org/x/net/websocket"
 )
 
 // handleStart is called when the actor receives the Started message.

@@ -1,4 +1,3 @@
-// File: game/game_actor.go
 package game
 
 import (
@@ -110,8 +109,6 @@ func NewGameActorProducer(engine *actor.Engine, cfg utils.Config, roomManagerPID
 			paddles:          [utils.MaxPlayers]*Paddle{}, // Initialize cache map
 			balls:            make(map[int]*Ball),         // Initialize cache map
 			engine:           engine,
-			stopPhysicsCh:    make(chan struct{}), // Initialize channels here
-			stopBroadcastCh:  make(chan struct{}),
 			connToIndex:      make(map[*websocket.Conn]int),
 			playerConns:      [utils.MaxPlayers]*websocket.Conn{},
 			roomManagerPID:   roomManagerPID,

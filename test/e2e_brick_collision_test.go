@@ -1,4 +1,3 @@
-// File: test/e2e_brick_collision_test.go
 package test
 
 import (
@@ -47,7 +46,7 @@ func brickCollisionTestWorker(
 	quickPlayHandshake(t, ws)
 
 	localState := game.NewLocalGameState()
-	var assignedIndex int // Removed ineffectual assignment = -1
+	var assignedIndex int
 
 	// Consume initial messages
 	var assignmentMsg game.PlayerAssignmentMessage

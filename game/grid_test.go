@@ -1,4 +1,3 @@
-// File: game/grid_test.go
 package game
 
 import (
@@ -91,13 +90,13 @@ func TestGrid_Compare(t *testing.T) {
 			name:   "One grid nil, the other empty",
 			grid:   nil,
 			grid2:  Grid{},
-			result: false, // Corrected expectation
+			result: false,
 		},
 		{
 			name:   "Both grids nil",
 			grid:   nil,
 			grid2:  nil,
-			result: true, // Corrected expectation
+			result: true,
 		},
 		{
 			name:   "One element grid and nil grid",

@@ -11,11 +11,11 @@ import (
 type Server struct {
 	activeConnections atomic.Int64
 	engine            *actor.Engine
-	roomManagerPID    *actor.PID // Changed from gameActorPID
+	roomManagerPID    *actor.PID
 }
 
 // New creates a new Server instance.
-func New(engine *actor.Engine, roomManagerPID *actor.PID) *Server { // Changed parameter name
+func New(engine *actor.Engine, roomManagerPID *actor.PID) *Server {
 	if engine == nil || roomManagerPID == nil {
 		panic("Server requires a valid engine and roomManagerPID")
 	}

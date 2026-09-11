@@ -2,7 +2,7 @@ package server
 
 import (
 	"encoding/json"
-	"errors" // Import errors
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -58,7 +58,7 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 			Conn:           ws,
 			Engine:         engine,
 			RoomManagerPID: managerPID,
-			Done:           handlerDone, // Pass the channel
+			Done:           handlerDone,
 		}
 		handlerProps := actor.NewProps(NewConnectionHandlerProducer(args))
 		handlerPID := engine.Spawn(handlerProps)

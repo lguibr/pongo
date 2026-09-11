@@ -1,4 +1,3 @@
-// File: game/game_actor_physics.go
 package game
 
 import (
@@ -78,7 +77,6 @@ func (a *GameActor) detectCollisions(ctx actor.Context) {
 				if isNewPaddleCollision {
 					a.handlePaddleCollision(ctx, ball, paddle, playerIndex)
 				}
-				// Removed empty else branch for ongoing paddle collision
 			} else {
 				// Not intersecting, end any active collision tracking
 				a.activeCollisions.EndCollision(collisionKey)
@@ -127,7 +125,6 @@ func (a *GameActor) detectCollisions(ctx actor.Context) {
 						if isNewBrickCollision { // Process collision only on first contact
 							a.handleBrickCollision(ctx, ball, cell, r, c)
 						}
-						// Removed empty else branch for ongoing brick collision
 					}
 				} else {
 					// If not intersecting this tick, ensure any active collision is ended
@@ -152,8 +149,7 @@ func (a *GameActor) detectCollisions(ctx actor.Context) {
 
 // handleWallCollision processes ball hitting a wall.
 // Phasing balls reflect but do not trigger scoring or phasing reset.
-// Non-phasing balls hitting walls NO LONGER start phasing from this interaction.
-// Direct position adjustments (e.g., ball.X = ...) are REMOVED.
+// Wall hits never start phasing, and the ball's position is not adjusted.
 func (a *GameActor) handleWallCollision(ctx actor.Context, ball *Ball, wallIndex int, isPhasing bool) {
 	if ball == nil {
 		return
@@ -228,8 +224,7 @@ func (a *GameActor) handleWallCollision(ctx actor.Context, ball *Ball, wallIndex
 
 // handlePaddleCollision processes ball hitting a paddle.
 // Phasing balls reflect and change owner, but do not reset phasing timer.
-// Non-phasing balls hitting paddles NO LONGER start phasing from this interaction.
-// Direct position adjustments (e.g., ball.X = ...) are REMOVED.
+// Paddle hits never start phasing, and the ball's position is not adjusted.
 func (a *GameActor) handlePaddleCollision(ctx actor.Context, ball *Ball, paddle *Paddle, playerIndex int) {
 	if ball == nil || paddle == nil {
 		return

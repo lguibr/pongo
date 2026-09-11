@@ -1,4 +1,3 @@
-// File: game/collision_tracker.go
 package game
 
 import "sync"

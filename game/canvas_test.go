@@ -1,4 +1,3 @@
-// File: game/canvas_test.go
 package game
 
 import (
@@ -8,9 +7,6 @@ import (
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
 )
-
-// Removed duplicate Canvas struct, methods, and NewCanvas function definitions.
-// The tests will now use the actual implementations from canvas.go.
 
 func TestNewCanvas(t *testing.T) {
 	type testCase struct {

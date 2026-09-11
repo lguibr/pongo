@@ -1,4 +1,3 @@
-// File: game/messages.go
 package game
 
 import (
@@ -162,7 +161,6 @@ type PaddlePositionUpdate struct {
 
 // BrickStateUpdate represents the state of a single brick cell. Includes R3F coords.
 type BrickStateUpdate struct {
-	// MessageType string `json:"messageType"` // "brickStateUpdate" - Removed, part of FullGridUpdate
 	X    float64        `json:"x"`    // R3F X coordinate for cell center
 	Y    float64        `json:"y"`    // R3F Y coordinate for cell center
 	Life int            `json:"life"` // Remaining life
@@ -277,8 +275,8 @@ type PlayerDisconnect struct {
 
 // ForwardedPaddleDirection carries paddle input from ConnectionHandler to GameActor.
 type ForwardedPaddleDirection struct {
-	WsConn    *websocket.Conn // Corrected type: Use *websocket.Conn
-	Direction []byte          // Raw JSON payload {"direction": "..."}
+	WsConn    *websocket.Conn
+	Direction []byte // Raw JSON payload {"direction": "..."}
 }
 
 // GameTick signals the GameActor to perform a physics update.

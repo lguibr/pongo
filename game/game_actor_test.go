@@ -1,5 +1,3 @@
-// File: game/game_actor_test.go
-
 package game
 
 import (
@@ -9,8 +7,8 @@ import (
 
 	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
-	"github.com/stretchr/testify/assert" // Use testify for assertions
-	"golang.org/x/net/websocket"         // Import websocket
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/net/websocket"
 )
 
 // --- Mock Broadcaster Actor ---
@@ -68,8 +66,6 @@ func (p *TestGameActorProducer) Produce() actor.Actor {
 	ga.cfg = p.cfg
 	ga.roomManagerPID = p.roomManagerPID
 	ga.broadcasterPID = p.mockBroadcasterPID // Set the mock broadcaster PID here
-	ga.stopPhysicsCh = make(chan struct{})   // Initialize channels
-	ga.stopBroadcastCh = make(chan struct{})
 	ga.pendingUpdates = make([]interface{}, 0, 128)
 	ga.activeCollisions = NewCollisionTracker()  // Initialize collision tracker
 	ga.phasingTimers = make(map[int]*time.Timer) // Initialize phasing timers map

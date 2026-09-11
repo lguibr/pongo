@@ -19,8 +19,6 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-const servicePort = "8080" // Hardcoded port for Cloud Run
-
 // checkOrigin parses the Origin header. Any origin is accepted; a missing one is
 // allowed for non-browser clients. Only a malformed header is rejected.
 func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
@@ -77,7 +75,11 @@ func main() {
 		subscribeHandler.ServeHTTP(w, req)
 	})
 
-	listenAddr := ":" + servicePort
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Cloud Run sets PORT; 8080 is its default
+	}
+	listenAddr := ":" + port
 	httpServer := &http.Server{Addr: listenAddr, ReadHeaderTimeout: 5 * time.Second}
 	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

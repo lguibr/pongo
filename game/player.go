@@ -1,4 +1,3 @@
-// File: game/player.go
 package game
 
 import (
@@ -12,7 +11,7 @@ type Player struct {
 	Index int    `json:"index"`
 	Id    string `json:"id"`
 	Color [3]int `json:"color"`
-	Score int32  `json:"score"` // Changed to int32 for atomic operations
+	Score int32  `json:"score"`
 }
 
 // NewPlayer creates the Player data struct.
