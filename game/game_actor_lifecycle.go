@@ -241,7 +241,7 @@ func (a *GameActor) handleStopped(ctx actor.Context) {
 func (a *GameActor) logPerformanceMetrics() {
 	if a.tickCount > 0 {
 		avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
-		slog.Info("room metrics", "room", a.selfPID, "avgPhysicsTick", avgDuration, "ticks", a.tickCount)
+		slog.Info("room metrics", "room", a.selfPID, "avgPhysicsTick", avgDuration, "ticks", a.tickCount, "maxQueue", a.maxQueueLen)
 	} else {
 		slog.Debug("room metrics", "room", a.selfPID, "ticks", 0)
 	}

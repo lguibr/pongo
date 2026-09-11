@@ -76,6 +76,7 @@ type GameActor struct {
 	// Performance Metrics
 	tickDurationSum time.Duration
 	tickCount       int64
+	maxQueueLen     int // Largest backlog seen at the end of a physics tick
 
 	// Cleanup control
 	cleanupOnce sync.Once // Ensures cleanup happens only once
@@ -206,6 +207,9 @@ func (a *GameActor) Receive(ctx actor.Context) {
 		duration := time.Since(start)
 		a.tickDurationSum += duration
 		a.tickCount++
+		if n := a.engine.QueueLen(a.selfPID); n > a.maxQueueLen {
+			a.maxQueueLen = n
+		}
 
 	case BroadcastTick: // Message from broadcastTicker
 		a.broadcastPending.Clear()

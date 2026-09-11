@@ -177,6 +177,17 @@ func (e *Engine) Stop(pid *PID) {
 	}
 }
 func (e *Engine) ActiveCount() int { e.mu.RLock(); defer e.mu.RUnlock(); return len(e.actors) }
+
+// QueueLen reports how many messages wait for the actor; 0 if it has stopped.
+func (e *Engine) QueueLen(pid *PID) int {
+	p := e.find(pid)
+	if p == nil {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.queue) - p.head
+}
 func (e *Engine) Shutdown(timeout time.Duration) {
 	e.mu.Lock()
 	e.stopping = true
