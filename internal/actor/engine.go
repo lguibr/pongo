@@ -234,6 +234,7 @@ func (p *process) run() {
 		p.mu.Lock()
 		p.stopping = true
 		p.queue = nil
+		p.head = 0
 		p.mu.Unlock()
 		if a != nil {
 			invoke(envelope{message: Stopping{}})
