@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors" // Import errors
 	"fmt"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
@@ -24,14 +25,14 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 		}
 		defer s.activeConnections.Add(-1)
 		connectionAddr := ws.RemoteAddr().String()
-		fmt.Printf("HandleSubscribe: New connection attempt from %s\n", connectionAddr)
+		slog.Debug("websocket connected", "remote", connectionAddr)
 
 		// Create a channel to signal when the handler actor is done
 		handlerDone := make(chan struct{})
 
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("PANIC recovered in HandleSubscribe for %s: %v\nStack trace:\n%s\n", connectionAddr, r, string(debug.Stack()))
+				slog.Error("panic in websocket handler", "remote", connectionAddr, "panic", r, "stack", string(debug.Stack()))
 				// Ensure connection is closed on panic during setup
 				_ = ws.Close()
 				// Ensure the done channel is closed if panic happens before actor signals
@@ -41,13 +42,12 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 					close(handlerDone)
 				}
 			}
-			// fmt.Printf("HandleSubscribe: Handler finished for %s\n", connectionAddr) // Removed log
 		}()
 
 		engine := s.GetEngine()
 		managerPID := s.GetRoomManagerPID()
 		if engine == nil || managerPID == nil {
-			fmt.Printf("HandleSubscribe: Server engine or RoomManagerPID is nil. Closing connection %s.\n", connectionAddr)
+			slog.Error("server not initialized; closing websocket", "remote", connectionAddr)
 			_ = ws.Close()
 			close(handlerDone) // Signal completion on error
 			return
@@ -64,13 +64,11 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 		handlerPID := engine.Spawn(handlerProps)
 
 		if handlerPID == nil {
-			fmt.Printf("HandleSubscribe: Failed to spawn ConnectionHandlerActor for %s. Closing connection.\n", connectionAddr)
+			slog.Error("failed to spawn connection handler; closing websocket", "remote", connectionAddr)
 			_ = ws.Close()
 			close(handlerDone) // Signal completion on error
 			return
 		}
-
-		// fmt.Printf("HandleSubscribe: Spawned ConnectionHandlerActor %s for %s. Waiting for completion...\n", handlerPID, connectionAddr) // Removed log
 
 		// Wait here until the ConnectionHandlerActor signals it's done
 		<-handlerDone
@@ -84,7 +82,7 @@ func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				fmt.Printf("PANIC recovered in HandleGetRooms: %v\nStack trace:\n%s\n", rec, string(debug.Stack()))
+				slog.Error("panic in room list handler", "panic", rec, "stack", string(debug.Stack()))
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()
@@ -107,10 +105,10 @@ func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			if errors.Is(err, actor.ErrTimeout) {
-				fmt.Println("Timeout waiting for RoomManager response in HandleGetRooms")
+				slog.Warn("room list request timed out")
 				http.Error(w, "Timeout querying game state", http.StatusGatewayTimeout)
 			} else {
-				fmt.Printf("Error asking RoomManager: %v\n", err)
+				slog.Error("room list request failed", "err", err)
 				http.Error(w, "Error querying game state", http.StatusInternalServerError)
 			}
 			return
@@ -121,7 +119,7 @@ func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) {
 		case game.RoomListResponse:
 			roomListData, marshalErr := json.Marshal(v)
 			if marshalErr != nil {
-				fmt.Println("Error marshalling room list data:", marshalErr)
+				slog.Error("encoding room list failed", "err", marshalErr)
 				http.Error(w, "Error generating room list", http.StatusInternalServerError)
 				return
 			}
@@ -129,10 +127,10 @@ func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(roomListData)
 		case error: // Handle case where RoomManager replied with an error
-			fmt.Printf("RoomManager replied with error: %v\n", v)
+			slog.Error("room manager replied with error", "err", v)
 			http.Error(w, "Error retrieving game state", http.StatusInternalServerError)
 		default:
-			fmt.Printf("Received unexpected reply type from RoomManager via Ask: %T\n", v)
+			slog.Error("unexpected room list reply", "type", fmt.Sprintf("%T", v))
 			http.Error(w, "Internal server error processing reply", http.StatusInternalServerError)
 		}
 	}

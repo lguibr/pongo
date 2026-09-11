@@ -2,7 +2,7 @@
 package game
 
 import (
-	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/lguibr/pongo/internal/actor"
@@ -17,13 +17,13 @@ func (a *GameActor) handleStart(ctx actor.Context) {
 		broadcasterProps := actor.NewProps(NewBroadcasterProducer(a.selfPID))
 		a.broadcasterPID = a.engine.Spawn(broadcasterProps)
 		if a.broadcasterPID == nil {
-			fmt.Printf("FATAL: GameActor %s failed to spawn BroadcasterActor. Stopping self.\n", a.selfPID)
+			slog.Error("failed to spawn broadcaster; stopping room", "room", a.selfPID)
 			a.engine.Stop(a.selfPID) // Stop self if broadcaster fails
 			return
 		}
-		fmt.Printf("GameActor %s: Started. Spawned Broadcaster: %s.\n", a.selfPID, a.broadcasterPID)
+		slog.Debug("room started", "room", a.selfPID, "broadcaster", a.broadcasterPID)
 	} else {
-		fmt.Printf("GameActor %s: Started. Using pre-assigned Broadcaster: %s.\n", a.selfPID, a.broadcasterPID)
+		slog.Debug("room started with injected broadcaster", "room", a.selfPID, "broadcaster", a.broadcasterPID)
 	}
 	// Tickers are started when the first player joins or via internal test message
 }
@@ -89,7 +89,7 @@ func (a *GameActor) stopTickers() {
 // performCleanup ensures cleanup logic runs exactly once.
 func (a *GameActor) performCleanup() {
 	a.cleanupOnce.Do(func() {
-		fmt.Printf("GameActor %s: Performing cleanup...\n", a.selfPID)
+		slog.Debug("room cleanup started", "room", a.selfPID)
 		a.stopTickers()
 		a.cleanupChildActorsAndConnections()
 		a.cleanupPhasingTimers()
@@ -107,7 +107,7 @@ func (a *GameActor) performCleanup() {
 		}
 
 		a.logPerformanceMetrics()
-		fmt.Printf("GameActor %s: Cleanup complete.\n", a.selfPID)
+		slog.Debug("room cleanup complete", "room", a.selfPID)
 	})
 }
 
@@ -168,7 +168,7 @@ func (a *GameActor) checkGameOver(ctx actor.Context) {
 		a.gameOver = true
 		a.isStopping = true
 
-		fmt.Printf("GameActor %s: GAME_OVER - All bricks destroyed.\n", a.selfPID)
+		slog.Debug("all bricks destroyed", "room", a.selfPID)
 
 		winnerIndex := -1
 		highestScore := int32(-999999)
@@ -194,7 +194,7 @@ func (a *GameActor) checkGameOver(ctx actor.Context) {
 		if tie {
 			winnerIndex = -1
 		}
-		fmt.Printf("GameActor %s: GAME_OVER - Winner Index: %d (Score: %d)\n", a.selfPID, winnerIndex, highestScore)
+		slog.Info("game over", "room", a.selfPID, "winner", winnerIndex, "score", highestScore)
 
 		// Send any remaining pending updates immediately
 		a.handleBroadcastTick(ctx)
@@ -211,7 +211,7 @@ func (a *GameActor) checkGameOver(ctx actor.Context) {
 
 		// Notify RoomManager
 		if a.roomManagerPID != nil {
-			fmt.Printf("GameActor %s: GAME_OVER - Notifying RoomManager %s.\n", a.selfPID, a.roomManagerPID)
+			slog.Debug("notifying room manager of game over", "room", a.selfPID)
 			a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
 		}
 
@@ -235,15 +235,15 @@ func (a *GameActor) handleStopping(ctx actor.Context) {
 
 // handleStopped is called when the actor receives the Stopped message.
 func (a *GameActor) handleStopped(ctx actor.Context) {
-	fmt.Printf("GameActor %s: Stopped.\n", a.selfPID)
+	slog.Debug("room stopped", "room", a.selfPID)
 }
 
 // logPerformanceMetrics calculates and prints the average tick duration.
 func (a *GameActor) logPerformanceMetrics() {
 	if a.tickCount > 0 {
 		avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
-		fmt.Printf("PERF_METRIC GameActor %s: AvgPhysicsTick=%v Ticks=%d\n", a.selfPID, avgDuration, a.tickCount)
+		slog.Info("room metrics", "room", a.selfPID, "avgPhysicsTick", avgDuration, "ticks", a.tickCount)
 	} else {
-		fmt.Printf("PERF_METRIC GameActor %s: No physics ticks processed.\n", a.selfPID)
+		slog.Debug("room metrics", "room", a.selfPID, "ticks", 0)
 	}
 }

@@ -3,6 +3,7 @@ package game
 
 import (
 	"fmt"
+	"log/slog"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -136,12 +137,12 @@ func (a *GameActor) Receive(ctx actor.Context) {
 			if a.selfPID != nil {
 				pidStr = a.selfPID.String()
 			}
-			fmt.Printf("PANIC recovered in GameActor %s Receive: %v\nStack trace:\n%s\n", pidStr, r, string(debug.Stack()))
+			slog.Error("game actor panic", "room", pidStr, "panic", r, "stack", string(debug.Stack()))
 			// Ensure cleanup happens exactly once, even on panic
 			a.performCleanup()
 			// Notify room manager that this room is now defunct due to panic
 			if a.roomManagerPID != nil && a.engine != nil && a.selfPID != nil {
-				fmt.Printf("GameActor %s: Notifying RoomManager %s of panic exit.\n", a.selfPID, a.roomManagerPID)
+				slog.Debug("notifying room manager of panic exit", "room", a.selfPID)
 				a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
 			}
 			// Explicitly stop self if panic occurred before normal shutdown sequence
@@ -159,7 +160,7 @@ func (a *GameActor) Receive(ctx actor.Context) {
 	if a.selfPID == nil {
 		a.selfPID = ctx.Self()
 		if a.selfPID == nil {
-			fmt.Printf("ERROR: GameActor ???: Failed to set self PID on first Receive.")
+			slog.Error("game actor has no PID")
 			if ctx.RequestID() != "" {
 				ctx.Reply(fmt.Errorf("failed to initialize game actor"))
 			}
@@ -316,11 +317,11 @@ func (a *GameActor) Receive(ctx actor.Context) {
 // handleInternalTestPlayerAdd sets up a player and starts the game for testing purposes.
 func (a *GameActor) handleInternalTestPlayerAdd(ctx actor.Context, playerIndex int) {
 	if playerIndex < 0 || playerIndex >= utils.MaxPlayers {
-		fmt.Printf("ERROR: GameActor %s: Received internalTestingAddPlayerAndStart with invalid index %d\n", a.selfPID, playerIndex)
+		slog.Error("test player index out of range", "room", a.selfPID, "index", playerIndex)
 		return
 	}
 	if a.players[playerIndex] != nil {
-		fmt.Printf("WARN: GameActor %s: Received internalTestingAddPlayerAndStart for already occupied index %d\n", a.selfPID, playerIndex)
+		slog.Warn("test player slot occupied", "room", a.selfPID, "index", playerIndex)
 		return
 	}
 
@@ -340,7 +341,7 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx actor.Context, playerIndex i
 		// Tickers are now started by internalStartTickersTestMsg or by actual player connect
 		// a.startTickers(ctx) // Do not start tickers here automatically for this test message
 	} else if a.canvas == nil || a.canvas.Grid == nil {
-		fmt.Printf("ERROR: GameActor %s: Adding test player %d but grid/canvas not initialized!\n", a.selfPID, playerIndex)
+		slog.Error("test player added before grid initialization", "room", a.selfPID, "index", playerIndex)
 		return
 	}
 

@@ -2,11 +2,12 @@ package game
 
 import (
 	"encoding/json"
-	"fmt"
-	"github.com/lguibr/pongo/internal/transport"
+	"log/slog"
 	"math/rand"
 	"runtime/debug"
 	"time"
+
+	"github.com/lguibr/pongo/internal/transport"
 
 	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
@@ -20,7 +21,7 @@ import (
 func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, sessionID string, client *transport.Client, replyTo *actor.PID, response interface{}) (admitted bool) {
 	// Cancel cleanup timer if active, as a player is joining
 	if a.roomCleanupTimer != nil {
-		fmt.Printf("GameActor %s: Player joining, cancelling room cleanup timer.\n", a.selfPID)
+		slog.Debug("player joining; room cleanup cancelled", "room", a.selfPID)
 		a.roomCleanupTimer.Stop()
 		a.cleanupGeneration++
 		a.roomCleanupTimer = nil
@@ -28,7 +29,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("ERROR: Recovered from panic in handlePlayerConnect: %v\nStack: %s\n", r, string(debug.Stack()))
+			slog.Error("panic while admitting player", "room", a.selfPID, "panic", r, "stack", string(debug.Stack()))
 			// Close the connection that caused the panic to avoid inconsistent state
 			if ws != nil {
 				client.Close()
@@ -41,7 +42,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 
 	// Ensure ws is not nil for real connections
 	if ws == nil {
-		fmt.Printf("ERROR: GameActor %s: Received connect assignment with nil websocket connection.\n", a.selfPID)
+		slog.Error("admission without websocket connection", "room", a.selfPID)
 		return // Do not proceed if connection is nil in production path
 	}
 	remoteAddr := ws.RemoteAddr().String()
@@ -49,17 +50,16 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 	playerIndex := -1
 	if _, ok := a.connToIndex[ws]; ok {
 		// Player already connected, ignore duplicate assignment attempt
-		fmt.Printf("WARN: GameActor %s: Ignoring duplicate connect assignment for %s.\n", a.selfPID, remoteAddr)
+		slog.Warn("duplicate admission ignored", "room", a.selfPID, "remote", remoteAddr)
 		return
 	}
 	if playerIndex == -1 {
 		// Check if this is a reconnection attempt
 		for i, p := range a.players {
 			if p != nil {
-				fmt.Printf("GameActor %s: Checking player %d for reconnect. Stored SessionID: %s, Incoming: %s, Connected: %v\n", a.selfPID, i, p.SessionID, sessionID, p.IsConnected)
 				if sessionID != "" && !p.IsConnected && p.SessionID == sessionID {
 					playerIndex = i
-					fmt.Printf("GameActor %s: MATCH FOUND! Reconnecting player %d (Session: %s)\n", a.selfPID, playerIndex, sessionID)
+					slog.Debug("player reconnecting", "room", a.selfPID, "index", playerIndex)
 					break
 				}
 			}
@@ -77,7 +77,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 	}
 
 	if playerIndex == -1 {
-		fmt.Printf("WARN: GameActor %s: Room is full (%d players). Rejecting connection %s.\n", a.selfPID, utils.MaxPlayers, remoteAddr)
+		slog.Warn("room full; connection rejected", "room", a.selfPID, "remote", remoteAddr)
 		client.Close()
 		return
 	}
@@ -86,7 +86,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 	if timer, exists := a.reconnectTimers[playerIndex]; exists && timer != nil {
 		timer.Stop()
 		delete(a.reconnectTimers, playerIndex)
-		fmt.Printf("GameActor %s: Stopped reconnect timer for player %d.\n", a.selfPID, playerIndex)
+		slog.Debug("reconnect timer stopped", "room", a.selfPID, "index", playerIndex)
 	}
 
 	isFirstPlayerInRoom := true
@@ -109,7 +109,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 	}
 
 	if !a.gridInitialized {
-		fmt.Printf("GameActor %s: First player joined. Initializing grid and starting tickers.\n", a.selfPID)
+		slog.Debug("first player joined; grid initialized", "room", a.selfPID)
 		if a.canvas == nil {
 			a.canvas = NewCanvas(a.cfg.CanvasSize, a.cfg.GridSize)
 		}
@@ -119,7 +119,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 		a.gridDirty = true
 		a.startBroadcastTicker(ctx) // Only start broadcast ticker in lobby
 	} else if a.canvas == nil || a.canvas.Grid == nil {
-		fmt.Printf("ERROR: GameActor %s: Joining player %d but grid/canvas not initialized!\n", a.selfPID, playerIndex)
+		slog.Error("player joining before grid initialization", "room", a.selfPID, "index", playerIndex)
 		client.Close()
 		return
 	}
@@ -137,7 +137,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 
 		// Verify paddle exists
 		if a.paddles[playerIndex] == nil {
-			fmt.Printf("ERROR: GameActor %s: Reconnecting player %d has NIL paddle! Re-creating.\n", a.selfPID, playerIndex)
+			slog.Warn("reconnecting player had no paddle; recreated", "room", a.selfPID, "index", playerIndex)
 			paddleDataPtr := NewPaddle(a.cfg, playerIndex)
 			a.paddles[playerIndex] = paddleDataPtr
 
@@ -192,7 +192,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 	}
 	errAssign := client.Send(assignmentMsg)
 	if errAssign != nil {
-		fmt.Printf("ERROR: GameActor %s: Failed to send PlayerAssignmentMessage to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, errAssign)
+		slog.Warn("failed to send player assignment", "room", a.selfPID, "index", playerIndex, "remote", remoteAddr, "err", errAssign)
 		a.handlePlayerDisconnect(ctx, ws) // Trigger disconnect handling
 		return
 	}
@@ -249,7 +249,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 	}
 	errEntities := client.Send(initialEntitiesMsg)
 	if errEntities != nil {
-		fmt.Printf("ERROR: GameActor %s: Failed to send InitialPlayersAndBallsState to player %d (%s): %v\n", a.selfPID, playerIndex, remoteAddr, errEntities)
+		slog.Warn("failed to send initial state", "room", a.selfPID, "index", playerIndex, "remote", remoteAddr, "err", errEntities)
 		a.handlePlayerDisconnect(ctx, ws) // Trigger disconnect handling
 		return
 	}
@@ -279,9 +279,9 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 			R3fY:        r3fY,
 		}
 		a.addUpdate(playerJoinedMsg)
-		fmt.Printf("GameActor %s: Broadcasted PlayerJoined for player %d\n", a.selfPID, playerIndex)
+		slog.Debug("player joined", "room", a.selfPID, "index", playerIndex)
 	} else {
-		fmt.Printf("WARN: GameActor %s: Cannot broadcast PlayerJoined for player %d - Paddle is nil!\n", a.selfPID, playerIndex)
+		slog.Warn("player joined without paddle; not announced", "room", a.selfPID, "index", playerIndex)
 	}
 
 	// Spawn initial Ball Actor (will generate BallSpawned update with R3F coords)
@@ -316,7 +316,7 @@ func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, s
 	if a.broadcasterPID != nil {
 		a.engine.Send(a.broadcasterPID, AddClient{Conn: ws, Client: client}, a.selfPID)
 	} else {
-		fmt.Printf("WARN: GameActor %s: BroadcasterPID is nil. Client %s will not receive updates.\n", a.selfPID, remoteAddr)
+		slog.Warn("room has no broadcaster; client will not receive updates", "room", a.selfPID, "remote", remoteAddr)
 	}
 
 	if err := client.Send(GameUpdatesBatch{MessageType: "gameUpdates", Updates: []interface{}{a.fullGridUpdate()}}); err != nil {
@@ -361,7 +361,7 @@ func (a *GameActor) handlePlayerDisconnect(ctx actor.Context, conn *websocket.Co
 		return
 	}
 
-	fmt.Printf("GameActor %s: Handling disconnect for player %d (%s)\n", a.selfPID, playerIndex, connAddr)
+	slog.Debug("handling disconnect", "room", a.selfPID, "index", playerIndex, "remote", connAddr)
 	pInfo.IsConnected = false
 	pInfo.IsReady = false
 	if paddle := a.paddles[playerIndex]; paddle != nil {
@@ -408,7 +408,7 @@ func (a *GameActor) handlePlayerDisconnect(ctx actor.Context, conn *websocket.Co
 		engine.Send(broadcasterPID, RemoveClient{Conn: conn}, selfPID)
 	}
 
-	fmt.Printf("GameActor %s: Player %d (%s) disconnected. Starting 30s grace period.\n", a.selfPID, playerIndex, connAddr)
+	slog.Info("player disconnected; holding slot", "room", a.selfPID, "index", playerIndex, "grace", 30*time.Second)
 
 	// Start Reconnect Timer
 	if a.reconnectTimers[playerIndex] != nil {
@@ -458,7 +458,7 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx actor.Context, playerIndex i
 		return
 	}
 
-	fmt.Printf("GameActor %s: Reconnect timer expired for player %d. Removing permanently.\n", a.selfPID, playerIndex)
+	slog.Info("reconnect grace expired; player removed", "room", a.selfPID, "index", playerIndex)
 
 	// Now perform the actual removal (logic from original handlePlayerDisconnect)
 
@@ -508,7 +508,7 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx actor.Context, playerIndex i
 	}
 
 	if !playersLeft && !a.gameOver {
-		fmt.Printf("GameActor %s: Room is empty after timeout. Starting cleanup timer.\n", a.selfPID)
+		slog.Debug("room empty; cleanup timer started", "room", a.selfPID)
 		if a.roomCleanupTimer != nil {
 			a.roomCleanupTimer.Stop()
 		}
@@ -548,17 +548,17 @@ func (a *GameActor) handleRoomCleanupTimeout(ctx actor.Context) {
 	}
 
 	if !playersLeft && !a.gameOver {
-		fmt.Printf("GameActor %s: Cleanup timer expired. Room still empty. Notifying RoomManager %s.\n", a.selfPID, a.roomManagerPID)
+		slog.Info("empty room closed", "room", a.selfPID)
 		if a.roomManagerPID != nil && a.selfPID != nil {
 			a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
 		} else {
-			fmt.Printf("ERROR: GameActor %s cannot notify RoomManager, PID is nil. Stopping self.\n", a.selfPID)
+			slog.Error("room has no manager to notify; stopping", "room", a.selfPID)
 			if a.selfPID != nil {
 				a.engine.Stop(a.selfPID)
 			}
 		}
 	} else {
-		fmt.Printf("GameActor %s: Cleanup timer expired but room is not empty or game over. Ignoring.\n", a.selfPID)
+		slog.Debug("cleanup timer expired but room is active; ignored", "room", a.selfPID)
 	}
 }
 
@@ -589,7 +589,7 @@ func (a *GameActor) handlePaddleDirection(ctx actor.Context, wsConn *websocket.C
 // The setInitialPhasing flag determines if the ball starts phasing (used by power-ups).
 func (a *GameActor) spawnBall(ctx actor.Context, ownerIndex, x, y int, expireIn time.Duration, isPermanent bool, setInitialPhasing bool) {
 	if ownerIndex < -1 || ownerIndex >= utils.MaxPlayers {
-		fmt.Printf("WARN: GameActor %s received spawnBall request with invalid owner index %d.\n", a.selfPID, ownerIndex)
+		slog.Warn("ball spawn with invalid owner ignored", "room", a.selfPID, "owner", ownerIndex)
 		return
 	}
 	if ownerIndex >= 0 && (a.players[ownerIndex] == nil || !a.players[ownerIndex].IsConnected) {
@@ -661,7 +661,7 @@ func (a *GameActor) handlePlayerReady(ctx actor.Context, wsConn *websocket.Conn,
 		return
 	}
 
-	fmt.Printf("GameActor %s: Player %d set ready to %v\n", a.selfPID, playerIndex, isReady)
+	slog.Debug("player readiness changed", "room", a.selfPID, "index", playerIndex, "ready", isReady)
 
 	// Update readiness
 	a.players[playerIndex].IsReady = isReady
@@ -691,7 +691,7 @@ func (a *GameActor) handlePlayerReady(ctx actor.Context, wsConn *websocket.Conn,
 	// Check if we should start countdown or cancel it
 	if allReady && playerCount > 0 {
 		if a.phase == PhaseLobby {
-			fmt.Printf("GameActor %s: All players ready. Starting countdown.\n", a.selfPID)
+			slog.Debug("all players ready; countdown started", "room", a.selfPID)
 			a.startCountdown(ctx)
 		}
 	} else {
@@ -739,7 +739,7 @@ func (a *GameActor) handleCountdownTick(ctx actor.Context, secondsRemaining int)
 
 // startGame transitions the room to the playing phase.
 func (a *GameActor) startGame(ctx actor.Context) {
-	fmt.Printf("GameActor %s: startGame called. Current Phase: %v\n", a.selfPID, a.phase)
+	slog.Debug("starting game", "room", a.selfPID, "phase", a.phase)
 	if a.phase != PhaseCountingDown {
 		return
 	}
@@ -771,7 +771,7 @@ func (a *GameActor) handleForceStartGame(ctx actor.Context) {
 	}
 	a.forceStartPending = false
 
-	fmt.Printf("GameActor %s: handleForceStartGame called. Current Phase: %v\n", a.selfPID, a.phase)
+	slog.Debug("force-starting game", "room", a.selfPID, "phase", a.phase)
 	if a.phase == PhasePlaying {
 		return
 	}

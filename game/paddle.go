@@ -1,7 +1,7 @@
 package game
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/lguibr/pongo/utils"
 )
@@ -70,7 +70,7 @@ func NewPaddle(cfg utils.Config, index int) *Paddle {
 		paddle.Y = cfg.CanvasSize - paddle.Height
 	default:
 		// Should not happen with MaxPlayers check
-		fmt.Printf("Warning: Invalid paddle index %d\n", index)
+		slog.Warn("invalid paddle index", "index", index)
 		paddle.X, paddle.Y, paddle.Width, paddle.Height = 0, 0, 10, 10 // Default fallback
 	}
 

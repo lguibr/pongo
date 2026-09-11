@@ -1,7 +1,7 @@
 package server
 
 import (
-	"fmt"
+	"log/slog"
 	"sync/atomic"
 
 	"github.com/lguibr/pongo/internal/actor"
@@ -28,7 +28,7 @@ func New(engine *actor.Engine, roomManagerPID *actor.PID) *Server { // Changed p
 // GetRoomManagerPID returns the PID of the room manager actor.
 func (s *Server) GetRoomManagerPID() *actor.PID {
 	if s == nil {
-		fmt.Println("ERROR: GetRoomManagerPID called on nil Server")
+		slog.Error("GetRoomManagerPID called on nil Server")
 		return nil
 	}
 	return s.roomManagerPID
@@ -37,7 +37,7 @@ func (s *Server) GetRoomManagerPID() *actor.PID {
 // GetEngine returns the Bollywood engine instance.
 func (s *Server) GetEngine() *actor.Engine {
 	if s == nil {
-		fmt.Println("ERROR: GetEngine called on nil Server")
+		slog.Error("GetEngine called on nil Server")
 		return nil
 	}
 	return s.engine

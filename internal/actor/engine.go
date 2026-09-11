@@ -5,6 +5,8 @@ package actor
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -202,6 +204,7 @@ func (p *process) run() {
 		defer func() {
 			if r := recover(); r != nil {
 				panicked = true
+				slog.Error("actor panic", "pid", p.pid, "panic", r, "stack", string(debug.Stack()))
 				if env.reply != nil {
 					select {
 					case env.reply <- fmt.Errorf("actor panic: %v", r):
@@ -215,7 +218,7 @@ func (p *process) run() {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("actor %s initialization panic: %v\n", p.pid, r)
+			slog.Error("actor initialization panic", "pid", p.pid, "panic", r)
 		}
 		p.mu.Lock()
 		p.stopping = true

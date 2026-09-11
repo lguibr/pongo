@@ -2,7 +2,7 @@
 package game
 
 import (
-	"fmt"
+	"log/slog"
 	"math"
 	"math/rand" // Needed for NewBall velocity
 
@@ -133,13 +133,13 @@ func (ball *Ball) Move() {
 // getCenterIndex calculates the grid cell indices for the ball's center.
 func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) {
 	if ball.canvasSize <= 0 || cfg.GridSize <= 0 {
-		fmt.Printf("WARN: getCenterIndex called with invalid canvasSize (%d) or GridSize (%d)\n", ball.canvasSize, cfg.GridSize)
+		slog.Warn("getCenterIndex: invalid canvas or grid size", "canvasSize", ball.canvasSize, "gridSize", cfg.GridSize)
 		return 0, 0
 	}
 	// Ensure cellSize is positive before division
 	cellSizeFloat := float64(ball.canvasSize) / float64(cfg.GridSize)
 	if cellSizeFloat <= 0 {
-		fmt.Printf("WARN: getCenterIndex calculated cellSize <= 0 (canvasSize=%d, gridSize=%d)\n", ball.canvasSize, cfg.GridSize)
+		slog.Warn("getCenterIndex: non-positive cell size", "canvasSize", ball.canvasSize, "gridSize", cfg.GridSize)
 		return 0, 0
 	}
 
