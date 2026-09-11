@@ -9,14 +9,6 @@ import (
 	"github.com/lguibr/pongo/utils"
 )
 
-// --- Message Types for Ball Communication ---
-
-// BallPositionMessage signals the ball's current state (sent by BallActor).
-// DEPRECATED in favor of PositionUpdateMessage
-type BallPositionMessage struct {
-	Ball *Ball // Pointer to a state snapshot
-}
-
 // --- Ball Struct (State Holder) ---
 
 type Ball struct {
@@ -29,7 +21,7 @@ type Ball struct {
 	Radius      int  `json:"radius"`
 	Id          int  `json:"id"`         // Unique ID (e.g., timestamp + index)
 	OwnerIndex  int  `json:"ownerIndex"` // Index of the player who last hit it (-1 for ownerless)
-	Phasing     bool `json:"phasing"`    // Is the ball currently phasing? (Managed by BallActor)
+	Phasing     bool `json:"phasing"`    // Is the ball currently phasing?
 	Mass        int  `json:"mass"`
 	IsPermanent bool `json:"isPermanent"` // True if this is the player's initial, non-expiring ball
 	Collided    bool `json:"collided"`    // True for one tick after any collision (wall, paddle, brick)
@@ -167,7 +159,7 @@ func (ball *Ball) getCenterIndex(cfg utils.Config) (col, row int) {
 	return finalCol, finalRow
 }
 
-// --- Velocity/State Modification Methods (Called by BallActor via messages) ---
+// --- Velocity/State Modification Methods ---
 
 // ReflectVelocity reverses the velocity along the specified axis, ensuring it doesn't become zero.
 func (ball *Ball) ReflectVelocity(axis string) {

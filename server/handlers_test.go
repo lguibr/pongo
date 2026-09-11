@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/lguibr/pongo/game"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/websocket"
 )
@@ -20,20 +20,18 @@ import (
 type MockRoomManager struct {
 	mu           sync.Mutex
 	Received     []interface{}
-	PID          *bollywood.PID
+	PID          *actor.PID
 	Rooms        map[string]int
 	AssignErr    error
-	AssignPID    *bollywood.PID // PID to assign in response
+	AssignPID    *actor.PID // PID to assign in response
 	GetListReply game.RoomListResponse
 	GetListErr   error
 	ShouldReply  bool // Flag to control reply behavior in tests
 }
 
-func (a *MockRoomManager) Receive(ctx bollywood.Context) {
+func (a *MockRoomManager) Receive(ctx actor.Context) {
 	a.mu.Lock()
 	shouldReply := a.ShouldReply
-	assignErr := a.AssignErr
-	assignPID := a.AssignPID
 	reply := a.GetListReply
 	replyErr := a.GetListErr
 	a.mu.Unlock()
@@ -43,19 +41,7 @@ func (a *MockRoomManager) Receive(ctx bollywood.Context) {
 	a.Received = append(a.Received, msg)
 	a.mu.Unlock()
 
-	switch m := msg.(type) {
-	// Use correct message type
-	case game.FindRoomRequest:
-		if m.ReplyTo != nil {
-			if assignErr != nil {
-				// Simulate closing connection on error if needed by test
-				// _ = m.WsConn.Close()
-				ctx.Engine().Send(m.ReplyTo, game.AssignRoomResponse{RoomPID: nil}, a.PID)
-			} else {
-				// Simulate successful assignment
-				ctx.Engine().Send(m.ReplyTo, game.AssignRoomResponse{RoomPID: assignPID}, a.PID)
-			}
-		}
+	switch msg.(type) {
 	case game.GetRoomListRequest:
 		if shouldReply {
 			// ReplyTo is now implicit via Ask/Reply
@@ -87,18 +73,18 @@ func (a *MockRoomManager) ClearMessages() {
 }
 
 // --- Test Setup ---
-func setupServerWithMockManager(t *testing.T) (*Server, *bollywood.Engine, *MockRoomManager, *bollywood.PID) {
-	engine := bollywood.NewEngine()
+func setupServerWithMockManager(t *testing.T) (*Server, *actor.Engine, *MockRoomManager, *actor.PID) {
+	engine := actor.NewEngine()
 	mockRoomManager := &MockRoomManager{
 		Rooms: make(map[string]int),
 		GetListReply: game.RoomListResponse{
 			Rooms: map[string]int{"mock-room-1": 2},
 		},
-		ShouldReply: true,                                      // Default to replying
-		AssignPID:   &bollywood.PID{ID: "mock-game-actor-pid"}, // Default PID to assign
+		ShouldReply: true,                                  // Default to replying
+		AssignPID:   &actor.PID{ID: "mock-game-actor-pid"}, // Default PID to assign
 	}
 	// Assign PID directly to the mock actor and capture the return value
-	roomManagerPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockRoomManager }))
+	roomManagerPID := engine.Spawn(actor.NewProps(func() actor.Actor { return mockRoomManager }))
 	assert.NotNil(t, roomManagerPID, "MockRoomManager PID should not be nil")
 	mockRoomManager.PID = roomManagerPID // Store the PID in the mock
 
@@ -148,18 +134,6 @@ func TestHandleSubscribe_ForwardsQuickPlayRequest(t *testing.T) {
 		assert.True(t, ok)
 		assert.NotNil(t, req.ReplyTo, "Request should contain a non-nil ReplyTo PID")
 	}
-}
-
-func TestReadLoop_ForwardsDirectionToManager(t *testing.T) {
-	t.Skip("Skipping test: Input forwarding now goes directly to GameActor, not RoomManager.")
-}
-
-func TestReadLoop_SendsDisconnectToManagerOnError(t *testing.T) {
-	t.Skip("Skipping test: Disconnect now goes directly to GameActor, not RoomManager.")
-}
-
-func TestReadLoop_SendsDisconnectToManagerOnClose(t *testing.T) {
-	t.Skip("Skipping test: Disconnect now goes directly to GameActor, not RoomManager.")
 }
 
 func TestHandleGetRooms_QueriesManagerAndReturnsList(t *testing.T) {

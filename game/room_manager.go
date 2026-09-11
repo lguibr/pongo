@@ -3,7 +3,7 @@ package game
 import (
 	"crypto/rand"
 	"encoding/hex"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/internal/transport"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
@@ -14,7 +14,7 @@ import (
 const maxRooms = 75
 
 type RoomInfo struct {
-	PID         *bollywood.PID
+	PID         *actor.PID
 	PlayerCount int
 	Code        string
 	IsPublic    bool
@@ -22,22 +22,22 @@ type RoomInfo struct {
 	Sessions    map[string]bool
 }
 type pendingAdmission struct {
-	room     *bollywood.PID
-	reply    *bollywood.PID
+	room     *actor.PID
+	reply    *actor.PID
 	session  string
 	reserved bool
 }
 type RoomManagerActor struct {
 	pending map[string]pendingAdmission
-	engine  *bollywood.Engine
+	engine  *actor.Engine
 	cfg     utils.Config
 	rooms   map[string]*RoomInfo
 	mu      sync.RWMutex
-	selfPID *bollywood.PID
+	selfPID *actor.PID
 }
 
-func NewRoomManagerProducer(e *bollywood.Engine, cfg utils.Config) bollywood.Producer {
-	return func() bollywood.Actor {
+func NewRoomManagerProducer(e *actor.Engine, cfg utils.Config) actor.Producer {
+	return func() actor.Actor {
 		return &RoomManagerActor{engine: e, cfg: cfg, rooms: make(map[string]*RoomInfo)}
 	}
 }
@@ -48,7 +48,7 @@ func (a *RoomManagerActor) generateRoomCode() string {
 	}
 	return strings.ToUpper(hex.EncodeToString(b[:]))
 }
-func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
+func (a *RoomManagerActor) Receive(ctx actor.Context) {
 	a.selfPID = ctx.Self()
 	if a.pending == nil {
 		a.pending = make(map[string]pendingAdmission)
@@ -100,14 +100,14 @@ func (a *RoomManagerActor) Receive(ctx bollywood.Context) {
 			rooms[id] = r.PlayerCount
 		}
 		ctx.Reply(RoomListResponse{Rooms: rooms})
-	case bollywood.Stopping:
+	case actor.Stopping:
 		for _, r := range a.rooms {
 			a.engine.Stop(r.PID)
 		}
 		a.rooms = make(map[string]*RoomInfo)
 	}
 }
-func (a *RoomManagerActor) release(pid *bollywood.PID, session string, rejected bool) {
+func (a *RoomManagerActor) release(pid *actor.PID, session string, rejected bool) {
 	if pid == nil {
 		return
 	}
@@ -124,7 +124,7 @@ func (a *RoomManagerActor) release(pid *bollywood.PID, session string, rejected 
 		a.engine.Stop(pid)
 	}
 }
-func (a *RoomManagerActor) admit(reply *bollywood.PID, ws *websocket.Conn, client *transport.Client, session, code string, create, public, quick bool) {
+func (a *RoomManagerActor) admit(reply *actor.PID, ws *websocket.Conn, client *transport.Client, session, code string, create, public, quick bool) {
 	if reply == nil || client == nil || ws == nil {
 		return
 	}
@@ -168,7 +168,7 @@ func (a *RoomManagerActor) admit(reply *bollywood.PID, ws *websocket.Conn, clien
 				break
 			}
 		}
-		pid := a.engine.Spawn(bollywood.NewProps(NewGameActorProducer(a.engine, a.cfg, a.selfPID)))
+		pid := a.engine.Spawn(actor.NewProps(NewGameActorProducer(a.engine, a.cfg, a.selfPID)))
 		if pid == nil {
 			fail("Server is stopping")
 			return

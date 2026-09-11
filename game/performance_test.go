@@ -1,7 +1,7 @@
 package game
 
 import (
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"testing"
 )
@@ -9,10 +9,10 @@ import (
 // BenchmarkRoomBroadcastStableGrid measures room-side snapshot work, excluding
 // encoding and socket IO (covered by the protocol-correct multiroom load test).
 func BenchmarkRoomBroadcastStableGrid(b *testing.B) {
-	e := bollywood.NewEngine()
+	e := actor.NewEngine()
 	a := NewGameActorProducer(e, utils.DefaultConfig(), nil)().(*GameActor)
-	a.selfPID = &bollywood.PID{ID: "room"}
-	a.broadcasterPID = &bollywood.PID{ID: "sink"}
+	a.selfPID = &actor.PID{ID: "room"}
+	a.broadcasterPID = &actor.PID{ID: "sink"}
 	a.canvas.Grid.FillSymmetrical(a.cfg)
 	for i := 0; i < 4; i++ {
 		a.paddles[i] = NewPaddle(a.cfg, i)
@@ -26,16 +26,15 @@ func BenchmarkRoomBroadcastStableGrid(b *testing.B) {
 	}
 }
 func BenchmarkRoomPhysics(b *testing.B) {
-	e := bollywood.NewEngine()
+	e := actor.NewEngine()
 	cfg := utils.DefaultConfig()
 	cfg.PowerUpChance = 0
 	a := NewGameActorProducer(e, cfg, nil)().(*GameActor)
-	a.selfPID = &bollywood.PID{ID: "room"}
+	a.selfPID = &actor.PID{ID: "room"}
 	a.canvas.Grid.FillSymmetrical(cfg)
 	for i := 0; i < 4; i++ {
 		a.paddles[i] = NewPaddle(cfg, i)
 		a.balls[i] = NewBall(cfg, 300+i*20, 300, i, i, true)
-		a.ballActors[i] = &bollywood.PID{ID: "fixture"}
 	}
 	b.ReportAllocs()
 	b.ResetTimer()

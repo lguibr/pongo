@@ -1,7 +1,7 @@
 package game
 
 import (
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"time"
 )
@@ -30,7 +30,7 @@ func (a *GameActor) fullGridUpdate() *FullGridUpdate {
 	}
 	return &FullGridUpdate{MessageType: "fullGridUpdate", CellSize: a.cfg.CellSize, Bricks: cells}
 }
-func (a *GameActor) handleBroadcastTick(ctx bollywood.Context) {
+func (a *GameActor) handleBroadcastTick(ctx actor.Context) {
 	if a.broadcasterPID == nil {
 		return
 	}

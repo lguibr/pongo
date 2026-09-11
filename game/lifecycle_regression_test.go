@@ -1,7 +1,7 @@
 package game
 
 import (
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/internal/transport"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
@@ -12,28 +12,27 @@ import (
 )
 
 type localContext struct {
-	e   *bollywood.Engine
-	pid *bollywood.PID
+	e   *actor.Engine
+	pid *actor.PID
 	msg interface{}
 }
 
-func (c localContext) Engine() *bollywood.Engine { return c.e }
-func (c localContext) Self() *bollywood.PID      { return c.pid }
-func (c localContext) Sender() *bollywood.PID    { return nil }
-func (c localContext) Message() interface{}      { return c.msg }
-func (c localContext) RequestID() string         { return "" }
-func (c localContext) Reply(interface{})         {}
+func (c localContext) Engine() *actor.Engine { return c.e }
+func (c localContext) Self() *actor.PID      { return c.pid }
+func (c localContext) Sender() *actor.PID    { return nil }
+func (c localContext) Message() interface{}  { return c.msg }
+func (c localContext) RequestID() string     { return "" }
+func (c localContext) Reply(interface{})     {}
 func newLocalRoom(t *testing.T) (*GameActor, localContext) {
-	e := bollywood.NewEngine()
+	e := actor.NewEngine()
 	t.Cleanup(func() { e.Shutdown(time.Second) })
 	a := NewGameActorProducer(e, utils.DefaultConfig(), nil)().(*GameActor)
-	a.selfPID = &bollywood.PID{ID: "test-room"}
+	a.selfPID = &actor.PID{ID: "test-room"}
 	return a, localContext{e: e, pid: a.selfPID}
 }
 func TestGameOverAlwaysCleansChildrenAndTimers(t *testing.T) {
 	a, c := newLocalRoom(t)
 	a.handleStart(c)
-	a.paddleActors[0] = a.engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return &MockSimpleActor{} }))
 	a.startPhasingTimer(1)
 	a.checkGameOver(c) // Empty grid -> gameOver sets isStopping before Stopping.
 	if !a.isStopping.Load() {
@@ -52,23 +51,12 @@ func TestGameOverAlwaysCleansChildrenAndTimers(t *testing.T) {
 		t.Fatal("phasing timers leaked")
 	}
 }
-func TestRoomEntitiesDoNotSpawnActorsOrAcceptOldState(t *testing.T) {
+func TestRoomEntitiesDoNotSpawnActors(t *testing.T) {
 	a, c := newLocalRoom(t)
 	a.handleInternalTestPlayerAdd(c, 0)
 	a.spawnBall(c, 0, 300, 300, 0, true, false)
 	if len(a.balls) != 1 || a.engine.ActiveCount() != 0 {
 		t.Fatal("entities spawned actors")
-	}
-	var ball *Ball
-	for _, b := range a.balls {
-		ball = b
-	}
-	ball.Vx = 17
-	ball.Phasing = true
-	c.msg = BallStateUpdate{ID: ball.Id, Vx: -10, Phasing: false}
-	a.Receive(c)
-	if ball.Vx != 17 || !ball.Phasing {
-		t.Fatal("obsolete entity reply overwrote room state")
 	}
 }
 func TestForceStartWaitsForInitializedGrid(t *testing.T) {
@@ -98,7 +86,7 @@ func TestStalePhasingExpiryIsIgnored(t *testing.T) {
 func TestFullGridCoordinatesAndUnchangedGridNotRepeated(t *testing.T) {
 	a, c := newLocalRoom(t)
 	mock := &MockBroadcasterActor{}
-	a.broadcasterPID = a.engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mock }))
+	a.broadcasterPID = a.engine.Spawn(actor.NewProps(func() actor.Actor { return mock }))
 	a.gridDirty = true
 	a.handleBroadcastTick(c)
 	a.handleBroadcastTick(c)
@@ -123,16 +111,16 @@ func TestFullGridCoordinatesAndUnchangedGridNotRepeated(t *testing.T) {
 }
 
 func TestRoomStopCancelsQueuedAdmissions(t *testing.T) {
-	e := bollywood.NewEngine()
+	e := actor.NewEngine()
 	defer e.Shutdown(time.Second)
 	gate := make(chan struct{})
 	started := make(chan struct{})
-	room := e.Spawn(bollywood.NewProps(func() bollywood.Actor { return &gatedRoom{gate: gate, started: started} }))
+	room := e.Spawn(actor.NewProps(func() actor.Actor { return &gatedRoom{gate: gate, started: started} }))
 	<-started
 	sink := &MockBroadcasterActor{}
-	reply := e.Spawn(bollywood.NewProps(func() bollywood.Actor { return sink }))
+	reply := e.Spawn(actor.NewProps(func() actor.Actor { return sink }))
 	manager := NewRoomManagerProducer(e, utils.DefaultConfig())().(*RoomManagerActor)
-	manager.selfPID = &bollywood.PID{ID: "manager"}
+	manager.selfPID = &actor.PID{ID: "manager"}
 	manager.pending = make(map[string]pendingAdmission)
 	manager.rooms[room.ID] = &RoomInfo{PID: room, Code: "CODE", Sessions: make(map[string]bool)}
 	manager.admit(reply, &websocket.Conn{}, &transport.Client{}, "reservation", "CODE", false, false, false)
@@ -159,29 +147,29 @@ func TestRoomStopCancelsQueuedAdmissions(t *testing.T) {
 
 type gatedRoom struct{ gate, started chan struct{} }
 
-func (g *gatedRoom) Receive(c bollywood.Context) {
-	if _, ok := c.Message().(bollywood.Started); ok {
+func (g *gatedRoom) Receive(c actor.Context) {
+	if _, ok := c.Message().(actor.Started); ok {
 		close(g.started)
 		<-g.gate
 	}
 }
 
 func TestConcurrentSessionAdmissionsCannotShareReservation(t *testing.T) {
-	e := bollywood.NewEngine()
+	e := actor.NewEngine()
 	defer e.Shutdown(time.Second)
 	gate := make(chan struct{})
 	started := make(chan struct{})
-	room := e.Spawn(bollywood.NewProps(func() bollywood.Actor { return &gatedRoom{gate: gate, started: started} }))
+	room := e.Spawn(actor.NewProps(func() actor.Actor { return &gatedRoom{gate: gate, started: started} }))
 	<-started
 	defer close(gate)
 	sink := &MockBroadcasterActor{}
-	reply := e.Spawn(bollywood.NewProps(func() bollywood.Actor { return sink }))
+	reply := e.Spawn(actor.NewProps(func() actor.Actor { return sink }))
 	manager := NewRoomManagerProducer(e, utils.DefaultConfig())().(*RoomManagerActor)
-	manager.selfPID = &bollywood.PID{ID: "manager"}
+	manager.selfPID = &actor.PID{ID: "manager"}
 	manager.pending = make(map[string]pendingAdmission)
 	manager.rooms[room.ID] = &RoomInfo{PID: room, Code: "CODE", Sessions: make(map[string]bool)}
 	manager.admit(reply, &websocket.Conn{}, &transport.Client{}, "same", "CODE", false, false, false)
-	manager.admit(&bollywood.PID{ID: "second"}, &websocket.Conn{}, &transport.Client{}, "same", "CODE", false, false, false)
+	manager.admit(&actor.PID{ID: "second"}, &websocket.Conn{}, &transport.Client{}, "same", "CODE", false, false, false)
 	if len(manager.pending) != 1 || manager.rooms[room.ID].PlayerCount != 1 {
 		t.Fatal("duplicate session was admitted without a reservation")
 	}
@@ -210,8 +198,8 @@ func TestCommittedAdmissionFailureReleasesExactlyOnce(t *testing.T) {
 	ws, client := gameSocket(t)
 	defer a.performCleanup()
 	sink := &MockBroadcasterActor{}
-	a.roomManagerPID = a.engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return sink }))
-	a.handleAdmission(c, AssignPlayerToRoom{WsConn: ws, Client: client, SessionID: "failed-output", Reserved: true, ReplyTo: &bollywood.PID{ID: "stopped-handler"}})
+	a.roomManagerPID = a.engine.Spawn(actor.NewProps(func() actor.Actor { return sink }))
+	a.handleAdmission(c, AssignPlayerToRoom{WsConn: ws, Client: client, SessionID: "failed-output", Reserved: true, ReplyTo: &actor.PID{ID: "stopped-handler"}})
 	if a.players[0] == nil || a.players[0].IsConnected {
 		t.Fatal("committed failed connection did not enter grace period")
 	}
@@ -245,7 +233,7 @@ func TestCleanupClosesClientBeforeBroadcasterRegistration(t *testing.T) {
 	ws, client := gameSocket(t)
 	gate := make(chan struct{})
 	started := make(chan struct{})
-	a.broadcasterPID = a.engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return &gatedRoom{gate: gate, started: started} }))
+	a.broadcasterPID = a.engine.Spawn(actor.NewProps(func() actor.Actor { return &gatedRoom{gate: gate, started: started} }))
 	<-started
 	defer close(gate)
 	a.players[0] = &playerInfo{Ws: ws, Client: client, IsConnected: true}

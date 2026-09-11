@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/internal/transport"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
@@ -23,7 +23,7 @@ const (
 	PhasePlaying
 )
 
-// GameActor manages the overall game state and coordinates child actors for a single room.
+// GameActor owns all simulation state for a single room.
 type GameActor struct {
 	finalDeliveryHandedOff bool
 	reconnectGeneration    uint64
@@ -35,25 +35,23 @@ type GameActor struct {
 	gridInitialized        bool
 	forceStartPending      bool
 	nextBallID             int
-	physicsPending         bollywood.PendingTick
-	broadcastPending       bollywood.PendingTick
+	physicsPending         actor.PendingTick
+	broadcastPending       actor.PendingTick
 	lastHeartbeat          time.Time
 	cfg                    utils.Config
 	canvas                 *Canvas
 	players                [utils.MaxPlayers]*playerInfo // State managed serially by actor
 	paddles                [utils.MaxPlayers]*Paddle     // Local cache, authoritative state for simulation
-	paddleActors           [utils.MaxPlayers]*bollywood.PID
-	balls                  map[int]*Ball // Local cache, authoritative state for simulation
-	ballActors             map[int]*bollywood.PID
-	engine                 *bollywood.Engine
+	balls                  map[int]*Ball                 // Local cache, authoritative state for simulation
+	engine                 *actor.Engine
 	physicsTicker          *time.Ticker // Ticker for physics/game logic
 	stopPhysicsCh          chan struct{}
 	broadcastTicker        *time.Ticker // Ticker for broadcasting state
 	stopBroadcastCh        chan struct{}
 	tickerMu               sync.Mutex // Mutex to protect ticker fields and channels
-	selfPID                *bollywood.PID
-	roomManagerPID         *bollywood.PID
-	broadcasterPID         *bollywood.PID // PID of the dedicated broadcaster actor
+	selfPID                *actor.PID
+	roomManagerPID         *actor.PID
+	broadcasterPID         *actor.PID // PID of the dedicated broadcaster actor
 	connToIndex            map[*websocket.Conn]int
 	playerConns            [utils.MaxPlayers]*websocket.Conn
 	gameOver               atomic.Bool // Flag to prevent multiple game over triggers
@@ -104,8 +102,8 @@ type playerInfo struct {
 }
 
 // NewGameActorProducer creates a producer for the GameActor.
-func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManagerPID *bollywood.PID) bollywood.Producer {
-	return func() bollywood.Actor {
+func NewGameActorProducer(engine *actor.Engine, cfg utils.Config, roomManagerPID *actor.PID) actor.Producer {
+	return func() actor.Actor {
 		canvas := NewCanvas(cfg.CanvasSize, cfg.GridSize)
 		// Grid generation happens when first player joins now
 
@@ -114,9 +112,7 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 			canvas:           canvas, // Canvas exists, but grid is empty initially
 			players:          [utils.MaxPlayers]*playerInfo{},
 			paddles:          [utils.MaxPlayers]*Paddle{}, // Initialize cache map
-			paddleActors:     [utils.MaxPlayers]*bollywood.PID{},
-			balls:            make(map[int]*Ball), // Initialize cache map
-			ballActors:       make(map[int]*bollywood.PID),
+			balls:            make(map[int]*Ball),         // Initialize cache map
 			engine:           engine,
 			stopPhysicsCh:    make(chan struct{}), // Initialize channels here
 			stopBroadcastCh:  make(chan struct{}),
@@ -139,7 +135,7 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 }
 
 // Receive is the main message handler for the GameActor.
-func (a *GameActor) Receive(ctx bollywood.Context) {
+func (a *GameActor) Receive(ctx actor.Context) {
 	// Defer panic recovery
 	defer func() {
 		if r := recover(); r != nil {
@@ -181,7 +177,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 	// Ignore messages if game is already over or stopping, except for system messages
 	if a.gameOver.Load() || a.isStopping.Load() {
 		switch ctx.Message().(type) {
-		case AssignPlayerToRoom, bollywood.Stopping, bollywood.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
+		case AssignPlayerToRoom, actor.Stopping, actor.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
 			// Allow these messages during game over/stopping for cleanup
 		default:
 			// If it's an Ask request during shutdown, reply with an error
@@ -194,7 +190,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 
 	// Main message switch
 	switch m := ctx.Message().(type) {
-	case bollywood.Started:
+	case actor.Started:
 		a.handleStart(ctx)
 
 	case GameTick: // Message from physicsTicker
@@ -233,8 +229,6 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.handlePlayerDisconnect(ctx, m.WsConn)
 	case ForwardedPaddleDirection:
 		a.handlePaddleDirection(ctx, m.WsConn, m.Direction)
-	case SpawnBallCommand:
-		a.spawnBall(ctx, m.OwnerIndex, m.X, m.Y, m.ExpireIn, m.IsPermanent, m.SetInitialPhasing)
 	case DestroyExpiredBall:
 		a.handleDestroyExpiredBall(ctx, m.BallID)
 	case stopPhasingTimerMsg: // Handle internal timer expiry
@@ -267,9 +261,8 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 
 	// --- Internal Test Messages ---
 	case internalAddBallTestMsg: // Handle internal message for adding ball in tests
-		if m.Ball != nil && m.PID != nil {
+		if m.Ball != nil {
 			a.balls[m.Ball.Id] = m.Ball
-			a.ballActors[m.Ball.Id] = m.PID
 		}
 	case internalStartTickersTestMsg: // Handle internal message for starting tickers in tests
 		a.startPhysicsTicker(ctx)
@@ -316,10 +309,10 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		ctx.Reply(internalConfirmPhasingResponse{IsPhasing: isPhasing, Exists: exists})
 	// --- End Internal Test Messages ---
 
-	case bollywood.Stopping:
+	case actor.Stopping:
 		a.handleStopping(ctx)
 
-	case bollywood.Stopped:
+	case actor.Stopped:
 		a.handleStopped(ctx)
 
 	default:
@@ -330,7 +323,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 }
 
 // handleInternalTestPlayerAdd sets up a player and starts the game for testing purposes.
-func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerIndex int) {
+func (a *GameActor) handleInternalTestPlayerAdd(ctx actor.Context, playerIndex int) {
 	if playerIndex < 0 || playerIndex >= utils.MaxPlayers {
 		fmt.Printf("ERROR: GameActor %s: Received internalTestingAddPlayerAndStart with invalid index %d\n", a.selfPID, playerIndex)
 		return

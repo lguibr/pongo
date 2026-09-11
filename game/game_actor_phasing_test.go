@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -13,7 +13,7 @@ import (
 // TestGameActor_PhasingBall_DamagesBrickOnceNoReflect verifies the core phasing logic.
 func TestGameActor_PhasingBall_DamagesBrickOnceNoReflect(t *testing.T) {
 	// 1. Setup Engine and Config
-	engine := bollywood.NewEngine()
+	engine := actor.NewEngine()
 	defer engine.Shutdown(testShutdownTimeout) // Use existing constant
 	cfg := utils.DefaultConfig()
 	cfg.GameTickPeriod = 10 * time.Millisecond   // Faster ticks
@@ -29,16 +29,15 @@ func TestGameActor_PhasingBall_DamagesBrickOnceNoReflect(t *testing.T) {
 
 	// 2. Spawn MockBroadcaster
 	mockBroadcaster := &MockBroadcasterActor{}
-	mockBroadcasterPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBroadcaster }))
+	mockBroadcasterPID := engine.Spawn(actor.NewProps(func() actor.Actor { return mockBroadcaster }))
 	assert.NotNil(t, mockBroadcasterPID)
 
 	// 3. Create initial GameActor state instance
 	gameActorInstance := &GameActor{
-		canvas:     NewCanvas(cfg.CanvasSize, gridSize),
-		players:    [utils.MaxPlayers]*playerInfo{}, // No players initially
-		paddles:    [utils.MaxPlayers]*Paddle{},
-		balls:      make(map[int]*Ball),
-		ballActors: make(map[int]*bollywood.PID),
+		canvas:  NewCanvas(cfg.CanvasSize, gridSize),
+		players: [utils.MaxPlayers]*playerInfo{}, // No players initially
+		paddles: [utils.MaxPlayers]*Paddle{},
+		balls:   make(map[int]*Ball),
 	}
 	// IMPORTANT: Fill grid symmetrically FIRST
 	gameActorInstance.canvas.Grid.FillSymmetrical(cfg)
@@ -61,7 +60,7 @@ func TestGameActor_PhasingBall_DamagesBrickOnceNoReflect(t *testing.T) {
 	}
 
 	// 5. Spawn GameActor
-	gameActorPID := engine.Spawn(bollywood.NewProps(testProducer.Produce))
+	gameActorPID := engine.Spawn(actor.NewProps(testProducer.Produce))
 	assert.NotNil(t, gameActorPID)
 	assert.True(t, waitForGameActorReady(t, engine, gameActorPID, 500*time.Millisecond), "GameActor did not become ready")
 
@@ -72,10 +71,7 @@ func TestGameActor_PhasingBall_DamagesBrickOnceNoReflect(t *testing.T) {
 	ballData.Vy = initialVy
 	ballData.Phasing = false // Start non-phasing
 
-	mockBallActor := &MockSimpleActor{}
-	mockBallActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBallActor }))
-
-	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData, PID: mockBallActorPID}, nil)
+	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData}, nil)
 	// Do NOT start tickers yet.
 
 	// Trigger phasing via internal message
@@ -143,7 +139,7 @@ func TestGameActor_PhasingBall_DamagesBrickOnceNoReflect(t *testing.T) {
 
 // TestGameActor_PhasingBall_ReflectsWall verifies phasing balls reflect off walls.
 func TestGameActor_PhasingBall_ReflectsWall(t *testing.T) {
-	engine := bollywood.NewEngine()
+	engine := actor.NewEngine()
 	defer engine.Shutdown(testShutdownTimeout)
 	cfg := utils.DefaultConfig()
 	cfg.GameTickPeriod = 10 * time.Millisecond
@@ -151,14 +147,13 @@ func TestGameActor_PhasingBall_ReflectsWall(t *testing.T) {
 	askTimeout := 100 * time.Millisecond
 
 	mockBroadcaster := &MockBroadcasterActor{}
-	mockBroadcasterPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBroadcaster }))
+	mockBroadcasterPID := engine.Spawn(actor.NewProps(func() actor.Actor { return mockBroadcaster }))
 
 	gameActorInstance := &GameActor{
-		canvas:     NewCanvas(cfg.CanvasSize, cfg.GridSize),
-		players:    [utils.MaxPlayers]*playerInfo{},
-		paddles:    [utils.MaxPlayers]*Paddle{},
-		balls:      make(map[int]*Ball),
-		ballActors: make(map[int]*bollywood.PID),
+		canvas:  NewCanvas(cfg.CanvasSize, cfg.GridSize),
+		players: [utils.MaxPlayers]*playerInfo{},
+		paddles: [utils.MaxPlayers]*Paddle{},
+		balls:   make(map[int]*Ball),
 	}
 	gameActorInstance.canvas.Grid.FillSymmetrical(cfg) // Fill grid
 
@@ -171,7 +166,7 @@ func TestGameActor_PhasingBall_ReflectsWall(t *testing.T) {
 	testProducer := &TestGameActorProducer{
 		engine: engine, cfg: cfg, mockBroadcasterPID: mockBroadcasterPID, initialState: gameActorInstance,
 	}
-	gameActorPID := engine.Spawn(bollywood.NewProps(testProducer.Produce))
+	gameActorPID := engine.Spawn(actor.NewProps(testProducer.Produce))
 	assert.True(t, waitForGameActorReady(t, engine, gameActorPID, 500*time.Millisecond))
 
 	// Add ONLY the test ball using internal message
@@ -181,9 +176,7 @@ func TestGameActor_PhasingBall_ReflectsWall(t *testing.T) {
 	ballData.Vy = initialVy  // Explicitly set Vy to 0
 	ballData.Phasing = false // Start non-phasing
 
-	mockBallActor := &MockSimpleActor{}
-	mockBallActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBallActor }))
-	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData, PID: mockBallActorPID}, nil)
+	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData}, nil)
 
 	// Trigger phasing via internal message and confirm it's set
 	engine.Send(gameActorPID, internalTriggerStartPhasingPowerUp{BallID: ballID}, nil)
@@ -226,7 +219,7 @@ func TestGameActor_PhasingBall_ReflectsWall(t *testing.T) {
 
 // TestGameActor_PhasingBall_ReflectsPaddle verifies phasing balls reflect off paddles and change owner.
 func TestGameActor_PhasingBall_ReflectsPaddle(t *testing.T) {
-	engine := bollywood.NewEngine()
+	engine := actor.NewEngine()
 	defer engine.Shutdown(testShutdownTimeout)
 	cfg := utils.DefaultConfig()
 	cfg.GameTickPeriod = 10 * time.Millisecond
@@ -234,14 +227,13 @@ func TestGameActor_PhasingBall_ReflectsPaddle(t *testing.T) {
 	askTimeout := 100 * time.Millisecond
 
 	mockBroadcaster := &MockBroadcasterActor{}
-	mockBroadcasterPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBroadcaster }))
+	mockBroadcasterPID := engine.Spawn(actor.NewProps(func() actor.Actor { return mockBroadcaster }))
 
 	gameActorInstance := &GameActor{
-		canvas:     NewCanvas(cfg.CanvasSize, cfg.GridSize),
-		players:    [utils.MaxPlayers]*playerInfo{},
-		paddles:    [utils.MaxPlayers]*Paddle{}, // Initialize paddles map
-		balls:      make(map[int]*Ball),
-		ballActors: make(map[int]*bollywood.PID),
+		canvas:  NewCanvas(cfg.CanvasSize, cfg.GridSize),
+		players: [utils.MaxPlayers]*playerInfo{},
+		paddles: [utils.MaxPlayers]*Paddle{}, // Initialize paddles map
+		balls:   make(map[int]*Ball),
 	}
 	gameActorInstance.canvas.Grid.FillSymmetrical(cfg) // Fill grid
 
@@ -261,7 +253,7 @@ func TestGameActor_PhasingBall_ReflectsPaddle(t *testing.T) {
 	testProducer := &TestGameActorProducer{
 		engine: engine, cfg: cfg, mockBroadcasterPID: mockBroadcasterPID, initialState: gameActorInstance,
 	}
-	gameActorPID := engine.Spawn(bollywood.NewProps(testProducer.Produce))
+	gameActorPID := engine.Spawn(actor.NewProps(testProducer.Produce))
 	assert.True(t, waitForGameActorReady(t, engine, gameActorPID, 500*time.Millisecond))
 
 	// Add players 0 and 1 (this will also spawn their default paddles/balls, but we set paddle 0 above)
@@ -276,9 +268,7 @@ func TestGameActor_PhasingBall_ReflectsPaddle(t *testing.T) {
 	ballData.Vy = initialVy
 	ballData.Phasing = false // Start non-phasing
 
-	mockBallActor := &MockSimpleActor{}
-	mockBallActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBallActor }))
-	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData, PID: mockBallActorPID}, nil)
+	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData}, nil)
 
 	// Trigger phasing via internal message and confirm it's set
 	engine.Send(gameActorPID, internalTriggerStartPhasingPowerUp{BallID: ballID}, nil)
@@ -330,7 +320,7 @@ func TestGameActor_PhasingBall_ReflectsPaddle(t *testing.T) {
 // after the configured duration and does not re-enter phasing from subsequent
 // wall/paddle hits.
 func TestGameActor_PhasingStopsAndStaysStoppedAfterPowerUp(t *testing.T) {
-	engine := bollywood.NewEngine()
+	engine := actor.NewEngine()
 	defer engine.Shutdown(testShutdownTimeout)
 	cfg := utils.DefaultConfig()
 	cfg.GameTickPeriod = 20 * time.Millisecond   // Faster ticks
@@ -339,14 +329,13 @@ func TestGameActor_PhasingStopsAndStaysStoppedAfterPowerUp(t *testing.T) {
 	askTimeout := 100 * time.Millisecond
 
 	mockBroadcaster := &MockBroadcasterActor{}
-	mockBroadcasterPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBroadcaster }))
+	mockBroadcasterPID := engine.Spawn(actor.NewProps(func() actor.Actor { return mockBroadcaster }))
 
 	gameActorInstance := &GameActor{
-		canvas:     NewCanvas(cfg.CanvasSize, cfg.GridSize),
-		players:    [utils.MaxPlayers]*playerInfo{},
-		paddles:    [utils.MaxPlayers]*Paddle{},
-		balls:      make(map[int]*Ball),
-		ballActors: make(map[int]*bollywood.PID),
+		canvas:  NewCanvas(cfg.CanvasSize, cfg.GridSize),
+		players: [utils.MaxPlayers]*playerInfo{},
+		paddles: [utils.MaxPlayers]*Paddle{},
+		balls:   make(map[int]*Ball),
 	}
 	gameActorInstance.canvas.Grid.FillSymmetrical(cfg)
 
@@ -359,7 +348,7 @@ func TestGameActor_PhasingStopsAndStaysStoppedAfterPowerUp(t *testing.T) {
 	testProducer := &TestGameActorProducer{
 		engine: engine, cfg: cfg, mockBroadcasterPID: mockBroadcasterPID, initialState: gameActorInstance,
 	}
-	gameActorPID := engine.Spawn(bollywood.NewProps(testProducer.Produce))
+	gameActorPID := engine.Spawn(actor.NewProps(testProducer.Produce))
 	assert.True(t, waitForGameActorReady(t, engine, gameActorPID, 500*time.Millisecond))
 
 	// Add a player and their paddle (needed for paddle collision part of test)
@@ -373,9 +362,7 @@ func TestGameActor_PhasingStopsAndStaysStoppedAfterPowerUp(t *testing.T) {
 	ballData.Vy = initialVy
 	ballData.Phasing = false // Start non-phasing
 
-	mockBallActor := &MockSimpleActor{}
-	mockBallActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBallActor }))
-	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData, PID: mockBallActorPID}, nil)
+	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: ballData}, nil)
 
 	// --- Simulate "Start Phasing" Power-Up ---
 	t.Logf("Test: Triggering 'Start Phasing' for Ball %d.", ballID)
@@ -431,11 +418,4 @@ func TestGameActor_PhasingStopsAndStaysStoppedAfterPowerUp(t *testing.T) {
 			}
 		}
 	}
-}
-
-// MockSimpleActor is used when the actor's response isn't critical for the test.
-type MockSimpleActor struct{}
-
-func (a *MockSimpleActor) Receive(ctx bollywood.Context) {
-	// Does nothing, just acknowledges messages
 }

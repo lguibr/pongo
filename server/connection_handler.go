@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	"github.com/lguibr/pongo/game"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/internal/transport"
 	"golang.org/x/net/websocket"
 	"time"
@@ -14,8 +14,8 @@ const inputBurst = 120
 
 type ConnectionHandlerArgs struct {
 	Conn           *websocket.Conn
-	Engine         *bollywood.Engine
-	RoomManagerPID *bollywood.PID
+	Engine         *actor.Engine
+	RoomManagerPID *actor.PID
 	Done           chan struct{}
 }
 type ConnectionHandlerActor struct {
@@ -24,8 +24,8 @@ type ConnectionHandlerActor struct {
 	admissionGeneration                   uint64
 	conn                                  *websocket.Conn
 	client                                *transport.Client
-	engine                                *bollywood.Engine
-	roomManagerPID, selfPID, gameActorPID *bollywood.PID
+	engine                                *actor.Engine
+	roomManagerPID, selfPID, gameActorPID *actor.PID
 	done                                  chan struct{}
 	readDone                              chan struct{}
 	pending                               bool
@@ -35,15 +35,15 @@ type connectionClosed struct{}
 type handshakeTimeout struct{}
 type admissionTimeout struct{ generation uint64 }
 
-func NewConnectionHandlerProducer(args ConnectionHandlerArgs) bollywood.Producer {
-	return func() bollywood.Actor {
+func NewConnectionHandlerProducer(args ConnectionHandlerArgs) actor.Producer {
+	return func() actor.Actor {
 		return &ConnectionHandlerActor{conn: args.Conn, engine: args.Engine, roomManagerPID: args.RoomManagerPID, done: args.Done, readDone: make(chan struct{})}
 	}
 }
-func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
+func (a *ConnectionHandlerActor) Receive(ctx actor.Context) {
 	a.selfPID = ctx.Self()
 	switch m := ctx.Message().(type) {
-	case bollywood.Started:
+	case actor.Started:
 		a.conn.MaxPayloadBytes = maxInputBytes
 		a.client = transport.New(a.conn)
 		engine, self := a.engine, a.selfPID
@@ -127,7 +127,7 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		}
 	case connectionClosed:
 		a.engine.Stop(a.selfPID)
-	case bollywood.Stopping:
+	case actor.Stopping:
 		if a.handshakeTimer != nil {
 			a.handshakeTimer.Stop()
 		}
@@ -142,7 +142,7 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		if a.gameActorPID != nil {
 			a.engine.Send(a.gameActorPID, game.PlayerDisconnect{WsConn: a.conn}, a.selfPID)
 		}
-	case bollywood.Stopped:
+	case actor.Stopped:
 		if a.done != nil {
 			close(a.done)
 		}
@@ -150,7 +150,7 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 }
 
 // The read goroutine only uses captured immutable references.
-func (a *ConnectionHandlerActor) readLoop(conn *websocket.Conn, e *bollywood.Engine, self *bollywood.PID) {
+func (a *ConnectionHandlerActor) readLoop(conn *websocket.Conn, e *actor.Engine, self *actor.PID) {
 	defer close(a.readDone)
 	defer e.Send(self, connectionClosed{}, nil)
 	tokens := float64(inputBurst)

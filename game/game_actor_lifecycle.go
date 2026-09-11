@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"time"
 
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket" // Added import
 )
 
 // handleStart is called when the actor receives the Started message.
-func (a *GameActor) handleStart(ctx bollywood.Context) {
+func (a *GameActor) handleStart(ctx actor.Context) {
 	// Only spawn broadcaster if one wasn't injected (e.g., for testing)
 	if a.broadcasterPID == nil {
-		broadcasterProps := bollywood.NewProps(NewBroadcasterProducer(a.selfPID))
+		broadcasterProps := actor.NewProps(NewBroadcasterProducer(a.selfPID))
 		a.broadcasterPID = a.engine.Spawn(broadcasterProps)
 		if a.broadcasterPID == nil {
 			fmt.Printf("FATAL: GameActor %s failed to spawn BroadcasterActor. Stopping self.\n", a.selfPID)
@@ -29,7 +29,7 @@ func (a *GameActor) handleStart(ctx bollywood.Context) {
 }
 
 // startPhysicsTicker starts the physics ticker.
-func (a *GameActor) startPhysicsTicker(ctx bollywood.Context) {
+func (a *GameActor) startPhysicsTicker(ctx actor.Context) {
 	a.tickerMu.Lock()
 	defer a.tickerMu.Unlock()
 
@@ -75,7 +75,7 @@ func (a *GameActor) startPhysicsTicker(ctx bollywood.Context) {
 }
 
 // startBroadcastTicker starts the broadcast ticker.
-func (a *GameActor) startBroadcastTicker(ctx bollywood.Context) {
+func (a *GameActor) startBroadcastTicker(ctx actor.Context) {
 	a.tickerMu.Lock()
 	defer a.tickerMu.Unlock()
 
@@ -181,28 +181,17 @@ func (a *GameActor) performCleanup() {
 	})
 }
 
-// cleanupChildActorsAndConnections stops all managed actors and cleans caches.
+// cleanupChildActorsAndConnections closes clients, clears room state and stops the broadcaster.
 func (a *GameActor) cleanupChildActorsAndConnections() {
 	a.updatesMu.Lock()
 	a.pendingUpdates = a.pendingUpdates[:0]
 	a.updatesMu.Unlock()
 
-	paddlesToStop := make([]*bollywood.PID, 0, utils.MaxPlayers)
-	ballsToStop := make([]*bollywood.PID, 0, len(a.ballActors))
-	broadcasterToStop := a.broadcasterPID
-
 	for i := 0; i < utils.MaxPlayers; i++ {
-		if pid := a.paddleActors[i]; pid != nil {
-			paddlesToStop = append(paddlesToStop, pid)
-			a.paddleActors[i] = nil
-		}
 		a.paddles[i] = nil
 		if pInfo := a.players[i]; pInfo != nil {
 			if !a.finalDeliveryHandedOff && pInfo.Client != nil {
 				pInfo.Client.Close()
-			}
-			if pInfo.Ws != nil {
-				delete(a.connToIndex, pInfo.Ws)
 			}
 			pInfo.Ws = nil
 			pInfo.IsConnected = false
@@ -210,38 +199,12 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 		a.players[i] = nil
 		a.playerConns[i] = nil
 	}
-
-	for ballID, pid := range a.ballActors {
-		if pid != nil {
-			ballsToStop = append(ballsToStop, pid)
-		}
-		delete(a.ballActors, ballID)
-		delete(a.balls, ballID)
-	}
-
 	a.balls = make(map[int]*Ball)
-	if len(a.connToIndex) > 0 {
-		a.connToIndex = make(map[*websocket.Conn]int)
-	}
+	a.connToIndex = make(map[*websocket.Conn]int)
 
-	currentEngine := a.engine
-	if currentEngine != nil {
-		if broadcasterToStop != nil && a.broadcasterPID != nil {
-			currentEngine.Stop(broadcasterToStop)
-			a.broadcasterPID = nil
-		}
-		for _, pid := range paddlesToStop {
-			if pid != nil {
-				currentEngine.Stop(pid)
-			}
-		}
-		for _, pid := range ballsToStop {
-			if pid != nil {
-				currentEngine.Stop(pid)
-			}
-		}
-	} else {
-		fmt.Printf("WARN: GameActor %s: Engine is nil during cleanupChildActorsAndConnections.\n", a.selfPID)
+	if a.broadcasterPID != nil && a.engine != nil {
+		a.engine.Stop(a.broadcasterPID)
+		a.broadcasterPID = nil
 	}
 }
 
@@ -258,7 +221,7 @@ func (a *GameActor) cleanupPhasingTimers() {
 }
 
 // checkGameOver checks if all bricks are destroyed and triggers the end sequence.
-func (a *GameActor) checkGameOver(ctx bollywood.Context) {
+func (a *GameActor) checkGameOver(ctx actor.Context) {
 	if a.gameOver.Load() || a.canvas == nil || a.canvas.Grid == nil {
 		return
 	}
@@ -339,7 +302,7 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 }
 
 // handleStopping is called when the actor receives the Stopping message.
-func (a *GameActor) handleStopping(ctx bollywood.Context) {
+func (a *GameActor) handleStopping(ctx actor.Context) {
 	a.isStopping.Store(true)
 	a.gameOver.Store(true)
 	a.performCleanup()
@@ -350,7 +313,7 @@ func (a *GameActor) handleStopping(ctx bollywood.Context) {
 }
 
 // handleStopped is called when the actor receives the Stopped message.
-func (a *GameActor) handleStopped(ctx bollywood.Context) {
+func (a *GameActor) handleStopped(ctx actor.Context) {
 	fmt.Printf("GameActor %s: Stopped.\n", a.selfPID)
 }
 

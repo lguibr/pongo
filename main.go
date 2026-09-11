@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/lguibr/pongo/game"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/server"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
@@ -86,11 +86,11 @@ func main() {
 		cfg.CanvasSize, cfg.GridSize, cfg.GameTickPeriod, cfg.BroadcastRateHz)
 
 	// 1. Initialize Bollywood Engine
-	engine := bollywood.NewEngine()
+	engine := actor.NewEngine()
 	fmt.Println("Bollywood Engine created.")
 
 	// 2. Spawn the RoomManagerActor, passing the config
-	roomManagerProps := bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)) // Pass cfg
+	roomManagerProps := actor.NewProps(game.NewRoomManagerProducer(engine, cfg)) // Pass cfg
 	roomManagerPID := engine.Spawn(roomManagerProps)
 	if roomManagerPID == nil {
 		panic("Failed to spawn RoomManagerActor")

@@ -2,11 +2,9 @@
 package utils
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
 	"testing"
 )
 
@@ -55,10 +53,6 @@ func NewRandomVector(vectorMaxLen int) [2]int {
 	x := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
 	y := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
 	return [2]int{x, y}
-}
-
-func CheckPointWithinBounds(x int, y int, topSide [2]int, bottomOppositeSide [2]int) bool {
-	return x >= topSide[0] && x <= bottomOppositeSide[0] && y >= topSide[1] && y <= bottomOppositeSide[1]
 }
 
 func SubtractVectors(vectorA [2]int, vectorB [2]int) [2]int {
@@ -121,13 +115,6 @@ func NewRandomPositiveVectors(numberOfVectors, maxVectorSize int) [][2]int {
 		seedVectors[index] = NewPositiveRandomVector(currentLength)
 	}
 	return seedVectors
-}
-
-func Distance(x1, y1, x2, y2 int) float64 {
-	deltaX := x2 - x1
-	deltaY := y2 - y1
-
-	return math.Sqrt(math.Pow(float64(deltaX), 2) + math.Pow(float64(deltaY), 2))
 }
 
 // Number operations
@@ -221,37 +208,4 @@ func AssertPanics(t *testing.T, testingFunction func(), message string) (panics 
 	}()
 
 	return panics, errorMessage
-}
-
-// Logging helpers
-type JSONable interface {
-	ToJson() []byte
-}
-
-func JsonLogger(filePath string, data interface{}) error {
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close() }() // Ignore error on close in defer
-
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(data); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func Logger(filePath string, data string) error {
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
-	}
-	defer func() { _ = file.Close() }() // Ignore error on close in defer
-	if _, err := file.Write([]byte(data)); err != nil {
-		return fmt.Errorf("failed to write to log file: %w", err)
-	}
-
-	return nil
 }

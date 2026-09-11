@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/lguibr/pongo/game"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 	"net/http/httptest"
@@ -13,14 +13,14 @@ import (
 	"time"
 )
 
-func newLiveServer(t *testing.T) (*bollywood.Engine, *bollywood.PID, func() *websocket.Conn) {
+func newLiveServer(t *testing.T) (*actor.Engine, *actor.PID, func() *websocket.Conn) {
 	t.Helper()
-	e := bollywood.NewEngine()
+	e := actor.NewEngine()
 	cfg := utils.DefaultConfig()
 	cfg.PowerUpChance = 0
 	cfg.GridBrickMinLife = 10000
 	cfg.GridBrickMaxLife = 10000
-	p := e.Spawn(bollywood.NewProps(game.NewRoomManagerProducer(e, cfg)))
+	p := e.Spawn(actor.NewProps(game.NewRoomManagerProducer(e, cfg)))
 	s := httptest.NewServer(websocket.Handler(New(e, p).HandleSubscribe()))
 	var conns []*websocket.Conn
 	t.Cleanup(func() {
@@ -62,7 +62,7 @@ func readUntil(t *testing.T, c *websocket.Conn, kind string) map[string]interfac
 		}
 	}
 }
-func roomCount(t *testing.T, e *bollywood.Engine, p *bollywood.PID) (int, int) {
+func roomCount(t *testing.T, e *actor.Engine, p *actor.PID) (int, int) {
 	t.Helper()
 	v, err := e.Ask(p, game.GetRoomListRequest{}, time.Second)
 	if err != nil {
@@ -151,10 +151,10 @@ func TestOversizedInputClosesConnection(t *testing.T) {
 }
 
 func TestPendingAdmissionTimeoutClosesActiveConnection(t *testing.T) {
-	e := bollywood.NewEngine()
+	e := actor.NewEngine()
 	defer e.Shutdown(time.Second)
 	mock := &MockRoomManager{}
-	p := e.Spawn(bollywood.NewProps(func() bollywood.Actor { return mock }))
+	p := e.Spawn(actor.NewProps(func() actor.Actor { return mock }))
 	s := httptest.NewServer(websocket.Handler(New(e, p).HandleSubscribe()))
 	defer s.Close()
 	c, err := websocket.Dial("ws"+strings.TrimPrefix(s.URL, "http"), "", s.URL)

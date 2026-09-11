@@ -8,7 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -17,7 +17,7 @@ import (
 
 // handlePlayerConnect processes a player connection, sends initial state,
 // and generates PlayerJoined update.
-func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Conn, sessionID string, client *transport.Client, replyTo *bollywood.PID, response interface{}) (admitted bool) {
+func (a *GameActor) handlePlayerConnect(ctx actor.Context, ws *websocket.Conn, sessionID string, client *transport.Client, replyTo *actor.PID, response interface{}) (admitted bool) {
 	// Cancel cleanup timer if active, as a player is joining
 	if a.roomCleanupTimer != nil {
 		fmt.Printf("GameActor %s: Player joining, cancelling room cleanup timer.\n", a.selfPID)
@@ -332,7 +332,7 @@ func (a *GameActor) handlePlayerConnect(ctx bollywood.Context, ws *websocket.Con
 }
 
 // handlePlayerDisconnect processes disconnect and generates PlayerLeft update.
-func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocket.Conn) {
+func (a *GameActor) handlePlayerDisconnect(ctx actor.Context, conn *websocket.Conn) {
 	if conn == nil {
 		return
 	}
@@ -391,20 +391,7 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 	}
 	a.addUpdate(lobbyState)
 
-	// --- Stop Actors and Manage Persistent Ball ---
-	// DO NOT stop actors yet! We are in grace period.
-	// We only stop them if the timer expires.
-
-	/*
-		paddleToStop := a.paddleActors[playerIndex]
-		a.paddleActors[playerIndex] = nil
-		a.paddles[playerIndex] = nil // Clear paddle cache
-		...
-	*/
-
-	// --- Clean up GameActor state ---
-
-	// --- Clean up GameActor state ---
+	// The slot, paddle and balls are held for the reconnect grace period; the timer releases them.
 	delete(a.connToIndex, conn)
 	a.playerConns[playerIndex] = nil
 	// Keep player info slot nilled until next connect
@@ -454,7 +441,7 @@ func (a *GameActor) handlePlayerDisconnect(ctx bollywood.Context, conn *websocke
 }
 
 // handleStopReconnectTimerMsg handles the expiry of the reconnection grace period.
-func (a *GameActor) handleStopReconnectTimerMsg(ctx bollywood.Context, playerIndex int) {
+func (a *GameActor) handleStopReconnectTimerMsg(ctx actor.Context, playerIndex int) {
 	// Actor context is single-threaded per actor, so no lock needed for state.
 	// But `reconnectTimers` access might need care if accessed from other goroutines?
 	// `time.AfterFunc` runs in its own goroutine, but it sends a message to the actor.
@@ -484,10 +471,7 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx bollywood.Context, playerInd
 	}
 	a.addUpdate(playerLeftUpdate)
 
-	// --- Stop Actors and Manage Persistent Ball ---
-	paddleToStop := a.paddleActors[playerIndex]
-	a.paddleActors[playerIndex] = nil
-	a.paddles[playerIndex] = nil // Clear paddle cache
+	a.paddles[playerIndex] = nil
 
 	for id, ball := range a.balls {
 		if ball.OwnerIndex == playerIndex {
@@ -510,11 +494,6 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx bollywood.Context, playerInd
 	a.playerConns[playerIndex] = nil
 	a.players[playerIndex] = nil
 	delete(a.reconnectTimers, playerIndex)
-
-	// --- Stop Actors ---
-	if paddleToStop != nil {
-		a.engine.Stop(paddleToStop)
-	}
 
 	// Notify RoomManager that a player has left (to decrement count and clear session)
 	if a.roomManagerPID != nil && a.selfPID != nil {
@@ -561,7 +540,7 @@ func (a *GameActor) handleStopReconnectTimerMsg(ctx bollywood.Context, playerInd
 }
 
 // handleRoomCleanupTimeout is called when the empty room grace period expires.
-func (a *GameActor) handleRoomCleanupTimeout(ctx bollywood.Context) {
+func (a *GameActor) handleRoomCleanupTimeout(ctx actor.Context) {
 	// Re-check if room is still empty (it should be, but good to verify)
 	playersLeft := false
 	for _, p := range a.players {
@@ -588,8 +567,8 @@ func (a *GameActor) handleRoomCleanupTimeout(ctx bollywood.Context) {
 
 // --- Input Handler ---
 
-// handlePaddleDirection forwards command to PaddleActor.
-func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websocket.Conn, directionData []byte) {
+// handlePaddleDirection sets the direction of the sending player's paddle.
+func (a *GameActor) handlePaddleDirection(ctx actor.Context, wsConn *websocket.Conn, directionData []byte) {
 	if wsConn == nil {
 		return
 	}
@@ -609,9 +588,9 @@ func (a *GameActor) handlePaddleDirection(ctx bollywood.Context, wsConn *websock
 
 // --- Ball Handlers ---
 
-// spawnBall spawns actor and generates BallSpawned update including R3F coords.
+// spawnBall adds a ball to the room and queues its BallSpawned update including R3F coords.
 // The setInitialPhasing flag determines if the ball starts phasing (used by power-ups).
-func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expireIn time.Duration, isPermanent bool, setInitialPhasing bool) {
+func (a *GameActor) spawnBall(ctx actor.Context, ownerIndex, x, y int, expireIn time.Duration, isPermanent bool, setInitialPhasing bool) {
 	if ownerIndex < -1 || ownerIndex >= utils.MaxPlayers {
 		fmt.Printf("WARN: GameActor %s received spawnBall request with invalid owner index %d.\n", a.selfPID, ownerIndex)
 		return
@@ -647,7 +626,7 @@ func (a *GameActor) spawnBall(ctx bollywood.Context, ownerIndex, x, y int, expir
 	}
 }
 
-func (a *GameActor) handleDestroyExpiredBall(ctx bollywood.Context, ballID int) {
+func (a *GameActor) handleDestroyExpiredBall(ctx actor.Context, ballID int) {
 	ball := a.balls[ballID]
 	if ball == nil || ball.IsPermanent {
 		return
@@ -658,10 +637,6 @@ func (a *GameActor) handleDestroyExpiredBall(ctx bollywood.Context, ballID int) 
 		delete(a.expiryTimers, ballID)
 	}
 	delete(a.phasingGeneration, ballID)
-	if pid := a.ballActors[ballID]; pid != nil {
-		a.engine.Stop(pid)
-		delete(a.ballActors, ballID)
-	}
 	a.stopPhasingTimer(ballID)
 	for _, key := range a.activeCollisions.GetActiveCollisionsForKey1(ballID) {
 		a.activeCollisions.EndCollision(key)
@@ -669,7 +644,7 @@ func (a *GameActor) handleDestroyExpiredBall(ctx bollywood.Context, ballID int) 
 	a.addUpdate(&BallRemoved{MessageType: "ballRemoved", ID: ballID})
 }
 
-func (a *GameActor) handleStopPhasingTimerMsg(ctx bollywood.Context, ballID int) {
+func (a *GameActor) handleStopPhasingTimerMsg(ctx actor.Context, ballID int) {
 	a.stopPhasingTimer(ballID)
 	if ball := a.balls[ballID]; ball != nil {
 		ball.Phasing = false
@@ -679,7 +654,7 @@ func (a *GameActor) handleStopPhasingTimerMsg(ctx bollywood.Context, ballID int)
 // --- Lobby Handlers ---
 
 // handlePlayerReady toggles a player's ready state and checks if all players are ready.
-func (a *GameActor) handlePlayerReady(ctx bollywood.Context, wsConn *websocket.Conn, isReady bool) {
+func (a *GameActor) handlePlayerReady(ctx actor.Context, wsConn *websocket.Conn, isReady bool) {
 	if wsConn == nil {
 		return
 	}
@@ -727,7 +702,7 @@ func (a *GameActor) handlePlayerReady(ctx bollywood.Context, wsConn *websocket.C
 }
 
 // startCountdown initiates the 3-second countdown.
-func (a *GameActor) startCountdown(ctx bollywood.Context) {
+func (a *GameActor) startCountdown(ctx actor.Context) {
 	if a.phase != PhaseLobby {
 		return
 	}
@@ -739,7 +714,7 @@ func (a *GameActor) startCountdown(ctx bollywood.Context) {
 }
 
 // handleCountdownTick processes a tick of the countdown.
-func (a *GameActor) handleCountdownTick(ctx bollywood.Context, secondsRemaining int) {
+func (a *GameActor) handleCountdownTick(ctx actor.Context, secondsRemaining int) {
 	if a.phase != PhaseCountingDown {
 		return // Countdown was cancelled or game started
 	}
@@ -766,7 +741,7 @@ func (a *GameActor) handleCountdownTick(ctx bollywood.Context, secondsRemaining 
 }
 
 // startGame transitions the room to the playing phase.
-func (a *GameActor) startGame(ctx bollywood.Context) {
+func (a *GameActor) startGame(ctx actor.Context) {
 	fmt.Printf("GameActor %s: startGame called. Current Phase: %v\n", a.selfPID, a.phase)
 	if a.phase != PhaseCountingDown {
 		return
@@ -792,7 +767,7 @@ func (a *GameActor) startGame(ctx bollywood.Context) {
 }
 
 // handleForceStartGame transitions the room to the playing phase immediately.
-func (a *GameActor) handleForceStartGame(ctx bollywood.Context) {
+func (a *GameActor) handleForceStartGame(ctx actor.Context) {
 	if !a.gridInitialized {
 		a.forceStartPending = true
 		return
@@ -841,7 +816,7 @@ func (a *GameActor) phaseToString() string {
 
 // handleAdmission validates before sending success, and rolls back reservations
 // if the connection disappears before it becomes a room member.
-func (a *GameActor) handleAdmission(ctx bollywood.Context, m AssignPlayerToRoom) {
+func (a *GameActor) handleAdmission(ctx actor.Context, m AssignPlayerToRoom) {
 	reject := func(reason string) {
 		a.engine.Send(a.roomManagerPID, AdmissionRejected{RoomPID: a.selfPID, SessionID: m.SessionID, Reserved: m.Reserved, ReplyTo: m.ReplyTo}, a.selfPID)
 		a.engine.Send(m.ReplyTo, RoomJoinedResponse{MessageType: "roomJoined", Success: false, Reason: reason}, a.selfPID)
@@ -891,7 +866,7 @@ func (a *GameActor) handleAdmission(ctx bollywood.Context, m AssignPlayerToRoom)
 
 }
 
-func (a *GameActor) cancelCountdown(ctx bollywood.Context) {
+func (a *GameActor) cancelCountdown(ctx actor.Context) {
 	if a.phase != PhaseCountingDown {
 		return
 	}

@@ -2,7 +2,7 @@ package game
 
 import (
 	"encoding/json"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/internal/transport"
 	"golang.org/x/net/websocket"
 )
@@ -10,15 +10,15 @@ import (
 // BroadcasterActor encodes each room batch once. Each client owns its writer.
 type BroadcasterActor struct {
 	clients      map[*websocket.Conn]*transport.Client
-	gameActorPID *bollywood.PID
+	gameActorPID *actor.PID
 }
 
-func NewBroadcasterProducer(room *bollywood.PID) bollywood.Producer {
-	return func() bollywood.Actor {
+func NewBroadcasterProducer(room *actor.PID) actor.Producer {
+	return func() actor.Actor {
 		return &BroadcasterActor{clients: make(map[*websocket.Conn]*transport.Client), gameActorPID: room}
 	}
 }
-func (a *BroadcasterActor) Receive(ctx bollywood.Context) {
+func (a *BroadcasterActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case AddClient:
 		if msg.Client != nil {
@@ -49,7 +49,7 @@ func (a *BroadcasterActor) Receive(ctx bollywood.Context) {
 		}
 		// All final messages are now queued ahead of close in each writer.
 		ctx.Engine().Stop(ctx.Self())
-	case bollywood.Stopping:
+	case actor.Stopping:
 		for ws, c := range a.clients {
 			c.Close()
 			delete(a.clients, ws)

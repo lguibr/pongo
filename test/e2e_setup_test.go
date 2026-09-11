@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/lguibr/pongo/game"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/server"
 	"github.com/lguibr/pongo/utils"
 	"github.com/stretchr/testify/assert"
@@ -17,8 +17,8 @@ import (
 
 // E2ESetupResult holds the results of the setup function.
 type E2ESetupResult struct {
-	Engine         *bollywood.Engine
-	RoomManagerPID *bollywood.PID
+	Engine         *actor.Engine
+	RoomManagerPID *actor.PID
 	Server         *httptest.Server
 	WsURL          string
 	Origin         string
@@ -30,8 +30,8 @@ type E2ESetupResult struct {
 func SetupE2ETest(t *testing.T, cfg utils.Config) E2ESetupResult {
 	t.Helper()
 
-	engine := bollywood.NewEngine()
-	roomManagerPID := engine.Spawn(bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)))
+	engine := actor.NewEngine()
+	roomManagerPID := engine.Spawn(actor.NewProps(game.NewRoomManagerProducer(engine, cfg)))
 	assert.NotNil(t, roomManagerPID, "RoomManager PID should not be nil")
 	time.Sleep(100 * time.Millisecond) // Allow manager to start
 

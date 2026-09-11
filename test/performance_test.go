@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/lguibr/pongo/game"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/server"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
@@ -34,8 +34,8 @@ func runPerformanceRooms(t *testing.T) {
 	cfg.GridBrickMinLife = 100000
 	cfg.GridBrickMaxLife = 100000
 	cfg.PowerUpChance = 0
-	e := bollywood.NewEngine()
-	manager := e.Spawn(bollywood.NewProps(game.NewRoomManagerProducer(e, cfg)))
+	e := actor.NewEngine()
+	manager := e.Spawn(actor.NewProps(game.NewRoomManagerProducer(e, cfg)))
 	s := httptest.NewServer(websocket.Handler(server.New(e, manager).HandleSubscribe()))
 	defer s.Close()
 	defer e.Shutdown(5 * time.Second)

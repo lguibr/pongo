@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/lguibr/pongo/game"
-	bollywood "github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/actor"
 
 	"golang.org/x/net/websocket"
 )
@@ -60,7 +60,7 @@ func (s *Server) HandleSubscribe() func(ws *websocket.Conn) {
 			RoomManagerPID: managerPID,
 			Done:           handlerDone, // Pass the channel
 		}
-		handlerProps := bollywood.NewProps(NewConnectionHandlerProducer(args))
+		handlerProps := actor.NewProps(NewConnectionHandlerProducer(args))
 		handlerPID := engine.Spawn(handlerProps)
 
 		if handlerPID == nil {
@@ -106,7 +106,7 @@ func (s *Server) HandleGetRooms() func(w http.ResponseWriter, r *http.Request) {
 		reply, err := engine.Ask(managerPID, game.GetRoomListRequest{}, askTimeout)
 
 		if err != nil {
-			if errors.Is(err, bollywood.ErrTimeout) {
+			if errors.Is(err, actor.ErrTimeout) {
 				fmt.Println("Timeout waiting for RoomManager response in HandleGetRooms")
 				http.Error(w, "Timeout querying game state", http.StatusGatewayTimeout)
 			} else {
