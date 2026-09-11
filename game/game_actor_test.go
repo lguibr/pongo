@@ -26,6 +26,9 @@ func (a *MockBroadcasterActor) Receive(ctx actor.Context) {
 		a.PID = ctx.Self()
 	}
 	a.Received = append(a.Received, ctx.Message())
+	if ctx.RequestID() != "" {
+		ctx.Reply(struct{}{}) // lets a test Ask as a barrier: the mailbox is FIFO
+	}
 }
 
 func (a *MockBroadcasterActor) GetMessages() []interface{} {

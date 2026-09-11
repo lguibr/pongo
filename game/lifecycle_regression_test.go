@@ -90,8 +90,10 @@ func TestFullGridCoordinatesAndUnchangedGridNotRepeated(t *testing.T) {
 	a.gridDirty = true
 	a.handleBroadcastTick(c)
 	a.handleBroadcastTick(c)
-	// The mock does not reply; the timeout is the barrier that lets it drain its queue.
-	_, _ = a.engine.Ask(a.broadcasterPID, "barrier", 10*time.Millisecond)
+	// The mailbox is FIFO, so the reply proves the broadcasts sent before it were handled.
+	if _, err := a.engine.Ask(a.broadcasterPID, "barrier", time.Second); err != nil {
+		t.Fatal(err)
+	}
 	grids := 0
 	for _, m := range mock.GetMessages() {
 		if batch, ok := m.(BroadcastUpdatesCommand); ok {
