@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"testing"
-	"time"
 )
 
 // Matrix operations
@@ -46,7 +45,6 @@ func RotateVector(index int, x int, y int, canvasWidth int, canvasHeight int) (i
 func NewPositiveRandomVector(vectorMaxLen int) [2]int {
 	maxCoordinateSize := int(math.Max(float64(vectorMaxLen)/(2*math.Sqrt(2)), 1.0))
 	x := rand.Intn(maxCoordinateSize)
-	rand.Seed(time.Now().UnixNano())
 	y := rand.Intn(maxCoordinateSize)
 
 	return [2]int{x, y}
@@ -55,7 +53,6 @@ func NewPositiveRandomVector(vectorMaxLen int) [2]int {
 func NewRandomVector(vectorMaxLen int) [2]int {
 	maxCoordinateSize := int((math.Max(float64(vectorMaxLen)/2*math.Sqrt(2), 1.0)))
 	x := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
-	rand.Seed(time.Now().UnixNano())
 	y := rand.Intn(maxCoordinateSize)*2 - maxCoordinateSize
 	return [2]int{x, y}
 }

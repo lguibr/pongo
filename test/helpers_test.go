@@ -20,7 +20,7 @@ func ReadWsJSONMessage(t *testing.T, ws *websocket.Conn, timeout time.Duration, 
 	if err := ws.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 		return err
 	}
-	defer ws.SetReadDeadline(time.Time{})
+	defer func() { _ = ws.SetReadDeadline(time.Time{}) }()
 	return websocket.JSON.Receive(ws, v)
 }
 

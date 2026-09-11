@@ -137,7 +137,7 @@ func (a *ConnectionHandlerActor) Receive(ctx bollywood.Context) {
 		if a.client != nil {
 			a.client.Close()
 		} else {
-			a.conn.Close()
+			_ = a.conn.Close()
 		}
 		if a.gameActorPID != nil {
 			a.engine.Send(a.gameActorPID, game.PlayerDisconnect{WsConn: a.conn}, a.selfPID)

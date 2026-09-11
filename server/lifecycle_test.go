@@ -25,7 +25,7 @@ func newLiveServer(t *testing.T) (*bollywood.Engine, *bollywood.PID, func() *web
 	var conns []*websocket.Conn
 	t.Cleanup(func() {
 		for _, c := range conns {
-			c.Close()
+			_ = c.Close()
 		}
 		e.Shutdown(3 * time.Second)
 		s.Close()
@@ -50,8 +50,8 @@ func sendJSON(t *testing.T, c *websocket.Conn, v interface{}) {
 }
 func readUntil(t *testing.T, c *websocket.Conn, kind string) map[string]interface{} {
 	t.Helper()
-	c.SetReadDeadline(time.Now().Add(3 * time.Second))
-	defer c.SetReadDeadline(time.Time{})
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	defer func() { _ = c.SetReadDeadline(time.Time{}) }()
 	for {
 		var m map[string]interface{}
 		if err := websocket.JSON.Receive(c, &m); err != nil {
@@ -123,7 +123,9 @@ func TestRoomAdmissionCapacityAndReconnect(t *testing.T) {
 	if r["success"] != false {
 		t.Fatal("fifth player admitted")
 	}
-	first.Close()
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(30 * time.Millisecond)
 	reconnect := dial()
 	sendJSON(t, reconnect, game.JoinRoomRequest{MessageType: "joinRoom", Code: code, SessionID: "p0"})
@@ -138,8 +140,10 @@ func TestRoomAdmissionCapacityAndReconnect(t *testing.T) {
 func TestOversizedInputClosesConnection(t *testing.T) {
 	_, _, dial := newLiveServer(t)
 	c := dial()
-	websocket.Message.Send(c, strings.Repeat("x", maxInputBytes+1))
-	c.SetReadDeadline(time.Now().Add(time.Second))
+	if err := websocket.Message.Send(c, strings.Repeat("x", maxInputBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(time.Second))
 	var raw []byte
 	if err := websocket.Message.Receive(c, &raw); err == nil {
 		t.Fatal("oversized input accepted")
@@ -157,7 +161,7 @@ func TestPendingAdmissionTimeoutClosesActiveConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 	sendJSON(t, c, game.QuickPlayRequest{MessageType: "quickPlay", SessionID: "timeout"})
 	done := make(chan struct{})
 	defer close(done)
@@ -175,7 +179,7 @@ func TestPendingAdmissionTimeoutClosesActiveConnection(t *testing.T) {
 			}
 		}
 	}()
-	c.SetReadDeadline(time.Now().Add(7 * time.Second))
+	_ = c.SetReadDeadline(time.Now().Add(7 * time.Second))
 	var raw []byte
 	start := time.Now()
 	if err := websocket.Message.Receive(c, &raw); err == nil {

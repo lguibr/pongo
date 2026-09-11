@@ -102,7 +102,8 @@ func TestFullGridCoordinatesAndUnchangedGridNotRepeated(t *testing.T) {
 	a.gridDirty = true
 	a.handleBroadcastTick(c)
 	a.handleBroadcastTick(c)
-	a.engine.Ask(a.broadcasterPID, "barrier", 10*time.Millisecond)
+	// The mock does not reply; the timeout is the barrier that lets it drain its queue.
+	_, _ = a.engine.Ask(a.broadcasterPID, "barrier", 10*time.Millisecond)
 	grids := 0
 	for _, m := range mock.GetMessages() {
 		if batch, ok := m.(BroadcastUpdatesCommand); ok {
@@ -201,7 +202,7 @@ func gameSocket(t *testing.T) (*websocket.Conn, *transport.Client) {
 	}
 	ws := <-accepted
 	client := transport.New(ws)
-	t.Cleanup(func() { client.Close(); reader.Close(); close(done); s.Close() })
+	t.Cleanup(func() { client.Close(); _ = reader.Close(); close(done); s.Close() })
 	return ws, client
 }
 func TestCommittedAdmissionFailureReleasesExactlyOnce(t *testing.T) {

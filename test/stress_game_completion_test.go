@@ -24,7 +24,7 @@ func TestE2E_StressTestGameCompletion(t *testing.T) {
 	var clients []*websocket.Conn
 	defer func() {
 		for _, c := range clients {
-			c.Close()
+			_ = c.Close()
 		}
 	}()
 	for i := 0; i < rooms; i++ {
@@ -55,7 +55,10 @@ func TestE2E_StressTestGameCompletion(t *testing.T) {
 				results <- err
 				return
 			}
-			ws.SetReadDeadline(time.Now().Add(6 * time.Second))
+			if err := ws.SetReadDeadline(time.Now().Add(6 * time.Second)); err != nil {
+				results <- err
+				return
+			}
 			for {
 				var h game.GameOverMessage
 				if err := websocket.JSON.Receive(ws, &h); err != nil {

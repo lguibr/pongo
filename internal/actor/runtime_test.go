@@ -101,7 +101,9 @@ func TestPanicAfterReplyDoesNotBlockCleanup(t *testing.T) {
 			}
 		})
 	}))
-	e.Ask(p, 1, time.Second)
+	if _, err := e.Ask(p, 1, time.Second); err != nil {
+		t.Fatalf("reply before panic should succeed: %v", err)
+	}
 	e.Shutdown(time.Second)
 	if e.ActiveCount() != 0 {
 		t.Fatal("panic cleanup blocked")

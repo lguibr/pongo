@@ -43,7 +43,7 @@ func runPerformanceRooms(t *testing.T) {
 	var clients []*websocket.Conn
 	defer func() {
 		for _, c := range clients {
-			c.Close()
+			_ = c.Close()
 		}
 	}()
 	var wg sync.WaitGroup
@@ -70,7 +70,9 @@ func runPerformanceRooms(t *testing.T) {
 		if err := websocket.JSON.Send(ws, request); err != nil {
 			t.Fatal(err)
 		}
-		ws.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if err := ws.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
 		for {
 			var raw []byte
 			if err := websocket.Message.Receive(ws, &raw); err != nil {
@@ -90,7 +92,7 @@ func runPerformanceRooms(t *testing.T) {
 				break
 			}
 		}
-		ws.SetReadDeadline(time.Time{})
+		_ = ws.SetReadDeadline(time.Time{})
 		wg.Add(1)
 		go func(c *websocket.Conn) {
 			defer wg.Done()
@@ -163,7 +165,7 @@ func runPerformanceRooms(t *testing.T) {
 	}
 	stopped.Store(true)
 	for _, c := range clients {
-		c.Close()
+		_ = c.Close()
 	}
 	wg.Wait()
 }
