@@ -1,8 +1,7 @@
-// File: game/grid.go
 package game
 
 import (
-	"fmt"
+	"log/slog"
 	"math/rand"
 
 	"github.com/lguibr/pongo/utils"
@@ -55,7 +54,7 @@ func (grid Grid) FillSymmetrical(cfg utils.Config) {
 	maxCoord := center - 1 // Quadrant boundary (inclusive)
 
 	if minCoord > maxCoord {
-		fmt.Printf("WARN: FillSymmetrical - wallClearDist (%d) and centerClearRadius (%d) leave no space in quadrant for grid size %d. Grid will be empty.\n", wallClearDist, centerClearRadius, gridSize)
+		slog.Warn("grid clear zones leave no room for bricks; grid will be empty", "wallClearDist", wallClearDist, "centerClearRadius", centerClearRadius, "gridSize", gridSize)
 	} else {
 		// 2. Generate pattern in the top-left safe quadrant
 		for r := minCoord; r <= maxCoord; r++ {

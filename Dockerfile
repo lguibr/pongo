@@ -1,39 +1,21 @@
-# File: Dockerfile
-# Start with the Go base image
-FROM golang:1.19 as builder
+FROM golang:1.24 AS builder
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy the go.mod and go.sum files to the container
-COPY go.mod .
-COPY go.sum .
-
-# Download the Go modules
+COPY go.mod go.sum ./
 RUN go mod download
-# Ensure vendor directory isn't used if present from local builds
-RUN rm -rf vendor
 
-# Copy the rest of the source code
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o pongo .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o pongo .
-
-# Use a minimal base image to create the final stage
 FROM alpine:latest
 
-# Add necessary CA certificates
 RUN apk --no-cache add ca-certificates
 
-# Set the working directory in the final image
 WORKDIR /root/
-
-# Copy the statically-linked binary from the builder stage
 COPY --from=builder /app/pongo .
 
-# Expose port 8080 (Cloud Run default)
+# Cloud Run supplies PORT; 8080 is the default when it is unset.
 EXPOSE 8080
 
-# Define the executable to run when the container starts
 ENTRYPOINT ["./pongo"]

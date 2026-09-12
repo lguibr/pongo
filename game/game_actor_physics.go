@@ -1,4 +1,3 @@
-// File: game/game_actor_physics.go
 package game
 
 import (
@@ -6,17 +5,16 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 )
 
 // --- Collision Detection & Physics ---
 
 // detectCollisions checks for and handles collisions between balls, paddles, walls, and bricks.
-// It updates the game state (scores, grid, ball/paddle properties) in the GameActor's cache
-// and sends commands to child actors (BallActor, PaddleActor) to modify their internal state (velocity, phasing).
+// It updates the game state (scores, grid, ball/paddle properties) owned by the GameActor.
 // It also generates atomic update messages (ScoreUpdate, BallOwnershipChange, etc.) and adds them to the pending buffer.
-func (a *GameActor) detectCollisions(ctx bollywood.Context) {
+func (a *GameActor) detectCollisions(ctx actor.Context) {
 	if a.canvas == nil || a.canvas.Grid == nil {
 		return // Cannot detect collisions without a grid
 	}
@@ -25,7 +23,6 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 	canvasSize := a.cfg.CanvasSize
 
 	// --- Capture Phasing State AT START of Tick from GameActor's cache ---
-	// This cache is updated by BallStateUpdate from BallActor.
 	phasingStateThisTick := make(map[int]bool)
 	for id, ball := range a.balls {
 		if ball != nil {
@@ -39,24 +36,23 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 		if ball == nil {
 			continue
 		}
-		ballActorPID := a.ballActors[id]      // Get PID for sending commands
 		isPhasing := phasingStateThisTick[id] // Use captured phasing state for wall collision logic
 
 		// Check Right Wall (Player 0)
 		if ball.X+ball.Radius >= canvasSize {
-			a.handleWallCollision(ctx, ball, ballActorPID, 0, isPhasing)
+			a.handleWallCollision(ctx, ball, 0, isPhasing)
 		}
 		// Check Top Wall (Player 1)
 		if ball.Y-ball.Radius <= 0 {
-			a.handleWallCollision(ctx, ball, ballActorPID, 1, isPhasing)
+			a.handleWallCollision(ctx, ball, 1, isPhasing)
 		}
 		// Check Left Wall (Player 2)
 		if ball.X-ball.Radius <= 0 {
-			a.handleWallCollision(ctx, ball, ballActorPID, 2, isPhasing)
+			a.handleWallCollision(ctx, ball, 2, isPhasing)
 		}
 		// Check Bottom Wall (Player 3)
 		if ball.Y+ball.Radius >= canvasSize {
-			a.handleWallCollision(ctx, ball, ballActorPID, 3, isPhasing)
+			a.handleWallCollision(ctx, ball, 3, isPhasing)
 		}
 	}
 
@@ -65,8 +61,6 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 		if ball == nil {
 			continue
 		}
-		ballActorPID := a.ballActors[id] // Get PID
-		// isPhasingForPaddle := phasingStateThisTick[id] // Phasing state doesn't change paddle collision mechanics
 
 		for playerIndex, paddle := range a.paddles {
 			if paddle == nil {
@@ -81,9 +75,8 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 				paddle.Collided = true // Also mark paddle as collided
 
 				if isNewPaddleCollision {
-					a.handlePaddleCollision(ctx, ball, ballActorPID, paddle, playerIndex) // Pass PID
+					a.handlePaddleCollision(ctx, ball, paddle, playerIndex)
 				}
-				// Removed empty else branch for ongoing paddle collision
 			} else {
 				// Not intersecting, end any active collision tracking
 				a.activeCollisions.EndCollision(collisionKey)
@@ -96,7 +89,6 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 		if ball == nil {
 			continue
 		}
-		ballActorPID := a.ballActors[id]      // Get PID
 		isPhasing := phasingStateThisTick[id] // Use captured state for this tick's brick collision logic
 
 		// Get active brick collisions for this ball that might need ending
@@ -131,9 +123,8 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 						ball.Collided = true // Always mark as collided if intersecting and non-phasing
 
 						if isNewBrickCollision { // Process collision only on first contact
-							a.handleBrickCollision(ctx, ball, ballActorPID, cell, r, c) // Pass PID
+							a.handleBrickCollision(ctx, ball, cell, r, c)
 						}
-						// Removed empty else branch for ongoing brick collision
 					}
 				} else {
 					// If not intersecting this tick, ensure any active collision is ended
@@ -158,10 +149,9 @@ func (a *GameActor) detectCollisions(ctx bollywood.Context) {
 
 // handleWallCollision processes ball hitting a wall.
 // Phasing balls reflect but do not trigger scoring or phasing reset.
-// Non-phasing balls hitting walls NO LONGER start phasing from this interaction.
-// Direct position adjustments (e.g., ball.X = ...) are REMOVED.
-func (a *GameActor) handleWallCollision(ctx bollywood.Context, ball *Ball, ballActorPID *bollywood.PID, wallIndex int, isPhasing bool) {
-	if ball == nil || ballActorPID == nil {
+// Wall hits never start phasing, and the ball's position is not adjusted.
+func (a *GameActor) handleWallCollision(ctx actor.Context, ball *Ball, wallIndex int, isPhasing bool) {
+	if ball == nil {
 		return
 	}
 
@@ -186,10 +176,7 @@ func (a *GameActor) handleWallCollision(ctx bollywood.Context, ball *Ball, ballA
 	}
 	ball.Collided = true // Set collision flag for broadcast
 
-	// 2. Send Command to BallActor to update its internal velocity state
-	a.engine.Send(ballActorPID, SetVelocityCommand{Vx: ball.Vx, Vy: ball.Vy}, a.selfPID)
-
-	// 3. Handle Scoring and Ownership (ONLY if NOT phasing)
+	// 2. Handle Scoring and Ownership (ONLY if NOT phasing)
 	if !isPhasing {
 		concederIndex := wallIndex
 		scorerIndex := ball.OwnerIndex // Player who last hit the ball
@@ -200,7 +187,8 @@ func (a *GameActor) handleWallCollision(ctx bollywood.Context, ball *Ball, ballA
 
 		if isConcederActive {
 			// Conceder loses points
-			newScore := concederPlayer.Score.Add(-1)
+			concederPlayer.Score--
+			newScore := concederPlayer.Score
 			a.addUpdate(&ScoreUpdate{MessageType: "scoreUpdate", Index: concederIndex, Score: newScore})
 
 			// Scorer gains points (if valid, connected, and not the same as conceder)
@@ -212,7 +200,8 @@ func (a *GameActor) handleWallCollision(ctx bollywood.Context, ball *Ball, ballA
 			isScorerActive := isScorerValid && scorerPlayer != nil && scorerPlayer.IsConnected
 
 			if isScorerActive && scorerIndex != concederIndex {
-				newScore := scorerPlayer.Score.Add(1)
+				scorerPlayer.Score++
+				newScore := scorerPlayer.Score
 				a.addUpdate(&ScoreUpdate{MessageType: "scoreUpdate", Index: scorerIndex, Score: newScore})
 			}
 
@@ -235,10 +224,9 @@ func (a *GameActor) handleWallCollision(ctx bollywood.Context, ball *Ball, ballA
 
 // handlePaddleCollision processes ball hitting a paddle.
 // Phasing balls reflect and change owner, but do not reset phasing timer.
-// Non-phasing balls hitting paddles NO LONGER start phasing from this interaction.
-// Direct position adjustments (e.g., ball.X = ...) are REMOVED.
-func (a *GameActor) handlePaddleCollision(ctx bollywood.Context, ball *Ball, ballActorPID *bollywood.PID, paddle *Paddle, playerIndex int) {
-	if ball == nil || paddle == nil || ballActorPID == nil {
+// Paddle hits never start phasing, and the ball's position is not adjusted.
+func (a *GameActor) handlePaddleCollision(ctx actor.Context, ball *Ball, paddle *Paddle, playerIndex int) {
+	if ball == nil || paddle == nil {
 		return
 	}
 
@@ -317,15 +305,13 @@ func (a *GameActor) handlePaddleCollision(ctx bollywood.Context, ball *Ball, bal
 	ball.Vy = finalVy
 	ball.OwnerIndex = playerIndex
 
-	// 3. Send Commands/Updates
-	a.engine.Send(ballActorPID, SetVelocityCommand{Vx: finalVx, Vy: finalVy}, a.selfPID)
 	a.addUpdate(&BallOwnershipChange{MessageType: "ballOwnerChanged", ID: ball.Id, NewOwnerIndex: playerIndex})
 }
 
 // handleBrickCollision processes non-phasing ball hitting a brick.
 // It reflects the ball's velocity without direct position adjustment.
-func (a *GameActor) handleBrickCollision(ctx bollywood.Context, ball *Ball, ballActorPID *bollywood.PID, cell *Cell, r, c int) {
-	if ball == nil || cell == nil || cell.Data == nil || ballActorPID == nil {
+func (a *GameActor) handleBrickCollision(ctx actor.Context, ball *Ball, cell *Cell, r, c int) {
+	if ball == nil || cell == nil || cell.Data == nil {
 		return
 	}
 	if ball.Phasing {
@@ -365,20 +351,18 @@ func (a *GameActor) handleBrickCollision(ctx bollywood.Context, ball *Ball, ball
 		// A more advanced system would check if after one reflection, it's still colliding.
 	}
 
-	// Send command to BallActor to update its internal velocity state
-	a.engine.Send(ballActorPID, SetVelocityCommand{Vx: ball.Vx, Vy: ball.Vy}, a.selfPID)
-
 	// 2. Damage Brick
 	_ = a.damageBrick(ctx, ball, cell, r, c) // Handles scoring and power-ups
 }
 
 // damageBrick reduces brick life, handles destruction, scoring, and power-ups.
 // Returns true if the brick was destroyed.
-func (a *GameActor) damageBrick(ctx bollywood.Context, ball *Ball, cell *Cell, r, c int) bool {
+func (a *GameActor) damageBrick(ctx actor.Context, ball *Ball, cell *Cell, r, c int) bool {
 	if cell == nil || cell.Data == nil || cell.Data.Life <= 0 {
 		return false // Already destroyed or not a valid brick
 	}
 
+	a.gridDirty = true
 	cell.Data.Life--
 	destroyed := false
 
@@ -391,7 +375,8 @@ func (a *GameActor) damageBrick(ctx bollywood.Context, ball *Ball, cell *Cell, r
 		// Award score to ball owner
 		scorerIndex := ball.OwnerIndex
 		if scorerIndex >= 0 && scorerIndex < utils.MaxPlayers && a.players[scorerIndex] != nil && a.players[scorerIndex].IsConnected {
-			newScore := a.players[scorerIndex].Score.Add(int32(brickLevel))
+			a.players[scorerIndex].Score += int32(brickLevel)
+			newScore := a.players[scorerIndex].Score
 			a.addUpdate(&ScoreUpdate{MessageType: "scoreUpdate", Index: scorerIndex, Score: newScore})
 		}
 
@@ -405,13 +390,9 @@ func (a *GameActor) damageBrick(ctx bollywood.Context, ball *Ball, cell *Cell, r
 
 // triggerRandomPowerUp selects and activates a power-up.
 // Phasing is now one of the power-ups.
-func (a *GameActor) triggerRandomPowerUp(ctx bollywood.Context, ball *Ball, brickRow, brickCol int) {
+func (a *GameActor) triggerRandomPowerUp(ctx actor.Context, ball *Ball, brickRow, brickCol int) {
 	if ball == nil {
 		return
-	}
-	ballActorPID := a.ballActors[ball.Id] // Get PID
-	if ballActorPID == nil {
-		return // Cannot apply power-up if ball actor doesn't exist
 	}
 
 	// Define available power-up types
@@ -435,20 +416,16 @@ func (a *GameActor) triggerRandomPowerUp(ctx bollywood.Context, ball *Ball, bric
 		a.spawnBall(ctx, ball.OwnerIndex, spawnX, spawnY, a.cfg.PowerUpSpawnBallExpiry, false, false)
 
 	case powerUpIncreaseMass:
-		a.engine.Send(ballActorPID, IncreaseMassCommand{Additional: a.cfg.PowerUpIncreaseMassAdd}, a.selfPID)
 		ball.IncreaseMass(a.cfg, a.cfg.PowerUpIncreaseMassAdd)
 
 	case powerUpIncreaseVelocity:
-		a.engine.Send(ballActorPID, IncreaseVelocityCommand{Ratio: a.cfg.PowerUpIncreaseVelRatio}, a.selfPID)
 		ball.IncreaseVelocity(a.cfg.PowerUpIncreaseVelRatio)
 
 	case powerUpStartPhasing:
 		// Apply phasing to the ball that broke the brick
 		// Update GameActor's cache immediately and start its timer
 		ball.Phasing = true
-		a.startPhasingTimer(ball.Id) // This will stop existing timer and start new one
-		// Send command to BallActor so its internal state matches
-		a.engine.Send(ballActorPID, SetPhasingCommand{}, a.selfPID)
+		a.startPhasingTimer(ball.Id) // Restarts the timer if the ball is already phasing
 	}
 }
 
@@ -489,29 +466,27 @@ func makeBrickID(row, col, gridSize int) int {
 
 // startPhasingTimer starts a timer for a ball's phasing duration.
 func (a *GameActor) startPhasingTimer(ballID int) {
-	a.phasingTimersMu.Lock()
-	defer a.phasingTimersMu.Unlock()
-
 	// Stop existing timer for this ball, if any
 	if timer, exists := a.phasingTimers[ballID]; exists && timer != nil {
 		timer.Stop()
 	}
 
+	// A stopped timer may already have queued its callback. Ignore older generations.
+	if a.phasingGeneration == nil {
+		a.phasingGeneration = make(map[int]uint64)
+	}
+	a.phasingGeneration[ballID]++
+	generation := a.phasingGeneration[ballID]
 	// Create new timer
+	engine, self := a.engine, a.selfPID
 	timer := time.AfterFunc(a.cfg.BallPhasingTime, func() {
-		// Send message back to self to handle timer expiry in actor context
-		if a.engine != nil && a.selfPID != nil {
-			a.engine.Send(a.selfPID, stopPhasingTimerMsg{BallID: ballID}, nil)
-		}
+		engine.Send(self, stopPhasingTimerMsg{BallID: ballID, Generation: generation}, nil)
 	})
 	a.phasingTimers[ballID] = timer
 }
 
 // stopPhasingTimer stops and removes the phasing timer for a ball.
 func (a *GameActor) stopPhasingTimer(ballID int) {
-	a.phasingTimersMu.Lock()
-	defer a.phasingTimersMu.Unlock()
-
 	if timer, exists := a.phasingTimers[ballID]; exists && timer != nil {
 		timer.Stop()
 		delete(a.phasingTimers, ballID)

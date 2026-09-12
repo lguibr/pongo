@@ -1,20 +1,21 @@
-
 package server
 
 import (
-	"fmt"
+	"log/slog"
+	"sync/atomic"
 
-	"github.com/lguibr/bollywood"
+	"github.com/lguibr/pongo/internal/actor"
 )
 
 // Server holds references needed for handling requests.
 type Server struct {
-	engine         *bollywood.Engine
-	roomManagerPID *bollywood.PID // Changed from gameActorPID
+	activeConnections atomic.Int64
+	engine            *actor.Engine
+	roomManagerPID    *actor.PID
 }
 
 // New creates a new Server instance.
-func New(engine *bollywood.Engine, roomManagerPID *bollywood.PID) *Server { // Changed parameter name
+func New(engine *actor.Engine, roomManagerPID *actor.PID) *Server {
 	if engine == nil || roomManagerPID == nil {
 		panic("Server requires a valid engine and roomManagerPID")
 	}
@@ -25,18 +26,18 @@ func New(engine *bollywood.Engine, roomManagerPID *bollywood.PID) *Server { // C
 }
 
 // GetRoomManagerPID returns the PID of the room manager actor.
-func (s *Server) GetRoomManagerPID() *bollywood.PID {
+func (s *Server) GetRoomManagerPID() *actor.PID {
 	if s == nil {
-		fmt.Println("ERROR: GetRoomManagerPID called on nil Server")
+		slog.Error("GetRoomManagerPID called on nil Server")
 		return nil
 	}
 	return s.roomManagerPID
 }
 
 // GetEngine returns the Bollywood engine instance.
-func (s *Server) GetEngine() *bollywood.Engine {
+func (s *Server) GetEngine() *actor.Engine {
 	if s == nil {
-		fmt.Println("ERROR: GetEngine called on nil Server")
+		slog.Error("GetEngine called on nil Server")
 		return nil
 	}
 	return s.engine

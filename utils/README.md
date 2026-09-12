@@ -1,28 +1,12 @@
+# Utilities package
 
-# Utilities Module
+Shared configuration and helpers.
 
-This module provides shared constants, configuration management, helper functions, and basic types used across the PonGo backend modules.
+- `config.go`: `Config`, the tunable game parameters, with `DefaultConfig()` and the test
+  presets `E2ETestConfig()` and `BrickCollisionTestConfig()`.
+- `constants.go`: `MaxPlayers` and the grid cell types (`Cells.Brick`, `Cells.Block`,
+  `Cells.Empty`).
+- `utils.go`: integer and vector maths, random vectors and colours, `DirectionFromString`
+  (client arrow keys to paddle directions) and the `AssertPanics` test helper.
 
-## Key Components
-
-*   **`config.go`**:
-    *   Defines the `Config` struct holding all tunable game parameters (timing, physics, sizes, power-ups, etc.).
-    *   Provides `DefaultConfig()` to get a standard configuration set.
-    *   *(Future: Could include functions to load config from files).*
-*   **`constants.go`**:
-    *   Defines fundamental constants like `MaxPlayers`.
-    *   Defines `CellType` enum (`Brick`, `Block`, `Empty`) and `Cells` helper struct.
-    *   Contains **deprecated** constants that are now sourced from `Config`.
-*   **`utils.go`**:
-    *   Mathematical helpers (`MaxInt`, `MinInt`, `Abs`).
-    *   Vector/Matrix operations (mostly for grid generation, potentially physics).
-    *   Random number/color generation (`NewRandomColor`, `RandomNumber`, etc.).
-    *   String conversion (`DirectionFromString`).
-    *   Testing helpers (`AssertPanics`).
-    *   Logging helpers (`JsonLogger`, `Logger`).
-
-## Related Modules
-
-*   [Game Logic](../game/README.md)
-*   [Server](../server/README.md)
-*   [Main Project](../README.md)
+See [the game package](../game/README.md) and [the server package](../server/README.md).

@@ -1,4 +1,3 @@
-// File: test/e2e_brick_collision_test.go
 package test
 
 import (
@@ -44,9 +43,10 @@ func brickCollisionTestWorker(
 		return
 	}
 	defer func() { _ = ws.Close() }()
+	quickPlayHandshake(t, ws)
 
 	localState := game.NewLocalGameState()
-	var assignedIndex int // Removed ineffectual assignment = -1
+	var assignedIndex int
 
 	// Consume initial messages
 	var assignmentMsg game.PlayerAssignmentMessage
@@ -77,7 +77,7 @@ func brickCollisionTestWorker(
 		case <-cmdTicker.C:
 			if assignedIndex != -1 { // Only send if assigned
 				direction := directions[randGen.Intn(len(directions))]
-				cmd := game.Direction{Direction: direction}
+				cmd := map[string]string{"messageType": "direction", "direction": direction}
 				if sendErr := websocket.JSON.Send(ws, cmd); sendErr != nil {
 					if errors.Is(sendErr, io.EOF) || strings.Contains(sendErr.Error(), "closed") {
 						return
@@ -140,7 +140,7 @@ func brickCollisionTestWorker(
 							}
 						}
 					}
-				} // else removed empty branch
+				}
 			} else {
 				netErr, isNetErr := readErr.(net.Error)
 				if errors.Is(readErr, io.EOF) || strings.Contains(readErr.Error(), "closed") {

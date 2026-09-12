@@ -1,176 +1,108 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
-	"net/url" // Import url package
-	"strings" // Import strings package
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 	"time"
 
-	"github.com/lguibr/bollywood"
 	"github.com/lguibr/pongo/game"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/server"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
 
-const servicePort = "8080" // Hardcoded port for Cloud Run
-
-// --- Function to check origin ---
+// checkOrigin rejects a malformed Origin header; any well-formed origin passes. A
+// request without Origin passes here, but the x/net handshake then refuses it with 403.
 func checkOrigin(config *websocket.Config, req *http.Request) (err error) {
-	// host := req.Host // Removed unused variable
-	// fmt.Printf("Origin Check: Header Origin='%s', Request Host='%s'\n", origin, host) // Removed log
-
-	// If Origin header is present, let websocket.Origin perform the default check.
-	// If it's missing, we might allow based on Host or other criteria.
 	config.Origin, err = websocket.Origin(config, req)
-	if err == nil {
-		if config.Origin == nil {
-			// websocket.Origin returns nil origin and nil error if Origin header is missing.
-			// This is often allowed by default browsers for ws:// connections from http:// origins.
-			// For Cloud Run (HTTPS -> HTTP), the Origin header *should* be present.
-			// If it's missing, it might indicate a non-browser client or misconfiguration.
-			// We'll allow it for now but log a warning.
-			fmt.Println("Origin Check: Origin header missing, allowing connection (check client/proxy config).")
-			// Optionally, construct a default origin based on Host if strict checking is needed:
-			// defaultOriginUrl := &url.URL{Scheme: "http", Host: req.Host} // Adjust scheme as needed
-			// config.Origin = defaultOriginUrl
-			return nil // Allow connection
-		}
-		// Origin header was present and matched the config's expected origin.
-		// fmt.Printf("Origin Check: websocket.Origin check passed for origin %s\n", config.Origin) // Removed log
-		return nil // Origin check passed
-	}
-
-	// websocket.Origin returned an error (likely origin mismatch)
-	fmt.Printf("Origin Check: websocket.Origin check failed: %v\n", err)
-
-	// --- Custom Allow Logic (Example - USE WITH CAUTION) ---
-	// Allow specific origins explicitly if needed, bypassing the standard check error.
-	// This is generally NOT recommended for security unless you have specific needs.
-	/*
-	   allowedOrigins := []string{"http://localhost:5173", "https://your-frontend-domain.com"}
-	   requestOrigin := req.Header.Get("Origin") // Get the actual Origin header value
-	   isAllowed := false
-	   for _, allowed := range allowedOrigins {
-	       if requestOrigin == allowed {
-	           isAllowed = true
-	           break
-	       }
-	   }
-	   if isAllowed {
-	       fmt.Printf("Origin Check: Custom allow for origin %s\n", requestOrigin)
-	       config.Origin, _ = url.Parse(requestOrigin) // Set the config origin to the allowed one
-	       return nil // Bypass the original error
-	   }
-	*/
-	// --- End Custom Allow Logic ---
-
-	// If no custom logic allowed it, return the original error from websocket.Origin
 	return err
 }
 
 func main() {
-	// --- ADD A UNIQUE MARKER TO CONFIRM THIS VERSION IS RUNNING ---
-	fmt.Println(">>> RUNNING CODE VERSION: [LG-Apr28-v1.1.4-CleanupRefactor] <<<")
-	// --- END MARKER ---
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel()})))
 
-	// 0. Load Configuration
 	cfg := utils.DefaultConfig()
-	fmt.Println("Configuration loaded (using defaults).")
-	fmt.Printf("Canvas Size: %d, Grid Size: %d, Tick Period: %v, Broadcast Rate: %dHz\n",
-		cfg.CanvasSize, cfg.GridSize, cfg.GameTickPeriod, cfg.BroadcastRateHz)
+	slog.Info("starting", "canvasSize", cfg.CanvasSize, "gridSize", cfg.GridSize, "tick", cfg.GameTickPeriod, "broadcastHz", cfg.BroadcastRateHz)
 
-	// 1. Initialize Bollywood Engine
-	engine := bollywood.NewEngine()
-	fmt.Println("Bollywood Engine created.")
-
-	// 2. Spawn the RoomManagerActor, passing the config
-	roomManagerProps := bollywood.NewProps(game.NewRoomManagerProducer(engine, cfg)) // Pass cfg
-	roomManagerPID := engine.Spawn(roomManagerProps)
+	engine := actor.NewEngine()
+	roomManagerPID := engine.Spawn(actor.NewProps(game.NewRoomManagerProducer(engine, cfg)))
 	if roomManagerPID == nil {
-		panic("Failed to spawn RoomManagerActor")
+		panic("failed to spawn room manager")
 	}
-	fmt.Printf("RoomManagerActor spawned with PID: %s\n", roomManagerPID)
+	websocketServer := server.New(engine, roomManagerPID)
 
-	// Allow RoomManagerActor to start
-	time.Sleep(50 * time.Millisecond)
+	http.HandleFunc("/", server.HandleHealthCheck())
+	http.HandleFunc("/health-check/", server.HandleHealthCheck())
+	http.HandleFunc("/rooms/", websocketServer.HandleGetRooms())
 
-	// 3. Create the HTTP/WebSocket Server
-	websocketServer := server.New(engine, roomManagerPID) // Pass RoomManager PID
-	fmt.Println("WebSocket Server instance created.")
-
-	// 4. Setup Handlers
-	http.HandleFunc("/", server.HandleHealthCheck())              // Simple health check at root
-	http.HandleFunc("/health-check/", server.HandleHealthCheck()) // Explicit health check endpoint
-	http.HandleFunc("/rooms/", websocketServer.HandleGetRooms())  // Get room list
-
-	// --- MODIFIED: Use http.HandleFunc with custom origin check ---
 	subscribeHandler := websocket.Handler(websocketServer.HandleSubscribe())
 	http.HandleFunc("/subscribe", func(w http.ResponseWriter, req *http.Request) {
-		// Determine scheme based on request or Cloud Run headers
-		scheme := "ws"
-		originScheme := "http"
+		// Cloud Run terminates TLS and reports the original scheme in X-Forwarded-Proto.
+		scheme, originScheme := "ws", "http"
 		if req.TLS != nil || strings.EqualFold(req.Header.Get("X-Forwarded-Proto"), "https") {
-			scheme = "wss"
-			originScheme = "https"
+			scheme, originScheme = "wss", "https"
 		}
-		// fmt.Printf("Handle /subscribe: Detected scheme: %s (Origin scheme: %s)\n", scheme, originScheme) // Removed log
-
-		// Construct URLs carefully using the Host header
-		// Location URL (where the WebSocket endpoint is)
-		locationUrlStr := fmt.Sprintf("%s://%s/subscribe", scheme, req.Host)
-		// Origin URL (where the request is coming from - usually without path)
-		// Use the Origin header if present, otherwise construct from Host.
-		originUrlStr := req.Header.Get("Origin")
-		if originUrlStr == "" {
-			// Construct a default origin if header is missing
-			originUrlStr = fmt.Sprintf("%s://%s", originScheme, req.Host)
-			// fmt.Printf("Handle /subscribe: Origin header missing, using constructed origin: %s\n", originUrlStr) // Removed log
+		location := fmt.Sprintf("%s://%s/subscribe", scheme, req.Host)
+		origin := req.Header.Get("Origin")
+		if origin == "" {
+			origin = fmt.Sprintf("%s://%s", originScheme, req.Host)
 		}
-
-		// Validate constructed URLs before creating config
-		_, errLoc := url.Parse(locationUrlStr)
-		_, errOrg := url.Parse(originUrlStr)
-		if errLoc != nil || errOrg != nil {
-			fmt.Printf("Error parsing URLs for websocket config (Location: '%s', Origin: '%s'): LocErr=%v, OrgErr=%v\n", locationUrlStr, originUrlStr, errLoc, errOrg)
+		config, err := websocket.NewConfig(location, origin)
+		if err != nil {
+			slog.Warn("invalid websocket config", "location", location, "origin", origin, "err", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-
-		// Create WebSocket config
-		config, err := websocket.NewConfig(locationUrlStr, originUrlStr)
-		if err != nil {
-			fmt.Printf("Error creating websocket config (Location: %s, Origin: %s): %v\n", locationUrlStr, originUrlStr, err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		if err := checkOrigin(config, req); err != nil {
+			slog.Warn("websocket origin rejected", "origin", req.Header.Get("Origin"), "err", err)
+			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
-
-		// Perform the custom origin check
-		err = checkOrigin(config, req) // Call our custom check
-		if err != nil {
-			fmt.Printf("Origin check failed for Origin '%s' against config Origin '%s': %v\n", req.Header.Get("Origin"), config.Origin, err)
-			http.Error(w, "Forbidden", http.StatusForbidden) // Use constant
-			return
-		}
-
-		// If origin check passes, serve the actual handler using the original Handler interface
-		// fmt.Printf("Origin check passed for Origin '%s', serving WebSocket handler.\n", config.Origin) // Removed log
-		subscribeHandler.ServeHTTP(w, req) // Use the original handler
+		subscribeHandler.ServeHTTP(w, req)
 	})
-	// --- END MODIFICATION ---
 
-	fmt.Println("HTTP Handlers registered.")
-
-	// 5. Determine Port and Start Server
-	listenAddr := ":" + servicePort
-	fmt.Printf("Server starting on address %s\n", listenAddr)
-	err := http.ListenAndServe(listenAddr, nil)
-	if err != nil {
-		fmt.Printf("FATAL: http.ListenAndServe on %s failed: %v\n", listenAddr, err)
-		// Handle shutdown gracefully
-		fmt.Println("Shutting down engine...")
-		engine.Shutdown(5 * time.Second) // Allow actors time to stop
-		fmt.Println("Engine shutdown complete.")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Cloud Run sets PORT; 8080 is its default
 	}
+	listenAddr := ":" + port
+	// net/http reports accept and handler failures through ErrorLog; keep them at error level.
+	httpServer := &http.Server{Addr: listenAddr, ReadHeaderTimeout: 5 * time.Second, ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelError)}
+	shutdown, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- httpServer.ListenAndServe() }()
+	slog.Info("listening", "addr", listenAddr)
+	select {
+	case err := <-serveErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("http server stopped", "err", err)
+		}
+	case <-shutdown.Done():
+		slog.Info("shutting down")
+	}
+	// HTTP shutdown does not own hijacked WebSockets; stop room/connection actors first.
+	engine.Shutdown(5 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		slog.Error("http shutdown", "err", err)
+	}
+}
+
+// logLevel reads PONGO_LOG_LEVEL (debug, info, warn or error); the default is info.
+func logLevel() slog.Level {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(os.Getenv("PONGO_LOG_LEVEL"))); err != nil {
+		return slog.LevelInfo
+	}
+	return level
 }

@@ -1,10 +1,9 @@
-// File: game/messages.go
 package game
 
 import (
-	"time"
+	"github.com/lguibr/pongo/internal/transport"
 
-	"github.com/lguibr/bollywood"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -162,7 +161,6 @@ type PaddlePositionUpdate struct {
 
 // BrickStateUpdate represents the state of a single brick cell. Includes R3F coords.
 type BrickStateUpdate struct {
-	// MessageType string `json:"messageType"` // "brickStateUpdate" - Removed, part of FullGridUpdate
 	X    float64        `json:"x"`    // R3F X coordinate for cell center
 	Y    float64        `json:"y"`    // R3F Y coordinate for cell center
 	Life int            `json:"life"` // Remaining life
@@ -194,50 +192,51 @@ type BallOwnershipChange struct {
 
 // --- RoomManagerActor Messages ---
 
-// FindRoomRequest asks the RoomManager to find or create a room.
-type FindRoomRequest struct {
-	ReplyTo *bollywood.PID // PID of the actor requesting the room (ConnectionHandlerActor)
-}
-
 // CreateRoomActorRequest asks the RoomManager to create a new room.
 type CreateRoomActorRequest struct {
-	ReplyTo   *bollywood.PID
+	Conn      *websocket.Conn
+	Client    *transport.Client
+	ReplyTo   *actor.PID
 	IsPublic  bool
 	SessionID string
 }
 
 // JoinRoomActorRequest asks the RoomManager to join a specific room.
 type JoinRoomActorRequest struct {
-	ReplyTo   *bollywood.PID
+	Conn      *websocket.Conn
+	Client    *transport.Client
+	ReplyTo   *actor.PID
 	Code      string
 	SessionID string
 }
 
 // QuickPlayActorRequest asks the RoomManager to find a public room or create one.
 type QuickPlayActorRequest struct {
-	ReplyTo   *bollywood.PID
+	Conn      *websocket.Conn
+	Client    *transport.Client
+	ReplyTo   *actor.PID
 	SessionID string
 }
 
 // AssignRoomResponse is the reply from RoomManager with the assigned GameActor PID.
 type AssignRoomResponse struct {
-	RoomPID *bollywood.PID // nil if no room could be assigned
+	RoomPID *actor.PID // nil if no room could be assigned
 }
 
 // GameRoomEmpty notifies the RoomManager that a GameActor is finished or empty.
 type GameRoomEmpty struct {
-	RoomPID *bollywood.PID
+	RoomPID *actor.PID
 }
 
 // PlayerLeftRoom notifies RoomManager that a player has left the room.
 type PlayerLeftRoom struct {
-	RoomPID   *bollywood.PID
+	RoomPID   *actor.PID
 	SessionID string
 }
 
 // RoomPhaseUpdate notifies RoomManager of phase change.
 type RoomPhaseUpdate struct {
-	RoomPID *bollywood.PID
+	RoomPID *actor.PID
 	Phase   Phase
 }
 
@@ -260,6 +259,11 @@ type InternalReadLoopMsg struct {
 
 // AssignPlayerToRoom tells the GameActor to add a player associated with a WebSocket connection.
 type AssignPlayerToRoom struct {
+	Client    *transport.Client
+	ReplyTo   *actor.PID
+	Response  interface{}
+	Reserved  bool
+	AutoStart bool
 	WsConn    *websocket.Conn
 	SessionID string
 }
@@ -271,8 +275,8 @@ type PlayerDisconnect struct {
 
 // ForwardedPaddleDirection carries paddle input from ConnectionHandler to GameActor.
 type ForwardedPaddleDirection struct {
-	WsConn    *websocket.Conn // Corrected type: Use *websocket.Conn
-	Direction []byte          // Raw JSON payload {"direction": "..."}
+	WsConn    *websocket.Conn
+	Direction []byte // Raw JSON payload {"direction": "..."}
 }
 
 // GameTick signals the GameActor to perform a physics update.
@@ -281,33 +285,6 @@ type GameTick struct{}
 // BroadcastTick signals the GameActor to broadcast the current state.
 type BroadcastTick struct{}
 
-// PaddleStateUpdate sent from PaddleActor to GameActor when internal state changes.
-type PaddleStateUpdate struct {
-	PID       *bollywood.PID
-	Index     int
-	Direction string // Internal direction ("left", "right", "")
-}
-
-// BallStateUpdate sent from BallActor to GameActor when internal state changes.
-type BallStateUpdate struct {
-	PID     *bollywood.PID
-	ID      int
-	Vx      int
-	Vy      int
-	Radius  int
-	Mass    int
-	Phasing bool
-}
-
-// SpawnBallCommand tells GameActor to create a new ball.
-type SpawnBallCommand struct {
-	OwnerIndex        int
-	X, Y              int           // Optional initial position (0,0 for default near owner)
-	ExpireIn          time.Duration // 0 for permanent balls
-	IsPermanent       bool
-	SetInitialPhasing bool // Flag to make the ball phase immediately on spawn
-}
-
 // DestroyExpiredBall tells GameActor to remove a ball that reached its expiry time.
 type DestroyExpiredBall struct {
 	BallID int
@@ -315,11 +292,13 @@ type DestroyExpiredBall struct {
 
 // stopPhasingTimerMsg is an internal message sent by time.AfterFunc when a ball's phasing ends.
 type stopPhasingTimerMsg struct {
-	BallID int
+	Generation uint64
+	BallID     int
 }
 
 // stopReconnectTimerMsg is an internal message sent by time.AfterFunc when a player's reconnect grace period ends.
 type stopReconnectTimerMsg struct {
+	Generation  uint64
 	PlayerIndex int
 }
 
@@ -327,7 +306,8 @@ type stopReconnectTimerMsg struct {
 
 // AddClient tells the Broadcaster to start sending updates to a new connection.
 type AddClient struct {
-	Conn *websocket.Conn
+	Client *transport.Client
+	Conn   *websocket.Conn
 }
 
 // RemoveClient tells the Broadcaster to stop sending updates to a connection.
@@ -340,50 +320,11 @@ type BroadcastUpdatesCommand struct {
 	Updates []interface{}
 }
 
-// --- PaddleActor Messages ---
-
-// PaddleDirectionMessage carries the raw direction payload to the PaddleActor.
-type PaddleDirectionMessage struct {
-	Direction []byte // Raw JSON payload {"direction": "..."}
-}
-
-// --- BallActor Messages ---
-
-// ReflectVelocityCommand tells the BallActor to reverse velocity on an axis.
-type ReflectVelocityCommand struct {
-	Axis string // "X" or "Y"
-}
-
-// SetVelocityCommand tells the BallActor to set a specific velocity.
-type SetVelocityCommand struct {
-	Vx, Vy int
-}
-
-// SetPhasingCommand tells the BallActor to enter the phasing state.
-type SetPhasingCommand struct{}
-
-// StopPhasingCommand tells the BallActor to exit the phasing state.
-type StopPhasingCommand struct{}
-
-// IncreaseVelocityCommand tells the BallActor to increase its speed.
-type IncreaseVelocityCommand struct {
-	Ratio float64
-}
-
-// IncreaseMassCommand tells the BallActor to increase its mass and radius.
-type IncreaseMassCommand struct {
-	Additional int
-}
-
-// DestroyBallCommand tells the BallActor to stop itself.
-type DestroyBallCommand struct{}
-
 // --- Internal Test Messages ---
 
-// internalAddBallTestMsg allows tests to directly add a ball and its actor PID to GameActor state.
+// internalAddBallTestMsg allows tests to add a ball directly to GameActor state.
 type internalAddBallTestMsg struct {
 	Ball *Ball
-	PID  *bollywood.PID
 }
 
 // internalStartTickersTestMsg allows tests to trigger ticker start in GameActor.
@@ -483,12 +424,26 @@ type ForwardedPlayerReady struct {
 type startCountdownMsg struct{}
 
 // startGameMsg signals the actor to transition to Playing phase.
-type startGameMsg struct{}
+type startGameMsg struct{ Generation uint64 }
 
 // ForceStartGame signals the actor to transition to Playing phase immediately (skipping lobby/countdown).
 type ForceStartGame struct{}
 
 // CountdownTick signals the actor to decrement the countdown.
 type CountdownTick struct {
+	Generation       uint64
 	SecondsRemaining int
+}
+
+// AdmissionRejected rolls back only a newly reserved slot.
+type AdmissionRejected struct {
+	ReplyTo   *actor.PID
+	RoomPID   *actor.PID
+	SessionID string
+	Reserved  bool
+}
+
+type AdmissionAccepted struct {
+	RoomPID *actor.PID
+	ReplyTo *actor.PID
 }

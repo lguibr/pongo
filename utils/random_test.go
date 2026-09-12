@@ -1,4 +1,3 @@
-// File: utils/random_test.go
 package utils
 
 import (

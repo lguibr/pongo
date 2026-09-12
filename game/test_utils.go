@@ -1,4 +1,3 @@
-// File: game/test_utils.go
 package game
 
 import (
@@ -120,7 +119,7 @@ func ApplyUpdatesToLocalState(localState *LocalGameState, updates []interface{},
 		case "paddlePositionUpdate":
 			var update PaddlePositionUpdate
 			if err := json.Unmarshal(updateBytes, &update); err == nil {
-				// Corrected: Check index bounds and access array element directly
+				// Check index bounds and access the array element directly
 				if update.Index >= 0 && update.Index < utils.MaxPlayers {
 					paddle := localState.Paddles[update.Index] // Direct access
 					if paddle != nil {                         // Check if pointer is nil

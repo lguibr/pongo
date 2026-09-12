@@ -1,4 +1,3 @@
-// File: test/e2e_test.go
 package test
 
 import (
@@ -6,17 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	// "math" // Removed unused import
-	"net" // Re-add net import
-	// "net/http/httptest" // No longer needed directly
+	"net"
 	"strings"
 	"testing"
 	"time"
 
-	// "github.com/lguibr/bollywood" // No longer needed directly
 	"github.com/lguibr/pongo/game"
-	// "github.com/lguibr/pongo/server" // No longer needed directly
 	"github.com/lguibr/pongo/utils"
 
 	"github.com/stretchr/testify/assert"
@@ -46,10 +40,7 @@ func waitForStateCondition(t *testing.T, ws *websocket.Conn, localState *game.Lo
 				if condition(localState) {                                  // Check condition again
 					return true
 				}
-			} // else { // Removed SA9003
-			// Could be another message type (e.g., gameOver), ignore for condition check
-			// t.Logf("Received non-batch message: %s", string(rawMsg))
-			// }
+			} // Other message types, such as gameOver, do not affect the condition.
 		} else {
 			// Simplify error checking for closed connections
 			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed network connection") || strings.Contains(err.Error(), "reset by peer") {
@@ -83,6 +74,7 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 		t.FailNow()
 	}
 	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
+	quickPlayHandshake(t, ws)
 
 	// 3. Read initial messages (Assignment + Initial Entities) - Consume them
 	var assignmentMsg game.PlayerAssignmentMessage
@@ -124,7 +116,7 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 
 	// 5. Send Input (Move Right -> Down for Player 0)
 	fmt.Println("E2E Test: Sending 'ArrowRight' input...")
-	directionCmd := game.Direction{Direction: "ArrowRight"}
+	directionCmd := map[string]string{"messageType": "direction", "direction": "ArrowRight"}
 	err = websocket.JSON.Send(ws, directionCmd)
 	assert.NoError(t, err, "Should send direction without error")
 
@@ -143,7 +135,7 @@ func TestE2E_SinglePlayerConnectMoveStopDisconnect(t *testing.T) {
 
 	// 7. Send Stop Input
 	fmt.Println("E2E Test: Sending 'Stop' input...")
-	stopCmd := game.Direction{Direction: "Stop"}
+	stopCmd := map[string]string{"messageType": "direction", "direction": "Stop"}
 	err = websocket.JSON.Send(ws, stopCmd)
 	assert.NoError(t, err, "Should send stop direction without error")
 
@@ -183,6 +175,7 @@ func TestE2E_BallWallNonStick(t *testing.T) {
 		t.FailNow()
 	}
 	defer func() { _ = ws.Close() }() // Ignore error on close in test defer
+	quickPlayHandshake(t, ws)
 
 	// 3. Read initial messages (Assignment + Initial Entities)
 	var assignmentMsg game.PlayerAssignmentMessage

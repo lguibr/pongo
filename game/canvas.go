@@ -1,4 +1,3 @@
-// File: game/canvas.go
 package game
 
 import (

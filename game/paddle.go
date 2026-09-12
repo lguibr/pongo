@@ -1,18 +1,10 @@
 package game
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/lguibr/pongo/utils"
 )
-
-// --- Message Types for Paddle Communication ---
-
-// PaddlePositionMessage signals the paddle's current state (sent by PaddleActor).
-// DEPRECATED in favor of PositionUpdateMessage
-type PaddlePositionMessage struct {
-	Paddle *Paddle // Pointer to a state snapshot
-}
 
 // Direction struct for unmarshalling JSON from frontend
 type Direction struct {
@@ -78,7 +70,7 @@ func NewPaddle(cfg utils.Config, index int) *Paddle {
 		paddle.Y = cfg.CanvasSize - paddle.Height
 	default:
 		// Should not happen with MaxPlayers check
-		fmt.Printf("Warning: Invalid paddle index %d\n", index)
+		slog.Warn("invalid paddle index", "index", index)
 		paddle.X, paddle.Y, paddle.Width, paddle.Height = 0, 0, 10, 10 // Default fallback
 	}
 
@@ -86,7 +78,7 @@ func NewPaddle(cfg utils.Config, index int) *Paddle {
 }
 
 // Move updates the paddle's position based on its direction and velocity.
-// Handles stopping when direction is empty. Called by PaddleActor.
+// Handles stopping when direction is empty.
 // Also updates Vx, Vy, and IsMoving based on the current direction.
 func (paddle *Paddle) Move() {
 	// Reset velocity before applying movement

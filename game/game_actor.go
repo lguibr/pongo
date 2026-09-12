@@ -1,14 +1,14 @@
-// File: game/game_actor.go
 package game
 
 import (
 	"fmt"
+	"log/slog"
 	"runtime/debug"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	"github.com/lguibr/pongo/internal/actor"
+	"github.com/lguibr/pongo/internal/transport"
 	"github.com/lguibr/pongo/utils"
 	"golang.org/x/net/websocket"
 )
@@ -22,39 +22,47 @@ const (
 	PhasePlaying
 )
 
-// GameActor manages the overall game state and coordinates child actors for a single room.
+// GameActor owns all simulation state for a single room.
 type GameActor struct {
-	cfg             utils.Config
-	canvas          *Canvas
-	players         [utils.MaxPlayers]*playerInfo // State managed serially by actor
-	paddles         [utils.MaxPlayers]*Paddle     // Local cache, authoritative state for simulation
-	paddleActors    [utils.MaxPlayers]*bollywood.PID
-	balls           map[int]*Ball // Local cache, authoritative state for simulation
-	ballActors      map[int]*bollywood.PID
-	engine          *bollywood.Engine
-	physicsTicker   *time.Ticker // Ticker for physics/game logic
-	stopPhysicsCh   chan struct{}
-	broadcastTicker *time.Ticker // Ticker for broadcasting state
-	stopBroadcastCh chan struct{}
-	tickerMu        sync.Mutex // Mutex to protect ticker fields and channels
-	selfPID         *bollywood.PID
-	roomManagerPID  *bollywood.PID
-	broadcasterPID  *bollywood.PID // PID of the dedicated broadcaster actor
-	connToIndex     map[*websocket.Conn]int
-	playerConns     [utils.MaxPlayers]*websocket.Conn
-	gameOver        atomic.Bool // Flag to prevent multiple game over triggers
-	phase           Phase       // Current phase of the room
+	finalDeliveryHandedOff bool
+	reconnectGeneration    uint64
+	expiryTimers           map[int]*time.Timer
+	countdownGeneration    uint64
+	cleanupGeneration      uint64
+	phasingGeneration      map[int]uint64
+	gridDirty              bool
+	gridInitialized        bool
+	forceStartPending      bool
+	nextBallID             int
+	physicsPending         actor.PendingTick
+	broadcastPending       actor.PendingTick
+	lastHeartbeat          time.Time
+	cfg                    utils.Config
+	canvas                 *Canvas
+	players                [utils.MaxPlayers]*playerInfo // State managed serially by actor
+	paddles                [utils.MaxPlayers]*Paddle     // Local cache, authoritative state for simulation
+	balls                  map[int]*Ball                 // Local cache, authoritative state for simulation
+	engine                 *actor.Engine
+	physicsTicker          *time.Ticker // Ticker for physics/game logic
+	stopPhysicsCh          chan struct{}
+	broadcastTicker        *time.Ticker // Ticker for broadcasting state
+	stopBroadcastCh        chan struct{}
+	selfPID                *actor.PID
+	roomManagerPID         *actor.PID
+	broadcasterPID         *actor.PID // PID of the dedicated broadcaster actor
+	connToIndex            map[*websocket.Conn]int
+	playerConns            [utils.MaxPlayers]*websocket.Conn
+	gameOver               bool  // Set once the game has ended or the room is stopping
+	phase                  Phase // Current phase of the room
 
 	// Buffer for pending updates to broadcast
 	pendingUpdates []interface{} // Holds pointers to newly allocated update messages
-	updatesMu      sync.Mutex    // Protects pendingUpdates slice
 
 	// Collision Tracking
 	activeCollisions *CollisionTracker // Tracks ongoing collisions (ball-brick, ball-paddle)
 
 	// Phasing Timers (Managed by GameActor)
-	phasingTimers   map[int]*time.Timer // Map ball ID to its phasing timer
-	phasingTimersMu sync.Mutex          // Protects phasingTimers map
+	phasingTimers map[int]*time.Timer // Map ball ID to its phasing timer
 
 	// Countdown Timer
 	countdownTimer *time.Timer
@@ -68,28 +76,30 @@ type GameActor struct {
 	// Performance Metrics
 	tickDurationSum time.Duration
 	tickCount       int64
-	metricsMu       sync.Mutex // Protect metrics during updates
+	maxQueueLen     int // Largest backlog seen at the end of a physics tick
 
 	// Cleanup control
-	cleanupOnce sync.Once   // Ensures cleanup happens only once
-	isStopping  atomic.Bool // Indicates if Stopping message has been received
+	cleanupOnce sync.Once // Ensures cleanup happens only once
+	isStopping  bool      // Set when the room starts stopping
 }
 
 // playerInfo holds state associated with a connected player/websocket.
 type playerInfo struct {
-	Index       int
-	ID          string
-	SessionID   string       // Unique session ID for reconnection
-	Score       atomic.Int32 // Use atomic Int32 for score
-	Color       [3]int
-	Ws          *websocket.Conn // Can be nil in tests
-	IsConnected bool
-	IsReady     bool // Lobby readiness
+	DisconnectGeneration uint64
+	Index                int
+	ID                   string
+	SessionID            string // Unique session ID for reconnection
+	Score                int32
+	Color                [3]int
+	Client               *transport.Client
+	Ws                   *websocket.Conn // Can be nil in tests
+	IsConnected          bool
+	IsReady              bool // Lobby readiness
 }
 
 // NewGameActorProducer creates a producer for the GameActor.
-func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManagerPID *bollywood.PID) bollywood.Producer {
-	return func() bollywood.Actor {
+func NewGameActorProducer(engine *actor.Engine, cfg utils.Config, roomManagerPID *actor.PID) actor.Producer {
+	return func() actor.Actor {
 		canvas := NewCanvas(cfg.CanvasSize, cfg.GridSize)
 		// Grid generation happens when first player joins now
 
@@ -98,12 +108,8 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 			canvas:           canvas, // Canvas exists, but grid is empty initially
 			players:          [utils.MaxPlayers]*playerInfo{},
 			paddles:          [utils.MaxPlayers]*Paddle{}, // Initialize cache map
-			paddleActors:     [utils.MaxPlayers]*bollywood.PID{},
-			balls:            make(map[int]*Ball), // Initialize cache map
-			ballActors:       make(map[int]*bollywood.PID),
+			balls:            make(map[int]*Ball),         // Initialize cache map
 			engine:           engine,
-			stopPhysicsCh:    make(chan struct{}), // Initialize channels here
-			stopBroadcastCh:  make(chan struct{}),
 			connToIndex:      make(map[*websocket.Conn]int),
 			playerConns:      [utils.MaxPlayers]*websocket.Conn{},
 			roomManagerPID:   roomManagerPID,
@@ -116,14 +122,12 @@ func NewGameActorProducer(engine *bollywood.Engine, cfg utils.Config, roomManage
 			tickCount:       0,
 			phase:           PhaseLobby,
 		}
-		ga.gameOver.Store(false) // Initialize game over flag
-		ga.isStopping.Store(false)
 		return ga
 	}
 }
 
 // Receive is the main message handler for the GameActor.
-func (a *GameActor) Receive(ctx bollywood.Context) {
+func (a *GameActor) Receive(ctx actor.Context) {
 	// Defer panic recovery
 	defer func() {
 		if r := recover(); r != nil {
@@ -131,16 +135,16 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 			if a.selfPID != nil {
 				pidStr = a.selfPID.String()
 			}
-			fmt.Printf("PANIC recovered in GameActor %s Receive: %v\nStack trace:\n%s\n", pidStr, r, string(debug.Stack()))
+			slog.Error("game actor panic", "room", pidStr, "panic", r, "stack", string(debug.Stack()))
 			// Ensure cleanup happens exactly once, even on panic
 			a.performCleanup()
 			// Notify room manager that this room is now defunct due to panic
 			if a.roomManagerPID != nil && a.engine != nil && a.selfPID != nil {
-				fmt.Printf("GameActor %s: Notifying RoomManager %s of panic exit.\n", a.selfPID, a.roomManagerPID)
+				slog.Debug("notifying room manager of panic exit", "room", a.selfPID)
 				a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
 			}
 			// Explicitly stop self if panic occurred before normal shutdown sequence
-			if !a.isStopping.Load() && a.engine != nil && a.selfPID != nil {
+			if !a.isStopping && a.engine != nil && a.selfPID != nil {
 				a.engine.Stop(a.selfPID)
 			}
 			// Reply with error if it was an Ask request
@@ -154,7 +158,7 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 	if a.selfPID == nil {
 		a.selfPID = ctx.Self()
 		if a.selfPID == nil {
-			fmt.Printf("ERROR: GameActor ???: Failed to set self PID on first Receive.")
+			slog.Error("game actor has no PID")
 			if ctx.RequestID() != "" {
 				ctx.Reply(fmt.Errorf("failed to initialize game actor"))
 			}
@@ -163,9 +167,9 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 	}
 
 	// Ignore messages if game is already over or stopping, except for system messages
-	if a.gameOver.Load() || a.isStopping.Load() {
+	if a.gameOver || a.isStopping {
 		switch ctx.Message().(type) {
-		case bollywood.Stopping, bollywood.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
+		case AssignPlayerToRoom, actor.Stopping, actor.Stopped, PlayerDisconnect, stopPhasingTimerMsg, stopReconnectTimerMsg: // Allow timers during cleanup
 			// Allow these messages during game over/stopping for cleanup
 		default:
 			// If it's an Ask request during shutdown, reply with an error
@@ -178,10 +182,11 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 
 	// Main message switch
 	switch m := ctx.Message().(type) {
-	case bollywood.Started:
+	case actor.Started:
 		a.handleStart(ctx)
 
 	case GameTick: // Message from physicsTicker
+		a.physicsPending.Clear()
 		start := time.Now()
 
 		// 1. Move entities based on current velocity/direction (updates cache)
@@ -200,62 +205,57 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		a.checkGameOver(ctx)
 
 		duration := time.Since(start)
-		a.metricsMu.Lock()
 		a.tickDurationSum += duration
 		a.tickCount++
-		a.metricsMu.Unlock()
-
-	case PaddleStateUpdate: // Update cache with state from PaddleActor
-		if paddle := a.paddles[m.Index]; paddle != nil {
-			paddle.Direction = m.Direction
-		}
-
-	case BallStateUpdate: // Update cache with state from BallActor
-		if ball := a.balls[m.ID]; ball != nil {
-			ball.Vx = m.Vx // Update velocity from BallActor
-			ball.Vy = m.Vy
-			ball.Radius = m.Radius
-			ball.Mass = m.Mass
-			ball.Phasing = m.Phasing // Crucially update phasing state from BallActor
+		if n := a.engine.QueueLen(a.selfPID); n > a.maxQueueLen {
+			a.maxQueueLen = n
 		}
 
 	case BroadcastTick: // Message from broadcastTicker
+		a.broadcastPending.Clear()
 		a.handleBroadcastTick(ctx)
 
-	// --- Delegate to handlers defined in game_actor_handlers.go ---
+	// --- Handlers live in game_actor_admission.go, _disconnect.go, _entities.go and _lobby.go ---
 	case AssignPlayerToRoom:
-		a.handlePlayerConnect(ctx, m.WsConn, m.SessionID)
+		a.handleAdmission(ctx, m)
 	case PlayerDisconnect:
 		a.handlePlayerDisconnect(ctx, m.WsConn)
 	case ForwardedPaddleDirection:
 		a.handlePaddleDirection(ctx, m.WsConn, m.Direction)
-	case SpawnBallCommand:
-		a.spawnBall(ctx, m.OwnerIndex, m.X, m.Y, m.ExpireIn, m.IsPermanent, m.SetInitialPhasing)
 	case DestroyExpiredBall:
 		a.handleDestroyExpiredBall(ctx, m.BallID)
 	case stopPhasingTimerMsg: // Handle internal timer expiry
-		a.handleStopPhasingTimerMsg(ctx, m.BallID)
+		if m.Generation == a.phasingGeneration[m.BallID] {
+			a.handleStopPhasingTimerMsg(ctx, m.BallID)
+		}
 	case stopReconnectTimerMsg:
-		a.handleStopReconnectTimerMsg(ctx, m.PlayerIndex)
+		if m.PlayerIndex >= 0 && m.PlayerIndex < utils.MaxPlayers && a.players[m.PlayerIndex] != nil && a.players[m.PlayerIndex].DisconnectGeneration == m.Generation {
+			a.handleStopReconnectTimerMsg(ctx, m.PlayerIndex)
+		}
 	case ForwardedPlayerReady:
 		a.handlePlayerReady(ctx, m.WsConn, m.IsReady)
 	case startCountdownMsg:
 		a.startCountdown(ctx)
 	case startGameMsg:
-		a.startGame(ctx)
+		if m.Generation == a.countdownGeneration {
+			a.startGame(ctx)
+		}
 	case ForceStartGame:
 		a.handleForceStartGame(ctx)
 	case CountdownTick:
-		a.handleCountdownTick(ctx, m.SecondsRemaining)
+		if m.Generation == a.countdownGeneration {
+			a.handleCountdownTick(ctx, m.SecondsRemaining)
+		}
 	case RoomCleanupTimeout:
-		a.handleRoomCleanupTimeout(ctx)
+		if m.Generation == a.cleanupGeneration {
+			a.handleRoomCleanupTimeout(ctx)
+		}
 	// --- End Delegation ---
 
 	// --- Internal Test Messages ---
 	case internalAddBallTestMsg: // Handle internal message for adding ball in tests
-		if m.Ball != nil && m.PID != nil {
+		if m.Ball != nil {
 			a.balls[m.Ball.Id] = m.Ball
-			a.ballActors[m.Ball.Id] = m.PID
 		}
 	case internalStartTickersTestMsg: // Handle internal message for starting tickers in tests
 		a.startPhysicsTicker(ctx)
@@ -289,12 +289,9 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		ctx.Reply(resp)
 	case internalTriggerStartPhasingPowerUp:
 		ball, ballExists := a.balls[m.BallID]
-		ballActorPID, actorExists := a.ballActors[m.BallID]
-		if ballExists && actorExists && ball != nil && ballActorPID != nil {
-			// Apply phasing regardless of current state to reset timer if already phasing
+		if ballExists && ball != nil {
 			ball.Phasing = true
-			a.startPhasingTimer(ball.Id) // This will stop existing timer and start new one
-			a.engine.Send(ballActorPID, SetPhasingCommand{}, a.selfPID)
+			a.startPhasingTimer(ball.Id)
 		}
 	case internalConfirmPhasingRequest:
 		ball, exists := a.balls[m.BallID]
@@ -305,10 +302,10 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 		ctx.Reply(internalConfirmPhasingResponse{IsPhasing: isPhasing, Exists: exists})
 	// --- End Internal Test Messages ---
 
-	case bollywood.Stopping:
+	case actor.Stopping:
 		a.handleStopping(ctx)
 
-	case bollywood.Stopped:
+	case actor.Stopped:
 		a.handleStopped(ctx)
 
 	default:
@@ -319,13 +316,13 @@ func (a *GameActor) Receive(ctx bollywood.Context) {
 }
 
 // handleInternalTestPlayerAdd sets up a player and starts the game for testing purposes.
-func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerIndex int) {
+func (a *GameActor) handleInternalTestPlayerAdd(ctx actor.Context, playerIndex int) {
 	if playerIndex < 0 || playerIndex >= utils.MaxPlayers {
-		fmt.Printf("ERROR: GameActor %s: Received internalTestingAddPlayerAndStart with invalid index %d\n", a.selfPID, playerIndex)
+		slog.Error("test player index out of range", "room", a.selfPID, "index", playerIndex)
 		return
 	}
 	if a.players[playerIndex] != nil {
-		fmt.Printf("WARN: GameActor %s: Received internalTestingAddPlayerAndStart for already occupied index %d\n", a.selfPID, playerIndex)
+		slog.Warn("test player slot occupied", "room", a.selfPID, "index", playerIndex)
 		return
 	}
 
@@ -345,7 +342,7 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 		// Tickers are now started by internalStartTickersTestMsg or by actual player connect
 		// a.startTickers(ctx) // Do not start tickers here automatically for this test message
 	} else if a.canvas == nil || a.canvas.Grid == nil {
-		fmt.Printf("ERROR: GameActor %s: Adding test player %d but grid/canvas not initialized!\n", a.selfPID, playerIndex)
+		slog.Error("test player added before grid initialization", "room", a.selfPID, "index", playerIndex)
 		return
 	}
 
@@ -359,21 +356,10 @@ func (a *GameActor) handleInternalTestPlayerAdd(ctx bollywood.Context, playerInd
 		IsConnected: true, // Mark as connected for game logic
 		SessionID:   "test-session",
 	}
-	player.Score.Store(playerDataPtr.Score)
+	player.Score = playerDataPtr.Score
 	a.players[playerIndex] = player
 
-	// Create paddle data and actor
-	paddleDataPtr := NewPaddle(a.cfg, playerIndex)
-	a.paddles[playerIndex] = paddleDataPtr
-	paddleProducer := NewPaddleActorProducer(*paddleDataPtr, a.selfPID, a.cfg)
-	paddlePID := a.engine.Spawn(bollywood.NewProps(paddleProducer))
-	if paddlePID == nil {
-		fmt.Printf("ERROR: GameActor %s failed to spawn PaddleActor for test player %d\n", a.selfPID, playerIndex)
-		a.players[playerIndex] = nil
-		a.paddles[playerIndex] = nil
-		return
-	}
-	a.paddleActors[playerIndex] = paddlePID
+	a.paddles[playerIndex] = NewPaddle(a.cfg, playerIndex)
 
 	// Do not spawn ball here automatically for this test message, let tests control ball spawning
 }

@@ -1,4 +1,3 @@
-// File: game/grid_generation_test.go
 package game
 
 import (
@@ -51,7 +50,7 @@ func TestGrid_FillSymmetrical(t *testing.T) {
 		{"Size6_Density0.8_Clear1_Wall1_Life1_1", 6, 0.8, 1, 1, 1, 1, false, true},   // Expect some bricks
 		{"Size6_Density0.1_Clear1_Wall1_Life1_1", 6, 0.1, 1, 1, 1, 1, false, false},  // Might be empty
 		{"Size16_Density0.3_Clear2_Wall3_Life2_5", 16, 0.3, 2, 3, 2, 5, false, true},
-		{"Size10_Density1.0_Clear0_Wall0_Life1_1", 10, 1.0, 0, 0, 1, 1, false, true}, // Fill almost everything
+		{"Size10_Density1.0_Clear0_Wall0_Life1_1", 10, 1.0, 0, 0, 1, 1, false, true},  // Fill almost everything
 		{"Size10_Density0.0_Clear1_Wall1_Life1_1", 10, 0.0, 1, 1, 1, 1, false, false}, // Should be empty
 		{"Size4_Density1.0_Clear1_Wall1_Life1_1", 4, 1.0, 1, 1, 1, 1, false, false},   // Clear zones leave no space
 		{"OddSize", 9, 0.5, 1, 1, 1, 1, true, false},                                  // Should panic (NewGrid)
@@ -151,7 +150,6 @@ func TestGrid_FillSymmetrical(t *testing.T) {
 						}
 
 					} else {
-						// REMOVED: Overly strict assertion for low density / small grids
 						t.Logf("Low density/small grid check: Brick count = %d (expectBricks=false)", brickCount)
 					}
 

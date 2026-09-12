@@ -1,5 +1,3 @@
-// File: game/game_actor_test.go
-
 package game
 
 import (
@@ -7,46 +5,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lguibr/bollywood" // Import bollywood
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
-	"github.com/stretchr/testify/assert" // Use testify for assertions
-	"golang.org/x/net/websocket"         // Import websocket
+	"github.com/stretchr/testify/assert"
+	"golang.org/x/net/websocket"
 )
-
-// --- Mock WebSocket Conn ---
-// MockWebSocket implements PlayerConnection
-// Keep struct definition for reference if needed later
-type MockWebSocket struct {
-	// mu       sync.Mutex // Removed unused field
-	Written  [][]byte
-	Closed   bool
-	Remote   string
-	ReadChan chan []byte
-	ErrChan  chan error
-	// closeSig chan struct{} // Removed unused field
-}
-
-// Mock net.Addr
-type MockAddr struct{ Addr string }
-
-func (m *MockAddr) Network() string { return "mock" }
-func (m *MockAddr) String() string  { return m.Addr }
 
 // --- Mock Broadcaster Actor ---
 // Simple actor to capture messages sent to it
 type MockBroadcasterActor struct {
 	mu       sync.Mutex
 	Received []interface{}
-	PID      *bollywood.PID
+	PID      *actor.PID
 }
 
-func (a *MockBroadcasterActor) Receive(ctx bollywood.Context) {
+func (a *MockBroadcasterActor) Receive(ctx actor.Context) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.PID == nil {
 		a.PID = ctx.Self()
 	}
 	a.Received = append(a.Received, ctx.Message())
+	if ctx.RequestID() != "" {
+		ctx.Reply(struct{}{}) // lets a test Ask as a barrier: the mailbox is FIFO
+	}
 }
 
 func (a *MockBroadcasterActor) GetMessages() []interface{} {
@@ -64,63 +46,22 @@ func (a *MockBroadcasterActor) ClearMessages() {
 	a.Received = nil
 }
 
-// --- Test Receiver Actor (Used in Paddle Forwarding Test) ---
-// MockGameActor is defined in paddle_actor_test.go, no need to redefine
-
-// --- Helper to wait for a specific message ---
-// Increased timeout significantly
-// const waitForStateTimeout = 5000 * time.Millisecond // Removed unused constant
-
-// Helper to wait for connection close
-// const waitForCloseTimeout = 5000 * time.Millisecond // Removed unused constant
-
 // --- Tests ---
 
 // Increased shutdown timeout for all tests
 const testShutdownTimeout = 8 * time.Second // Increased shutdown timeout
 
-// Explicitly skip tests that rely on direct connection handling or GameActor state queries.
-// These tests need significant rework to mock the RoomManager interaction or should be
-// covered by E2E tests.
-func TestGameActor_PlayerConnect_FirstPlayer(t *testing.T) {
-	t.Skip("Skipping test: GameActor connection now initiated by RoomManager via AssignPlayerToRoom. Requires mocking RoomManager or use E2E test.")
-}
-
-func TestGameActor_PlayerConnect_ServerFull(t *testing.T) {
-	t.Skip("Skipping test: Room full logic now handled by RoomManager. Requires mocking RoomManager or use E2E test.")
-}
-
-func TestGameActor_PlayerDisconnect(t *testing.T) {
-	t.Skip("Skipping test: Disconnect logic modified (persistent ball, empty notification). Requires mocking RoomManager interaction or use E2E test.")
-}
-
-func TestGameActor_LastPlayerDisconnect(t *testing.T) {
-	t.Skip("Skipping test: Last player disconnect now notifies RoomManager. Requires mocking RoomManager interaction or use E2E test.")
-}
-
-func TestGameActor_PaddleMovementForwarding(t *testing.T) {
-	t.Skip("Skipping test: Input forwarding path changed (Client -> Handler -> GameActor). Requires mocking ConnectionHandler or use E2E test.")
-}
-
-func TestGameActor_InternalStateUpdate(t *testing.T) {
-	t.Skip("Skipping test: Testing internal state updates requires more complex setup or E2E tests.")
-}
-
-func TestGameActor_BroadcastTick(t *testing.T) {
-	t.Skip("Skipping test: Testing broadcast requires mocking the BroadcasterActor and verifying messages sent to it.")
-}
-
 // --- TestGameActorProducer ---
 // TestGameActorProducer allows injecting dependencies for testing.
 type TestGameActorProducer struct {
-	engine             *bollywood.Engine
+	engine             *actor.Engine
 	cfg                utils.Config
-	roomManagerPID     *bollywood.PID
-	mockBroadcasterPID *bollywood.PID // Inject mock broadcaster PID
-	initialState       *GameActor     // Inject initial state
+	roomManagerPID     *actor.PID
+	mockBroadcasterPID *actor.PID // Inject mock broadcaster PID
+	initialState       *GameActor // Inject initial state
 }
 
-func (p *TestGameActorProducer) Produce() bollywood.Actor {
+func (p *TestGameActorProducer) Produce() actor.Actor {
 	// Use the injected initial state
 	ga := p.initialState
 	// Set dependencies BEFORE the actor starts receiving messages
@@ -128,19 +69,15 @@ func (p *TestGameActorProducer) Produce() bollywood.Actor {
 	ga.cfg = p.cfg
 	ga.roomManagerPID = p.roomManagerPID
 	ga.broadcasterPID = p.mockBroadcasterPID // Set the mock broadcaster PID here
-	ga.stopPhysicsCh = make(chan struct{})   // Initialize channels
-	ga.stopBroadcastCh = make(chan struct{})
 	ga.pendingUpdates = make([]interface{}, 0, 128)
-	ga.activeCollisions = NewCollisionTracker() // Initialize collision tracker
+	ga.activeCollisions = NewCollisionTracker()  // Initialize collision tracker
 	ga.phasingTimers = make(map[int]*time.Timer) // Initialize phasing timers map
-	ga.gameOver.Store(false)
-	ga.isStopping.Store(false)
 	// The GameActor's Started handler will now skip spawning its own broadcaster
 	return ga
 }
 
 // Helper to wait for GameActor to be ready (e.g., after Started message)
-func waitForGameActorReady(t *testing.T, engine *bollywood.Engine, pid *bollywood.PID, timeout time.Duration) bool {
+func waitForGameActorReady(t *testing.T, engine *actor.Engine, pid *actor.PID, timeout time.Duration) bool {
 	t.Helper()
 	// Simple approach: wait a fixed short duration.
 	// A more robust way would involve an Ask/Reply or a dedicated Ready message.
@@ -152,22 +89,10 @@ func waitForGameActorReady(t *testing.T, engine *bollywood.Engine, pid *bollywoo
 	return true // Assume ready after sleep for now
 }
 
-// Helper to get the last broadcast command from the mock broadcaster
-// func getLastBroadcastCommand(t *testing.T, mockBroadcaster *MockBroadcasterActor) *BroadcastUpdatesCommand { // Removed unused function
-// 	t.Helper()
-// 	receivedMessages := mockBroadcaster.GetMessages()
-// 	for i := len(receivedMessages) - 1; i >= 0; i-- {
-// 		if cmd, ok := receivedMessages[i].(BroadcastUpdatesCommand); ok {
-// 			return &cmd
-// 		}
-// 	}
-// 	return nil
-// }
-
 // --- REFACTORED TEST CASE ---
 func TestGameActor_BrickCollisionAndGridUpdate(t *testing.T) {
 	// 1. Setup Engine and Config
-	engine := bollywood.NewEngine()
+	engine := actor.NewEngine()
 	defer engine.Shutdown(testShutdownTimeout)
 	cfg := utils.DefaultConfig()
 	cfg.GameTickPeriod = 10 * time.Millisecond // Faster ticks for testing
@@ -179,19 +104,18 @@ func TestGameActor_BrickCollisionAndGridUpdate(t *testing.T) {
 
 	// 2. Spawn MockBroadcaster FIRST
 	mockBroadcaster := &MockBroadcasterActor{}
-	mockBroadcasterPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBroadcaster }))
+	mockBroadcasterPID := engine.Spawn(actor.NewProps(func() actor.Actor { return mockBroadcaster }))
 	assert.NotNil(t, mockBroadcasterPID)
 
 	// 3. Create the initial GameActor state instance
 	gameActorInstance := &GameActor{
 		// Set initial state fields directly
-		canvas:        NewCanvas(cfg.CanvasSize, gridSize),
-		players:       [utils.MaxPlayers]*playerInfo{},
-		paddles:       [utils.MaxPlayers]*Paddle{},
-		balls:         make(map[int]*Ball),
-		ballActors:    make(map[int]*bollywood.PID),
-		connToIndex:   make(map[*websocket.Conn]int),
-		playerConns:   [utils.MaxPlayers]*websocket.Conn{},
+		canvas:      NewCanvas(cfg.CanvasSize, gridSize),
+		players:     [utils.MaxPlayers]*playerInfo{},
+		paddles:     [utils.MaxPlayers]*Paddle{},
+		balls:       make(map[int]*Ball),
+		connToIndex: make(map[*websocket.Conn]int),
+		playerConns: [utils.MaxPlayers]*websocket.Conn{},
 		// Metrics, etc. will be initialized by producer
 	}
 	// --- Pre-Spawn State Setup (apply to gameActorInstance) ---
@@ -214,20 +138,18 @@ func TestGameActor_BrickCollisionAndGridUpdate(t *testing.T) {
 	}
 
 	// 5. Spawn GameActor using the custom producer
-	gameActorPID := engine.Spawn(bollywood.NewProps(testProducer.Produce)) // Call Produce()
+	gameActorPID := engine.Spawn(actor.NewProps(testProducer.Produce)) // Call Produce()
 	assert.NotNil(t, gameActorPID)
 	// Wait for GameActor to be ready (process Started message)
 	assert.True(t, waitForGameActorReady(t, engine, gameActorPID, 500*time.Millisecond), "GameActor did not become ready")
 
 	// 6. Add ONLY the test ball using internal message (NO player/default balls)
-	ballID := 99999 // Use a fixed ID for the test ball
+	ballID := 99999                                          // Use a fixed ID for the test ball
 	testBall := NewBall(cfg, ballX, ballY, -1, ballID, true) // Owner -1 (ownerless)
 	testBall.Vx = ballVx
 	testBall.Vy = ballVy
 	testBall.Phasing = false // Start non-phasing
-	mockBallActor := &MockSimpleActor{} // Use the simple mock from phasing test
-	mockBallActorPID := engine.Spawn(bollywood.NewProps(func() bollywood.Actor { return mockBallActor }))
-	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: testBall, PID: mockBallActorPID}, nil)
+	engine.Send(gameActorPID, internalAddBallTestMsg{Ball: testBall}, nil)
 	// Start tickers manually for this isolated test
 	engine.Send(gameActorPID, internalStartTickersTestMsg{}, nil)
 	time.Sleep(50 * time.Millisecond) // Allow message processing and ticker start

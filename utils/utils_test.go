@@ -1,4 +1,3 @@
-// File: utils/utils_test.go
 package utils
 
 import (

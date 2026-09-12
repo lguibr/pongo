@@ -1,150 +1,86 @@
-// File: game/game_actor_lifecycle.go
 package game
 
 import (
-	"fmt"
+	"log/slog"
 	"time"
 
-	"github.com/lguibr/bollywood"
+	"github.com/lguibr/pongo/internal/actor"
 	"github.com/lguibr/pongo/utils"
-	"golang.org/x/net/websocket" // Added import
+	"golang.org/x/net/websocket"
 )
 
 // handleStart is called when the actor receives the Started message.
-func (a *GameActor) handleStart(ctx bollywood.Context) {
+func (a *GameActor) handleStart(ctx actor.Context) {
 	// Only spawn broadcaster if one wasn't injected (e.g., for testing)
 	if a.broadcasterPID == nil {
-		broadcasterProps := bollywood.NewProps(NewBroadcasterProducer(a.selfPID))
+		broadcasterProps := actor.NewProps(NewBroadcasterProducer(a.selfPID))
 		a.broadcasterPID = a.engine.Spawn(broadcasterProps)
 		if a.broadcasterPID == nil {
-			fmt.Printf("FATAL: GameActor %s failed to spawn BroadcasterActor. Stopping self.\n", a.selfPID)
+			slog.Error("failed to spawn broadcaster; stopping room", "room", a.selfPID)
 			a.engine.Stop(a.selfPID) // Stop self if broadcaster fails
 			return
 		}
-		fmt.Printf("GameActor %s: Started. Spawned Broadcaster: %s.\n", a.selfPID, a.broadcasterPID)
+		slog.Debug("room started", "room", a.selfPID, "broadcaster", a.broadcasterPID)
 	} else {
-		fmt.Printf("GameActor %s: Started. Using pre-assigned Broadcaster: %s.\n", a.selfPID, a.broadcasterPID)
+		slog.Debug("room started with injected broadcaster", "room", a.selfPID, "broadcaster", a.broadcasterPID)
 	}
 	// Tickers are started when the first player joins or via internal test message
 }
 
-// startPhysicsTicker starts the physics ticker.
-func (a *GameActor) startPhysicsTicker(ctx bollywood.Context) {
-	a.tickerMu.Lock()
-	defer a.tickerMu.Unlock()
+// startPhysicsTicker starts the physics ticker once.
+func (a *GameActor) startPhysicsTicker(ctx actor.Context) {
+	if a.physicsTicker != nil {
+		return
+	}
+	a.physicsTicker = time.NewTicker(a.cfg.GameTickPeriod)
+	a.stopPhysicsCh = make(chan struct{})
+	go forwardTicks(a.physicsTicker.C, a.stopPhysicsCh, &a.physicsPending, a.engine, a.selfPID, GameTick{})
+}
 
-	if a.physicsTicker == nil {
-		a.physicsTicker = time.NewTicker(a.cfg.GameTickPeriod)
+// startBroadcastTicker starts the broadcast ticker once. It never runs faster than physics.
+func (a *GameActor) startBroadcastTicker(ctx actor.Context) {
+	if a.broadcastTicker != nil {
+		return
+	}
+	rate := a.cfg.BroadcastRateHz
+	if rate <= 0 {
+		rate = 40
+	}
+	interval := time.Second / time.Duration(rate)
+	if interval < a.cfg.GameTickPeriod {
+		interval = a.cfg.GameTickPeriod
+	}
+	if interval <= 0 {
+		interval = 16 * time.Millisecond
+	}
+	a.broadcastTicker = time.NewTicker(interval)
+	a.stopBroadcastCh = make(chan struct{})
+	go forwardTicks(a.broadcastTicker.C, a.stopBroadcastCh, &a.broadcastPending, a.engine, a.selfPID, BroadcastTick{})
+}
+
+// forwardTicks turns ticker fires into coalesced actor messages until stop is closed.
+// It uses only the values it is given and never reads the actor's fields.
+func forwardTicks(ticks <-chan time.Time, stop <-chan struct{}, pending *actor.PendingTick, engine *actor.Engine, self *actor.PID, msg interface{}) {
+	for {
 		select {
-		case <-a.stopPhysicsCh:
-			a.stopPhysicsCh = make(chan struct{})
-		default:
+		case <-stop:
+			return
+		case <-ticks:
+			pending.Send(engine, self, msg)
 		}
-		stopCh := a.stopPhysicsCh
-		tickerCh := a.physicsTicker.C
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("PANIC recovered in GameActor %s Physics Ticker: %v\n", a.selfPID, r)
-				}
-			}()
-			for {
-				select {
-				case <-stopCh:
-					return
-				case _, ok := <-tickerCh:
-					if !ok {
-						return
-					}
-					if a.isStopping.Load() || a.gameOver.Load() {
-						return
-					}
-					currentEngine := a.engine
-					currentSelfPID := a.selfPID
-					if currentEngine != nil && currentSelfPID != nil {
-						currentEngine.Send(currentSelfPID, GameTick{}, nil)
-					} else {
-						return
-					}
-				}
-			}
-		}()
-		fmt.Printf("GameActor %s: Physics ticker started.\n", a.selfPID)
 	}
 }
 
-// startBroadcastTicker starts the broadcast ticker.
-func (a *GameActor) startBroadcastTicker(ctx bollywood.Context) {
-	a.tickerMu.Lock()
-	defer a.tickerMu.Unlock()
-
-	if a.broadcastTicker == nil {
-		broadcastInterval := time.Second / time.Duration(a.cfg.BroadcastRateHz)
-		if broadcastInterval <= 0 {
-			broadcastInterval = 16 * time.Millisecond
-		}
-		a.broadcastTicker = time.NewTicker(broadcastInterval)
-		select {
-		case <-a.stopBroadcastCh:
-			a.stopBroadcastCh = make(chan struct{})
-		default:
-		}
-		stopCh := a.stopBroadcastCh
-		tickerCh := a.broadcastTicker.C
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("PANIC recovered in GameActor %s Broadcast Ticker: %v\n", a.selfPID, r)
-				}
-			}()
-			for {
-				select {
-				case <-stopCh:
-					return
-				case _, ok := <-tickerCh:
-					if !ok {
-						return
-					}
-					if a.isStopping.Load() || a.gameOver.Load() {
-						return
-					}
-					currentEngine := a.engine
-					currentSelfPID := a.selfPID
-					if currentEngine != nil && currentSelfPID != nil {
-						currentEngine.Send(currentSelfPID, BroadcastTick{}, nil)
-					} else {
-						return
-					}
-				}
-			}
-		}()
-		fmt.Printf("GameActor %s: Broadcast ticker started.\n", a.selfPID)
-	}
-}
-
-// stopTickers stops the physics and broadcast tickers safely using the mutex.
+// stopTickers stops both tickers and their forwarding goroutines.
 func (a *GameActor) stopTickers() {
-	a.tickerMu.Lock()
-	defer a.tickerMu.Unlock()
-
 	if a.physicsTicker != nil {
 		a.physicsTicker.Stop()
-		select {
-		case <-a.stopPhysicsCh:
-		default:
-			close(a.stopPhysicsCh)
-		}
+		close(a.stopPhysicsCh)
 		a.physicsTicker = nil
 	}
 	if a.broadcastTicker != nil {
 		a.broadcastTicker.Stop()
-		select {
-		case <-a.stopBroadcastCh:
-		default:
-			close(a.stopBroadcastCh)
-		}
+		close(a.stopBroadcastCh)
 		a.broadcastTicker = nil
 	}
 }
@@ -152,34 +88,37 @@ func (a *GameActor) stopTickers() {
 // performCleanup ensures cleanup logic runs exactly once.
 func (a *GameActor) performCleanup() {
 	a.cleanupOnce.Do(func() {
-		fmt.Printf("GameActor %s: Performing cleanup...\n", a.selfPID)
+		slog.Debug("room cleanup started", "room", a.selfPID)
 		a.stopTickers()
 		a.cleanupChildActorsAndConnections()
-		a.cleanupPhasingTimers() // Clean up phasing timers
+		a.cleanupPhasingTimers()
+		if a.countdownTimer != nil {
+			a.countdownTimer.Stop()
+		}
+		if a.roomCleanupTimer != nil {
+			a.roomCleanupTimer.Stop()
+		}
+		for _, timer := range a.expiryTimers {
+			timer.Stop()
+		}
+		for _, timer := range a.reconnectTimers {
+			timer.Stop()
+		}
+
 		a.logPerformanceMetrics()
-		fmt.Printf("GameActor %s: Cleanup complete.\n", a.selfPID)
+		slog.Debug("room cleanup complete", "room", a.selfPID)
 	})
 }
 
-// cleanupChildActorsAndConnections stops all managed actors and cleans caches.
+// cleanupChildActorsAndConnections closes clients, clears room state and stops the broadcaster.
 func (a *GameActor) cleanupChildActorsAndConnections() {
-	a.updatesMu.Lock()
 	a.pendingUpdates = a.pendingUpdates[:0]
-	a.updatesMu.Unlock()
-
-	paddlesToStop := make([]*bollywood.PID, 0, utils.MaxPlayers)
-	ballsToStop := make([]*bollywood.PID, 0, len(a.ballActors))
-	broadcasterToStop := a.broadcasterPID
 
 	for i := 0; i < utils.MaxPlayers; i++ {
-		if pid := a.paddleActors[i]; pid != nil {
-			paddlesToStop = append(paddlesToStop, pid)
-			a.paddleActors[i] = nil
-		}
 		a.paddles[i] = nil
 		if pInfo := a.players[i]; pInfo != nil {
-			if pInfo.Ws != nil {
-				delete(a.connToIndex, pInfo.Ws)
+			if !a.finalDeliveryHandedOff && pInfo.Client != nil {
+				pInfo.Client.Close()
 			}
 			pInfo.Ws = nil
 			pInfo.IsConnected = false
@@ -187,44 +126,17 @@ func (a *GameActor) cleanupChildActorsAndConnections() {
 		a.players[i] = nil
 		a.playerConns[i] = nil
 	}
+	a.balls = make(map[int]*Ball)
+	a.connToIndex = make(map[*websocket.Conn]int)
 
-	for ballID, pid := range a.ballActors {
-		if pid != nil {
-			ballsToStop = append(ballsToStop, pid)
-		}
-		delete(a.ballActors, ballID)
-		delete(a.balls, ballID)
-	}
-
-	if len(a.connToIndex) > 0 {
-		a.connToIndex = make(map[*websocket.Conn]int)
-	}
-
-	currentEngine := a.engine
-	if currentEngine != nil {
-		if broadcasterToStop != nil && a.broadcasterPID != nil {
-			currentEngine.Stop(broadcasterToStop)
-			a.broadcasterPID = nil
-		}
-		for _, pid := range paddlesToStop {
-			if pid != nil {
-				currentEngine.Stop(pid)
-			}
-		}
-		for _, pid := range ballsToStop {
-			if pid != nil {
-				currentEngine.Stop(pid)
-			}
-		}
-	} else {
-		fmt.Printf("WARN: GameActor %s: Engine is nil during cleanupChildActorsAndConnections.\n", a.selfPID)
+	if a.broadcasterPID != nil && a.engine != nil {
+		a.engine.Stop(a.broadcasterPID)
+		a.broadcasterPID = nil
 	}
 }
 
 // cleanupPhasingTimers stops all active phasing timers.
 func (a *GameActor) cleanupPhasingTimers() {
-	a.phasingTimersMu.Lock()
-	defer a.phasingTimersMu.Unlock()
 	for id, timer := range a.phasingTimers {
 		if timer != nil {
 			timer.Stop()
@@ -234,8 +146,8 @@ func (a *GameActor) cleanupPhasingTimers() {
 }
 
 // checkGameOver checks if all bricks are destroyed and triggers the end sequence.
-func (a *GameActor) checkGameOver(ctx bollywood.Context) {
-	if a.gameOver.Load() || a.canvas == nil || a.canvas.Grid == nil {
+func (a *GameActor) checkGameOver(ctx actor.Context) {
+	if a.gameOver || a.canvas == nil || a.canvas.Grid == nil {
 		return
 	}
 	allBricksGone := true
@@ -252,15 +164,10 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 	}
 
 	if allBricksGone {
-		if !a.gameOver.CompareAndSwap(false, true) {
-			return // Already processing game over
-		}
-		// if !a.isStopping.CompareAndSwap(false, true) { // Removed SA9003
-		// If not already stopping, mark as stopping now due to game over
-		// }
-		a.isStopping.CompareAndSwap(false, true) // Mark as stopping if game over triggered
+		a.gameOver = true
+		a.isStopping = true
 
-		fmt.Printf("GameActor %s: GAME_OVER - All bricks destroyed.\n", a.selfPID)
+		slog.Debug("all bricks destroyed", "room", a.selfPID)
 
 		winnerIndex := -1
 		highestScore := int32(-999999)
@@ -268,7 +175,7 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 		tie := false
 		for i, p := range a.players {
 			if p != nil {
-				score := p.Score.Load()
+				score := p.Score
 				finalScores[i] = score
 				if p.IsConnected {
 					if score > highestScore {
@@ -286,7 +193,7 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 		if tie {
 			winnerIndex = -1
 		}
-		fmt.Printf("GameActor %s: GAME_OVER - Winner Index: %d (Score: %d)\n", a.selfPID, winnerIndex, highestScore)
+		slog.Info("game over", "room", a.selfPID, "winner", winnerIndex, "score", highestScore)
 
 		// Send any remaining pending updates immediately
 		a.handleBroadcastTick(ctx)
@@ -297,12 +204,13 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 				MessageType: "gameOver", WinnerIndex: winnerIndex, FinalScores: finalScores,
 				Reason: "All bricks destroyed", RoomPID: a.selfPID.String(),
 			}
-			a.engine.Send(a.broadcasterPID, gameOverMsg, a.selfPID)
+			a.finalDeliveryHandedOff = a.engine.Send(a.broadcasterPID, gameOverMsg, a.selfPID)
+			a.broadcasterPID = nil // Broadcaster owns final delivery and its own termination.
 		}
 
 		// Notify RoomManager
 		if a.roomManagerPID != nil {
-			fmt.Printf("GameActor %s: GAME_OVER - Notifying RoomManager %s.\n", a.selfPID, a.roomManagerPID)
+			slog.Debug("notifying room manager of game over", "room", a.selfPID)
 			a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, nil)
 		}
 
@@ -314,27 +222,27 @@ func (a *GameActor) checkGameOver(ctx bollywood.Context) {
 }
 
 // handleStopping is called when the actor receives the Stopping message.
-func (a *GameActor) handleStopping(ctx bollywood.Context) {
-	if a.isStopping.CompareAndSwap(false, true) {
-		fmt.Printf("GameActor %s: Stopping.\n", a.selfPID)
-		a.gameOver.Store(true) // Ensure game over flag is set
-		a.performCleanup()     // Perform cleanup once
+func (a *GameActor) handleStopping(ctx actor.Context) {
+	a.isStopping = true
+	a.gameOver = true
+	a.performCleanup()
+	if a.roomManagerPID != nil {
+		a.engine.Send(a.roomManagerPID, GameRoomEmpty{RoomPID: a.selfPID}, a.selfPID)
 	}
+
 }
 
 // handleStopped is called when the actor receives the Stopped message.
-func (a *GameActor) handleStopped(ctx bollywood.Context) {
-	fmt.Printf("GameActor %s: Stopped.\n", a.selfPID)
+func (a *GameActor) handleStopped(ctx actor.Context) {
+	slog.Debug("room stopped", "room", a.selfPID)
 }
 
 // logPerformanceMetrics calculates and prints the average tick duration.
 func (a *GameActor) logPerformanceMetrics() {
-	a.metricsMu.Lock()
-	defer a.metricsMu.Unlock()
 	if a.tickCount > 0 {
 		avgDuration := a.tickDurationSum / time.Duration(a.tickCount)
-		fmt.Printf("PERF_METRIC GameActor %s: AvgPhysicsTick=%v Ticks=%d\n", a.selfPID, avgDuration, a.tickCount)
+		slog.Info("room metrics", "room", a.selfPID, "avgPhysicsTick", avgDuration, "ticks", a.tickCount, "maxQueue", a.maxQueueLen)
 	} else {
-		fmt.Printf("PERF_METRIC GameActor %s: No physics ticks processed.\n", a.selfPID)
+		slog.Debug("room metrics", "room", a.selfPID, "ticks", 0)
 	}
 }
