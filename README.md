@@ -1,4 +1,5 @@
 # PonGo
+![Coverage](https://img.shields.io/badge/Coverage-62.0%25-yellow)
 
 A multiplayer Pong/Breakout game for up to four players per room. Each player guards one
 edge of a square arena with a paddle, breaks bricks, collects power-ups and scores by
